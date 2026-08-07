@@ -1,0 +1,294 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Ultra-Clean Matte Black & Graphite Canvas Background */
+  .bg-3d-obsidian {
+    background-color: #0A0D12;
+    background-image: 
+      radial-gradient(at 10% 10%, rgba(59, 207, 255, 0.03) 0px, transparent 40%),
+      radial-gradient(at 90% 15%, rgba(184, 243, 74, 0.02) 0px, transparent 40%),
+      radial-gradient(at 50% 90%, rgba(27, 34, 48, 0.5) 0px, transparent 60%);
+  }
+
+  /* Luxury Institutional FinTech Floating Glass Card */
+  .card-3d {
+    background: rgba(19, 24, 33, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 
+      0 12px 32px -8px rgba(0, 0, 0, 0.6),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1.25rem;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .card-3d:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 
+      0 20px 40px -12px rgba(0, 0, 0, 0.75),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+  }
+
+  /* Luxury Gold Enterprise Card */
+  .card-3d-gold {
+    background: linear-gradient(145deg, rgba(23, 20, 15, 0.85) 0%, rgba(15, 13, 10, 0.95) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 
+      0 12px 32px -8px rgba(246, 176, 0, 0.08),
+      inset 0 1px 1px 0 rgba(246, 176, 0, 0.25);
+    border: 1px solid rgba(246, 176, 0, 0.25);
+    border-radius: 1.25rem;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .card-3d-gold:hover {
+    border-color: rgba(246, 176, 0, 0.5);
+    box-shadow: 
+      0 18px 40px -10px rgba(246, 176, 0, 0.18),
+      inset 0 1px 1.5px 0 rgba(246, 176, 0, 0.4);
+    transform: translateY(-2px);
+  }
+
+  .card-3d-hover:hover {
+    transform: translateY(-3px);
+    border-color: rgba(246, 176, 0, 0.45);
+    box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Glassmorphism Panel */
+  .panel-3d-glass {
+    background: rgba(19, 24, 33, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 
+      0 16px 40px -10px rgba(0, 0, 0, 0.6),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+    border-radius: 1.25rem;
+  }
+
+  /* Enterprise Gold Primary Button */
+  .btn-3d-gold {
+    background: linear-gradient(180deg, #F6B000 0%, #D99B00 100%);
+    box-shadow: 
+      0 4px 14px 0 rgba(246, 176, 0, 0.25),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 235, 170, 0.5);
+    color: #0A0D12;
+    font-weight: 800;
+    border-radius: 1rem;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-3d-gold:hover {
+    background: linear-gradient(180deg, #FFC021 0%, #F6B000 100%);
+    box-shadow: 
+      0 8px 22px 0 rgba(246, 176, 0, 0.4),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+    transform: translateY(-1px);
+  }
+  .btn-3d-gold:active {
+    transform: translateY(1px) scale(0.98);
+    box-shadow: 0 2px 6px 0 rgba(246, 176, 0, 0.2);
+  }
+
+  /* Tactile Button Feedback */
+  .btn-3d-tactile {
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-3d-tactile:hover {
+    transform: translateY(-1.5px);
+    box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.5);
+  }
+  .btn-3d-tactile:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  /* Enterprise Cyan Button */
+  .btn-3d-blue {
+    background: linear-gradient(180deg, #3BCFFF 0%, #00B2EE 100%);
+    box-shadow: 
+      0 4px 14px 0 rgba(59, 207, 255, 0.25),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(186, 240, 255, 0.5);
+    color: #0A0D12;
+    font-weight: 800;
+    border-radius: 1rem;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-3d-blue:hover {
+    background: linear-gradient(180deg, #60D9FF 0%, #3BCFFF 100%);
+    box-shadow: 0 8px 22px 0 rgba(59, 207, 255, 0.4);
+    transform: translateY(-1px);
+  }
+  .btn-3d-blue:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  /* Enterprise Emerald Button */
+  .btn-3d-emerald {
+    background: linear-gradient(180deg, #00E08A 0%, #00B871 100%);
+    box-shadow: 
+      0 4px 14px 0 rgba(0, 224, 138, 0.25),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(180, 255, 225, 0.5);
+    color: #0A0D12;
+    font-weight: 800;
+    border-radius: 1rem;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-3d-emerald:hover {
+    background: linear-gradient(180deg, #28ECA2 0%, #00E08A 100%);
+    box-shadow: 0 8px 22px 0 rgba(0, 224, 138, 0.4);
+    transform: translateY(-1px);
+  }
+  .btn-3d-emerald:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  /* Enterprise Neon Lime Primary Action */
+  .text-gradient-lime {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F7FEE7 30%, #B8F34A 80%, #84CC16 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .btn-neon-lime {
+    background: #B8F34A;
+    color: #0A0D12;
+    font-weight: 800;
+    box-shadow: 
+      0 4px 16px 0 rgba(184, 243, 74, 0.3),
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+    border: 1px solid #B8F34A;
+    border-radius: 1rem;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-neon-lime:hover {
+    background: #CBF772;
+    box-shadow: 0 8px 22px 0 rgba(184, 243, 74, 0.45);
+    transform: translateY(-1px);
+  }
+  .btn-neon-lime:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  /* Segmented Pill Filters */
+  .pill-filter-active {
+    background: rgba(184, 243, 74, 0.15);
+    color: #B8F34A;
+    font-weight: 700;
+    border: 1px solid rgba(184, 243, 74, 0.4);
+    box-shadow: 0 2px 8px rgba(184, 243, 74, 0.15);
+    border-radius: 9999px;
+  }
+
+  .pill-filter-inactive {
+    background: rgba(19, 24, 33, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #94A3B8;
+    font-weight: 600;
+    border-radius: 9999px;
+    transition: all 0.2s ease;
+  }
+  .pill-filter-inactive:hover {
+    background: rgba(27, 34, 48, 0.9);
+    color: #F8FAFC;
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .card-ltai {
+    background: rgba(19, 24, 33, 0.8);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+    border-radius: 1.25rem;
+    transition: all 0.25s ease;
+  }
+  .card-ltai:hover {
+    border-color: rgba(184, 243, 74, 0.35);
+    box-shadow: 0 20px 44px -10px rgba(184, 243, 74, 0.1);
+  }
+
+  .price-badge-lime {
+    background: #B8F34A;
+    color: #0A0D12;
+    font-weight: 800;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px rgba(184, 243, 74, 0.25);
+  }
+
+  /* Luxury Gradients & Text */
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #FFFBEB 0%, #FDE68A 30%, #F6B000 80%, #D97706 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .text-gradient-cyan {
+    background: linear-gradient(135deg, #FFFFFF 0%, #BAF0FF 40%, #3BCFFF 80%, #0284C7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Soft Ambient Lighting */
+  .glow-gold-3d {
+    box-shadow: 0 0 24px -4px rgba(246, 176, 0, 0.25);
+  }
+
+  .glow-blue-3d {
+    box-shadow: 0 0 24px -4px rgba(59, 207, 255, 0.25);
+  }
+
+  .glow-emerald-3d {
+    box-shadow: 0 0 24px -4px rgba(0, 224, 138, 0.25);
+  }
+
+  .glow-rose-3d {
+    box-shadow: 0 0 24px -4px rgba(255, 77, 90, 0.25);
+  }
+
+  /* Subtle Badges */
+  .badge-3d-gold {
+    background: rgba(246, 176, 0, 0.12);
+    border: 1px solid rgba(246, 176, 0, 0.35);
+    color: #F6B000;
+    border-radius: 9999px;
+  }
+
+  .badge-3d-blue {
+    background: rgba(59, 207, 255, 0.12);
+    border: 1px solid rgba(59, 207, 255, 0.35);
+    color: #3BCFFF;
+    border-radius: 9999px;
+  }
+
+  /* Scrollbar Customization */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Institutional Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0D12;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+

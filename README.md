@@ -1,11 +1,29 @@
-<div align="center">
+# GMC AI Brain Trading Dashboard
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Professional 3D GMC AI Brain Trading Platform for Crypto, Forex, and Gold with Smart Money Concepts (SMC), live order flow, institutional liquidity heatmaps, high win-rate signal engines, and terminal authentication.
 
-  <h1>Built with AI Studio</h2>
+## 🚀 Key Features
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- **GMC AI Brain Signal Engine**: Smart Money Concepts, Order Blocks, Liquidity Sweeps, and Bank Levels.
+- **Institutional Market Hub**: Real-time ticker feeds, Gold Zone analytics, and Live Equity trackers.
+- **Backtesting & Journaling**: Strategy performance metrics, trade logs, and risk calculators.
+- **Auto Telegram Broadcasting**: Real-time signal broadcasting via custom Telegram bots.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## 🛠️ Tech Stack
 
-</div>
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide React, Recharts, D3.js, Lightweight Charts
+- **Backend/Server**: Express, Node.js, Gemini AI SDK (@google/genai)
+- **Build Tool**: Vite, ESBuild
+
+## 📦 Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+```
