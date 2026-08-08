@@ -671,7 +671,7 @@ async function startServer() {
         }),
       });
 
-      // 5. Attempt to update Channel/Group Chat Photo with Harami AI logo if chatId exists
+      // 5. Set Bot Profile Photo & Channel Photo with Harami AI artwork
       const targetChat = serverTargetChatId || "5218548758";
       const haramiImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
       const defaultImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
@@ -679,21 +679,33 @@ async function startServer() {
       if (fs.existsSync(logoPath)) {
         try {
           const fileBuffer = fs.readFileSync(logoPath);
-          const blob = new Blob([fileBuffer], { type: "image/jpeg" });
-          const formData = new FormData();
-          formData.append("chat_id", String(targetChat));
-          formData.append("photo", blob, "harami_ai_logo.jpg");
+          
+          // 5a. Set Bot's own profile photo in Telegram
+          const profileBlob = new Blob([fileBuffer], { type: "image/jpeg" });
+          const profileFormData = new FormData();
+          profileFormData.append("photo", profileBlob, "harami_ai_logo.jpg");
+
+          await fetch(`https://api.telegram.org/bot${token}/setMyProfilePhoto`, {
+            method: "POST",
+            body: profileFormData,
+          });
+
+          // 5b. Update Channel/Group Chat Photo if configured
+          const chatBlob = new Blob([fileBuffer], { type: "image/jpeg" });
+          const chatFormData = new FormData();
+          chatFormData.append("chat_id", String(targetChat));
+          chatFormData.append("photo", chatBlob, "harami_ai_logo.jpg");
 
           await fetch(`https://api.telegram.org/bot${token}/setChatPhoto`, {
             method: "POST",
-            body: formData,
+            body: chatFormData,
           });
         } catch (e) {
-          // Non-blocking if chat is private or permissions differ
+          // Non-blocking if permissions or chat limits differ
         }
       }
 
-      console.log("[TELEGRAM METADATA INIT]: Harami AI name, bio, and commands set successfully!");
+      console.log("[TELEGRAM METADATA INIT]: Harami AI name, bio, profile picture, and commands set successfully!");
     } catch (err) {
       console.warn("[TELEGRAM METADATA WARNING]: Could not set bot metadata", err);
     }
