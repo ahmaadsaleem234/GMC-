@@ -15,6 +15,8 @@ import {
   Sliders,
   Bell,
   RefreshCw,
+  Sparkles,
+  Compass,
 } from "lucide-react";
 
 export interface ModuleRegistryItem {
@@ -29,6 +31,16 @@ export interface ModuleRegistryItem {
 }
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
+  {
+    id: "goldintelligence",
+    label: "🌟 Gold Intelligence — 25-Yr Research & Forecast Core",
+    icon: Sparkles,
+    category: "AI Intelligence",
+    desc: "25-Year Gold seasonality, macro news reaction engine, scenario planner & multi-timeframe forecast",
+    emoji: "🌟",
+    tag: "25-YR GOLD INTELLIGENCE",
+    tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
+  },
   {
     id: "gmcgold",
     label: "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix",

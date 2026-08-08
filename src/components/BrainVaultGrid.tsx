@@ -53,6 +53,16 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
 
   const topTools = [
     {
+      id: "goldintelligence",
+      title: "🌟 Gold Intelligence — 25-Yr Research & Forecast Core",
+      emoji: "🌟",
+      tag: "25-YR GOLD INTELLIGENCE",
+      tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
+      desc: "25-Year Gold seasonality engine, economic news reactions, event scenario planner & probability forecast core",
+      tabTarget: "goldintelligence",
+      highlight: true,
+    },
+    {
       id: "gmcgold",
       title: "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix",
       emoji: "🥇",
