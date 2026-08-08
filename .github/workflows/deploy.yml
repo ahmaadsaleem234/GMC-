@@ -34,6 +34,14 @@ jobs:
       - name: Build static site
         run: npx vite build
 
+      - name: Ensure CNAME is present in dist output
+        run: |
+          if [ ! -f ./dist/CNAME ]; then
+            echo "gmctrading.online" > ./dist/CNAME
+          fi
+          echo "Contents of dist/CNAME:"
+          cat ./dist/CNAME
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
@@ -45,3 +53,15 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify Domain & Health Check
+        run: |
+          echo "Verifying custom domain reachability for gmctrading.online..."
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://gmctrading.online || echo "000")
+          echo "HTTP Status for https://gmctrading.online: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✅ Domain gmctrading.online is responding successfully with HTTP $HTTP_STATUS!"
+          else
+            echo "⚠️ Notice: Domain check returned HTTP $HTTP_STATUS (DNS propagation or SSL issuance may take a few minutes)."
+          fi
