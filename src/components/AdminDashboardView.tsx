@@ -498,7 +498,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
     let testMsg = "";
     if (type === "ENTRY") {
-      testMsg = `<b>🟢 🚀 GMC TRADING AI LIVE SIGNAL BROADCAST</b>\n━━━━━━━━━━━━━━━━━━━\n<b>🧠 BRAIN MODULE:</b> 🎯 GMC HARAMI AI & BOND 007\n<b>📊 ASSET:</b> XAUUSD (Gold Spot)\n<b>🎯 DIRECTION:</b> <code>BUY LONG</code>\n<b>📍 LIVE ENTRY:</b> <code>$3328.50</code>\n<b>🛑 STOP LOSS:</b> <code>$3314.00</code>\n<b>🎯 TAKE PROFIT:</b> <code>$3362.00</code>\n<b>⚡ STRICT LOT SIZE:</b> <code>0.01 LOT</code>\n━━━━━━━━━━━━━━━━━━━\n<i>⚡ GMC Admin Control Desk • Live Signal Active</i>`;
+      testMsg = `<b>🟢🔥 HARAMI AI — BUY GOLD</b>\n\n<b>📊 XAUUSD | BUY</b>\n📍 <b>Entry:</b> <code>4347.62–4348.92</code>\n💎 <b>Best:</b> <code>4348.42</code>\n🛡️ <b>SL:</b> <code>4343.92</code>\n\n🎯 <b>TP:</b> <code>4355.42 | 4358.42 | 4362.42 | 4368.42</code>\n⚖️ <b>R:R:</b> <code>1:1.6</code>\n🔥 <b>Confidence:</b> <code>96.9% A+</code>\n\n🧠 <b>OB Sweep + FVG + Delta</b>\n<i>⚡ Harami AI • Serious Signals, Zero Drama</i>`;
     } else if (type === "TP_HIT") {
       testMsg = `<b>🎉 💰 GMC TRADE OUTCOME NOTIFICATION</b>\n━━━━━━━━━━━━━━━━━━━\n<b>📊 ASSET:</b> XAUUSD (BUY)\n<b>STATUS:</b> <code>✅ TAKE PROFIT 1 HIT</code>\n<b>EXIT PRICE:</b> <code>$3345.00</code>\n<b>NET PROFIT:</b> <code>+$16.50 (+0.16%)</code>\n━━━━━━━━━━━━━━━━━━━\n<i>⚡ GMC Risk Defense • Trade Closed Successfully</i>`;
     } else if (type === "SL_HIT") {

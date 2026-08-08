@@ -116,21 +116,19 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
     let testMsg = "";
     if (type === "ENTRY") {
       testMsg = `
-<b>🟢 🚀 GMC TRADING AI LIVE DEMO SIGNAL</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🧠 BRAIN MODULE:</b> 🎯 GMC HARAMI AI & BOND 007
-<b>📊 ASSET:</b> XAUUSD (Gold Spot)
-<b>🎯 DIRECTION:</b> <code>BUY LONG</code>
-<b>📍 LIVE ENTRY:</b> <code>$3328.50</code>
-<b>🛑 STOP LOSS:</b> <code>$3314.00</code>
-<b>🎯 TAKE PROFIT 1:</b> <code>$3345.00</code>
-<b>🎯 TAKE PROFIT 2:</b> <code>$3362.00</code>
-<b>🎯 TAKE PROFIT 3:</b> <code>$3390.00</code>
-<b>⚡ STRICT LOT SIZE:</b> <code>0.01 LOT</code>
-<b>💼 ACCOUNT BALANCE:</b> <code>$10,240.50 (+2.4%)</code>
-<b>🔥 CONFLUENCE:</b> 99.1% Win Rate • Bullish Harami + M15 Order Block
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ GMC AI Brain Signal Bot • Real-Time Broadcast Active</i>
+<b>🟢🔥 HARAMI AI — BUY GOLD</b>
+
+<b>📊 XAUUSD | BUY</b>
+📍 <b>Entry:</b> <code>$4347.62 - $4348.92</code>
+💎 <b>Best:</b> <code>4348.42</code>
+🛡️ <b>SL:</b> <code>4343.92</code>
+
+🎯 <b>TP:</b> <code>4355.42 | 4358.42 | 4362.42 | 4368.42</code>
+⚖️ <b>R:R:</b> <code>1:1.6</code>
+🔥 <b>Confidence:</b> <code>96.9% A+</code>
+
+🧠 <b>Apex Demand-Zone Reaction + Sell-Side Liquidity Sweep + Institutional Buyer Influx</b>
+<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
       `.trim();
     } else if (type === "TP_HIT") {
       testMsg = `

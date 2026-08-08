@@ -1,4 +1,5 @@
 // Telegram Bot Signal Alert Dispatcher
+import { generateDynamicReason } from "./haramiSignalFormatter";
 
 export interface TelegramConfig {
   botToken: string;
@@ -188,36 +189,43 @@ export async function dispatchTradeAlertToTelegram(trade: {
   const alertId = `trade-harami-${trade.asset}-${trade.type}-${trade.entry}-${Math.floor(Date.now() / 300000)}`;
   const icon = trade.type === "BUY" ? "🟢 🚀" : "🔴 📉";
 
-  const entryZone = `$${(trade.entry - 0.5).toFixed(2)} - $${(trade.entry + 0.5).toFixed(2)}`;
+  const isBuy = trade.type === "BUY";
+  const iconEmoji = isBuy ? "🟢🔥" : "🔴🔥";
+  const entryLowStr = (trade.entry - 0.55).toFixed(2);
+  const entryHighStr = (trade.entry + 0.65).toFixed(2);
+  const entryZone = `$${entryLowStr} - $${entryHighStr}`;
   const risk = Math.abs(trade.entry - trade.sl);
   const reward = Math.abs(trade.tp1 - trade.entry);
-  const rr = risk > 0 ? `1 : ${(reward / risk).toFixed(1)}` : "1 : 2.5";
-  const confidence = trade.confidence || 96.4;
-  const tp2 = trade.tp2 || Number((trade.type === "BUY" ? trade.entry + reward * 1.8 : trade.entry - reward * 1.8).toFixed(2));
-  const tp3 = trade.tp3 || Number((trade.type === "BUY" ? trade.entry + reward * 2.8 : trade.entry - reward * 2.8).toFixed(2));
-  const tp4 = trade.tp4 || Number((trade.type === "BUY" ? trade.entry + reward * 4.0 : trade.entry - reward * 4.0).toFixed(2));
-  const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
+  const rr = risk > 0 ? `1 : ${(reward / risk).toFixed(1)}` : "1 : 1.6";
+  const confidence = trade.confidence || 96.9;
+  const tp2 = trade.tp2 || Number((isBuy ? trade.entry + reward * 1.8 : trade.entry - reward * 1.8).toFixed(2));
+  const tp3 = trade.tp3 || Number((isBuy ? trade.entry + reward * 2.8 : trade.entry - reward * 2.8).toFixed(2));
+  const tp4 = trade.tp4 || Number((isBuy ? trade.entry + reward * 4.0 : trade.entry - reward * 4.0).toFixed(2));
+
+  let assetName = "GOLD";
+  if (trade.asset.includes("BTC")) assetName = "BITCOIN";
+  else if (trade.asset.includes("ETH")) assetName = "ETHEREUM";
+  else if (!trade.asset.includes("XAU") && !trade.asset.includes("Gold")) {
+    assetName = trade.asset.split(" ")[0].replace("FOREXCOM:", "");
+  }
+
+  const symbolShort = trade.asset.includes("XAU") ? "XAUUSD" : trade.asset.split(" ")[0].replace("FOREXCOM:", "");
+  const dynamicReason = trade.reason || trade.confluence || generateDynamicReason(trade.type);
 
   const message = `
-<b>${icon} 🔥 HARAMI AI – CONFIRMED TRADE SIGNAL</b>
-━━━━━━━━━━━━━━━━━━━
-<b>1. 📊 SYMBOL:</b> <code>${trade.asset}</code>
-<b>2. 🎯 DIRECTION:</b> <code>${trade.type}</code>
-<b>3. 📍 ENTRY ZONE:</b> <code>${entryZone}</code>
-<b>4. 💎 BEST ENTRY:</b> <code>$${trade.entry.toFixed(2)}</code>
-<b>5. 🛡️ STOP LOSS:</b> <code>$${trade.sl.toFixed(2)}</code>
-<b>6. 🎯 TAKE PROFIT 1:</b> <code>$${trade.tp1.toFixed(2)}</code>
-<b>7. 🎯 TAKE PROFIT 2:</b> <code>$${tp2.toFixed(2)}</code>
-<b>8. 🎯 TAKE PROFIT 3:</b> <code>$${tp3.toFixed(2)}</code>
-<b>9. 🎯 TAKE PROFIT 4:</b> <code>$${tp4.toFixed(2)}</code>
-<b>10. ⚖️ RISK : REWARD:</b> <code>${rr}</code>
-<b>11. 🔥 CONFIDENCE %:</b> <code>${confidence}% (A+ Setup)</code>
-<b>12. 🧠 AI ENGINE:</b> <b>Harami AI</b>
-<b>13. ⏱️ TIMEFRAME:</b> <code>5m / M15</code>
-<b>14. 💡 REASON FOR ENTRY:</b> ${trade.reason || trade.confluence || "Order Block Sweep + Unmitigated FVG Retest"}
-<b>15. 🕒 TIMESTAMP:</b> <code>${timestamp}</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Real-Time Confirmed SMC Signal</i>
+<b>${iconEmoji} HARAMI AI — ${trade.type} ${assetName}</b>
+
+<b>📊 ${symbolShort} | ${trade.type}</b>
+📍 <b>Entry:</b> <code>${entryZone}</code>
+💎 <b>Best:</b> <code>${trade.entry.toFixed(2)}</code>
+🛡️ <b>SL:</b> <code>${trade.sl.toFixed(2)}</code>
+
+🎯 <b>TP:</b> <code>${trade.tp1.toFixed(2)} | ${tp2.toFixed(2)} | ${tp3.toFixed(2)} | ${tp4.toFixed(2)}</code>
+⚖️ <b>R:R:</b> <code>${rr}</code>
+🔥 <b>Confidence:</b> <code>${confidence}% A+</code>
+
+🧠 <b>${dynamicReason}</b>
+<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
   `.trim();
 
   return await sendTelegramMessage(message, alertId);

@@ -1,5 +1,6 @@
 import { sendTelegramMessage } from "./telegram";
 import { getModuleTitle } from "./moduleRegistry";
+import { generateDynamicReason } from "./haramiSignalFormatter";
 
 export interface InstitutionalSetupScenario {
   engineName: string;
@@ -41,7 +42,6 @@ export function evaluateDualScenarioInstitutionalSetup(
   const engineName = "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix";
 
   const decimals = 2;
-  const isGold = true;
 
   // Short Scalping Style TP Optimization for Gold Spot (XAUUSD)
   // TP1 = +$7 | TP2 = +$10 | TP3 = +$14 | TP4 = +$20 (Smart Runner)
@@ -94,7 +94,7 @@ export function evaluateDualScenarioInstitutionalSetup(
     riskReward: buyRR,
     confidenceScore: buyScore,
     timeframe: "H1 / M15",
-    reasonForEntry: "Apex Bank-Zone Order Block Sweep + Unmitigated Bullish FVG + Delta Buyer Imbalance",
+    reasonForEntry: generateDynamicReason("BUY", seed),
     timestampUtc: nowUtc,
     passedRejectionFilters: true,
   };
@@ -114,7 +114,7 @@ export function evaluateDualScenarioInstitutionalSetup(
     riskReward: sellRR,
     confidenceScore: sellScore,
     timeframe: "H1 / M15",
-    reasonForEntry: "Apex Bank-Zone Bearish Supply Block Rejection + SSL Liquidity Sweep + Institutional Delta Seller Influx",
+    reasonForEntry: generateDynamicReason("SELL", seed + 5),
     timestampUtc: nowUtc,
     passedRejectionFilters: true,
   };
@@ -139,28 +139,31 @@ export function evaluateDualScenarioInstitutionalSetup(
  */
 export function formatInstitutionalTelegramMessage(setup: InstitutionalSetupScenario): string {
   const isBuy = setup.direction === "BUY";
-  const icon = isBuy ? "🟢 🚀" : "🔴 📉";
+  const iconEmoji = isBuy ? "🟢🔥" : "🔴🔥";
+  
+  let assetName = "GOLD";
+  if (setup.symbol.includes("BTC")) assetName = "BITCOIN";
+  else if (setup.symbol.includes("ETH")) assetName = "ETHEREUM";
+  else if (!setup.symbol.includes("XAU") && !setup.symbol.includes("Gold")) {
+    assetName = setup.symbol.split(" ")[0].replace("FOREXCOM:", "");
+  }
+
+  const symbolShort = setup.symbol.includes("XAU") ? "XAUUSD" : setup.symbol.split(" ")[0].replace("FOREXCOM:", "");
 
   return `
-<b>${icon} 🔥 HARAMI AI – CONFIRMED TRADE SIGNAL</b>
-━━━━━━━━━━━━━━━━━━━
-<b>1. 📊 SYMBOL:</b> <code>${setup.symbol}</code>
-<b>2. 🎯 DIRECTION:</b> <code>${setup.direction}</code>
-<b>3. 📍 ENTRY ZONE:</b> <code>${setup.entryZone}</code>
-<b>4. 💎 BEST ENTRY:</b> <code>$${setup.bestEntry.toFixed(2)}</code>
-<b>5. 🛡️ STOP LOSS:</b> <code>$${setup.stopLoss.toFixed(2)}</code>
-<b>6. 🎯 TAKE PROFIT 1:</b> <code>$${setup.tp1.toFixed(2)}</code>
-<b>7. 🎯 TAKE PROFIT 2:</b> <code>$${setup.tp2.toFixed(2)}</code>
-<b>8. 🎯 TAKE PROFIT 3:</b> <code>$${setup.tp3.toFixed(2)}</code>
-<b>9. 🎯 TAKE PROFIT 4:</b> <code>$${setup.tp4.toFixed(2)}</code>
-<b>10. ⚖️ RISK : REWARD:</b> <code>${setup.riskReward}</code>
-<b>11. 🔥 CONFIDENCE %:</b> <code>${setup.confidenceScore}% (A+ Setup)</code>
-<b>12. 🧠 AI ENGINE:</b> <b>Harami AI</b>
-<b>13. ⏱️ TIMEFRAME:</b> <code>${setup.timeframe}</code>
-<b>14. 💡 REASON FOR ENTRY:</b> ${setup.reasonForEntry}
-<b>15. 🕒 TIMESTAMP:</b> <code>${setup.timestampUtc}</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Real-Time Confirmed SMC Signal</i>
+<b>${iconEmoji} HARAMI AI — ${setup.direction} ${assetName}</b>
+
+<b>📊 ${symbolShort} | ${setup.direction}</b>
+📍 <b>Entry:</b> <code>${setup.entryZone}</code>
+💎 <b>Best:</b> <code>${setup.bestEntry.toFixed(2)}</code>
+🛡️ <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code>
+
+🎯 <b>TP:</b> <code>${setup.tp1.toFixed(2)} | ${setup.tp2.toFixed(2)} | ${setup.tp3.toFixed(2)} | ${setup.tp4.toFixed(2)}</code>
+⚖️ <b>R:R:</b> <code>${setup.riskReward}</code>
+🔥 <b>Confidence:</b> <code>${setup.confidenceScore}% A+</code>
+
+🧠 <b>${setup.reasonForEntry}</b>
+<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
   `.trim();
 }
 

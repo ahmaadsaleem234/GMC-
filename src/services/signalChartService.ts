@@ -1,6 +1,9 @@
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import fs from "fs";
 import path from "path";
+import { generateDynamicReason, formatHaramiSignalMessage } from "../utils/haramiSignalFormatter.js";
+
+export { generateDynamicReason, formatHaramiSignalMessage };
 
 export interface SignalChartParams {
   symbol: string;
@@ -29,18 +32,20 @@ interface Candle {
 /**
  * Generates real 5-minute OHLC candles anchored to the exact FOREX.com live price
  */
-function generate5mOHLCCandles(currentPrice: number, numCandles = 32): Candle[] {
+function generate5mOHLCCandles(currentPrice: number, direction: "BUY" | "SELL", numCandles = 36): Candle[] {
   const candles: Candle[] = [];
   const now = new Date();
+  const isBuy = direction === "BUY";
   
-  let price = currentPrice - 8.5;
+  // Anchor baseline price movement leading up to setup
+  let price = isBuy ? currentPrice - 7.5 : currentPrice + 7.5;
   const stepPerBar = (currentPrice - price) / numCandles;
 
   for (let i = 0; i < numCandles; i++) {
     const candleTime = new Date(now.getTime() - (numCandles - 1 - i) * 5 * 60 * 1000);
     const timeLabel = candleTime.toISOString().substring(11, 16);
 
-    const noise = (Math.sin(i * 1.3) * 0.8) + (Math.cos(i * 2.1) * 0.5);
+    const noise = (Math.sin(i * 1.3) * 0.7) + (Math.cos(i * 2.1) * 0.4);
     const open = i === 0 ? price : candles[i - 1].close;
     
     let close = open + stepPerBar + noise;
@@ -48,8 +53,14 @@ function generate5mOHLCCandles(currentPrice: number, numCandles = 32): Candle[] 
       close = currentPrice;
     }
 
-    const high = Math.max(open, close) + Math.abs(Math.sin(i * 1.7) * 1.2) + 0.3;
-    const low = Math.min(open, close) - Math.abs(Math.cos(i * 1.9) * 1.2) - 0.3;
+    let high = Math.max(open, close) + Math.abs(Math.sin(i * 1.7) * 1.1) + 0.3;
+    let low = Math.min(open, close) - Math.abs(Math.cos(i * 1.9) * 1.1) - 0.3;
+
+    // Simulate Liquidity Sweep candle at bar 24
+    if (i === 24) {
+      if (isBuy) low = currentPrice - 5.2; // Sell-side sweep dip
+      else high = currentPrice + 5.2;     // Buy-side sweep spike
+    }
 
     candles.push({
       timeLabel,
@@ -87,14 +98,14 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
 
   // Layout Boundaries
   const chartLeft = 30;
-  const chartRight = 1040;
+  const chartRight = 1030;
   const chartTop = 85;
   const chartBottom = 610;
   const chartWidth = chartRight - chartLeft;
   const chartHeight = chartBottom - chartTop;
 
   // 2. Generate 5-Minute Candlestick Data
-  const candles = generate5mOHLCCandles(params.currentPrice, 36);
+  const candles = generate5mOHLCCandles(params.currentPrice, params.direction, 36);
 
   // 3. Determine Price Scaling (Y-Axis)
   const allPrices = [
@@ -158,7 +169,12 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
   });
 
   // 5. Draw Translucent Harami AI Watermark Logo in Center Background (~14% Opacity)
-  const logoPath = path.join(process.cwd(), "public", "gmc_logo.jpg");
+  const hPng = path.join(process.cwd(), "public", "harami_ai_logo.png");
+  const hJpg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+  const gJpg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+  const logoPath = fs.existsSync(hPng) ? hPng : (fs.existsSync(hJpg) ? hJpg : gJpg);
+
+  let logoDrawn = false;
   if (fs.existsSync(logoPath)) {
     try {
       const logo = await loadImage(logoPath);
@@ -167,12 +183,59 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
       const logoSize = 390;
       ctx.drawImage(logo, (width - logoSize) / 2, (height - logoSize) / 2 + 10, logoSize, logoSize);
       ctx.restore();
-    } catch (e) {
-      console.warn("[Chart Generator]: Logo watermark warning:", e);
+      logoDrawn = true;
+    } catch {
+      // Handled silently
     }
   }
 
-  // 6. Draw Risk & Reward Position Tool Boxes
+  if (!logoDrawn) {
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = "#d4af37";
+    ctx.font = "900 64px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("HARAMI AI", width / 2, height / 2);
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText("SERIOUS SIGNALS • ZERO DRAMA", width / 2, height / 2 + 45);
+    ctx.restore();
+  }
+
+  // 6. Smart Money Technical Zones (Order Block / Supply / Demand Box)
+  if (isBuy) {
+    // Demand Zone / Bullish Order Block at Bottom
+    const obTop = priceToY(params.entryZone[0]);
+    const obBottom = priceToY(params.sl - 1.0);
+    const obH = Math.abs(obBottom - obTop);
+    ctx.fillStyle = "rgba(8, 153, 129, 0.18)";
+    ctx.fillRect(chartLeft, obTop, chartWidth, obH);
+    ctx.strokeStyle = "rgba(8, 153, 129, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chartLeft, obTop, chartWidth, obH);
+
+    ctx.fillStyle = "#089981";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("BULLISH DEMAND / ORDER BLOCK 🟢", chartLeft + 15, obTop + 16);
+  } else {
+    // Supply Zone / Bearish Order Block at Top
+    const obTop = priceToY(params.sl + 1.0);
+    const obBottom = priceToY(params.entryZone[1]);
+    const obH = Math.abs(obBottom - obTop);
+    ctx.fillStyle = "rgba(242, 54, 69, 0.18)";
+    ctx.fillRect(chartLeft, obTop, chartWidth, obH);
+    ctx.strokeStyle = "rgba(242, 54, 69, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chartLeft, obTop, chartWidth, obH);
+
+    ctx.fillStyle = "#f23645";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("BEARISH SUPPLY / ORDER BLOCK 🛑", chartLeft + 15, obTop + 16);
+  }
+
+  // 7. Draw Risk & Reward Position Tool Boxes
   const entryY = priceToY(params.bestEntry);
   const slY = priceToY(params.sl);
   const tp4Y = priceToY(params.tp4);
@@ -193,13 +256,18 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
   const zoneTopY = priceToY(Math.max(...params.entryZone));
   const zoneBottomY = priceToY(Math.min(...params.entryZone));
   const zoneH = Math.abs(zoneBottomY - zoneTopY);
-  ctx.fillStyle = "rgba(212, 175, 55, 0.18)";
-  ctx.fillRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 8));
+  ctx.fillStyle = "rgba(212, 175, 55, 0.22)";
+  ctx.fillRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 10));
   ctx.strokeStyle = "#d4af37";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 8));
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 10));
 
-  // 7. Render 5-Minute Candlesticks (Wicks + Bodies)
+  ctx.fillStyle = "#ffd700";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`ENTRY ZONE ($${Math.min(...params.entryZone).toFixed(2)} - $${Math.max(...params.entryZone).toFixed(2)})`, chartLeft + chartWidth / 2, zoneTopY + Math.max(zoneH, 10) / 2 + 4);
+
+  // 8. Render 5-Minute Candlesticks (Wicks + Bodies)
   ctx.lineWidth = 1.5;
   candles.forEach((c, i) => {
     const x = chartLeft + i * candleSpacing + candleSpacing / 2;
@@ -224,9 +292,23 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
     const bodyH = Math.max(Math.abs(closeY - openY), 2);
     const candleWidth = Math.max(candleSpacing * 0.65, 8);
     ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+
+    // Draw Liquidity Sweep Annotation on Bar 24
+    if (i === 24) {
+      ctx.save();
+      ctx.fillStyle = "#ffd700";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      if (isBuy) {
+        ctx.fillText("⚡ SSL Sweep / Liquidity Grab", x, lowY + 16);
+      } else {
+        ctx.fillText("⚡ BSL Raid / Liquidity Sweep", x, highY - 10);
+      }
+      ctx.restore();
+    }
   });
 
-  // 8. Draw Level Horizontal Dashed Lines & Badges
+  // 9. Draw Level Horizontal Dashed Lines & Badges
   function drawLevelLine(
     price: number,
     label: string,
@@ -248,7 +330,7 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
     ctx.restore();
 
     // Right Price Badge on Scale
-    const badgeW = 145;
+    const badgeW = 150;
     const badgeH = 20;
     const badgeX = chartRight + 2;
     const badgeY = y - badgeH / 2;
@@ -262,21 +344,21 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${label} ${price.toFixed(2)}`, badgeX + 6, y);
+    ctx.fillText(`${label} $${price.toFixed(2)}`, badgeX + 6, y);
   }
 
   // Draw Price Levels
   drawLevelLine(params.sl, "SL", "#f23645", "#ffffff", false, 2);
-  drawLevelLine(params.bestEntry, "ENTRY", "#d4af37", "#000000", false, 2);
+  drawLevelLine(params.bestEntry, "BEST", "#d4af37", "#000000", false, 2);
   drawLevelLine(params.tp1, "TP1", "#089981", "#ffffff", true, 1.5);
   drawLevelLine(params.tp2, "TP2", "#089981", "#ffffff", true, 1.5);
   drawLevelLine(params.tp3, "TP3", "#089981", "#ffffff", true, 1.5);
   drawLevelLine(params.tp4, "TP4", "#089981", "#ffffff", false, 2);
 
   // Current Live Broker Price Line
-  drawLevelLine(params.currentPrice, "LIVE", "#ffd700", "#000000", true, 1.5);
+  drawLevelLine(params.currentPrice, "LIVE", "#ffd700", "#000000", true, 2);
 
-  // 9. Black & Metallic Gold Top Header Bar
+  // 10. Black & Metallic Gold Top Header Bar
   ctx.fillStyle = cardBg;
   ctx.fillRect(0, 0, width, 72);
   ctx.strokeStyle = goldAccent;
@@ -313,7 +395,7 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
   ctx.textBaseline = "middle";
   ctx.fillText(`${params.direction} SIGNAL • ${params.confidence}% CONF`, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
-  // 10. Bottom Footer Info Bar
+  // 11. Bottom Footer Info Bar
   ctx.fillStyle = cardBg;
   ctx.fillRect(0, height - 42, width, 42);
   ctx.strokeStyle = "#1a1d28";
@@ -327,7 +409,7 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`🧠 HARAMI AI • WE HUNT, YOU TRADE`, 25, height - 20);
+  ctx.fillText(`🧠 HARAMI AI • SERIOUS SIGNALS, ZERO DRAMA`, 25, height - 20);
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "12px sans-serif";
@@ -340,3 +422,4 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
 
   return canvas.toBuffer("image/jpeg");
 }
+
