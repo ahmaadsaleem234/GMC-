@@ -1,6 +1,6 @@
 import { sendTelegramMessage } from "./telegram";
 import { getModuleTitle } from "./moduleRegistry";
-import { generateDynamicReason } from "./haramiSignalFormatter";
+import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter";
 
 export interface InstitutionalSetupScenario {
   engineName: string;
@@ -139,7 +139,6 @@ export function evaluateDualScenarioInstitutionalSetup(
  */
 export function formatInstitutionalTelegramMessage(setup: InstitutionalSetupScenario): string {
   const isBuy = setup.direction === "BUY";
-  const iconEmoji = isBuy ? "🟢🔥" : "🔴🔥";
   
   let assetName = "GOLD";
   if (setup.symbol.includes("BTC")) assetName = "BITCOIN";
@@ -150,21 +149,34 @@ export function formatInstitutionalTelegramMessage(setup: InstitutionalSetupScen
 
   const symbolShort = setup.symbol.includes("XAU") ? "XAUUSD" : setup.symbol.split(" ")[0].replace("FOREXCOM:", "");
 
-  return `
-<b>${iconEmoji} HARAMI AI — ${setup.direction} ${assetName}</b>
+  const risk = Math.abs(setup.bestEntry - setup.stopLoss);
+  const reward = Math.abs(setup.tp1 - setup.bestEntry);
+  const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
 
-<b>📊 ${symbolShort} | ${setup.direction}</b>
-📍 <b>Entry:</b> <code>${setup.entryZone}</code>
-💎 <b>Best:</b> <code>${setup.bestEntry.toFixed(2)}</code>
-🛡️ <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code>
+  const lowVal = isBuy ? setup.bestEntry - 0.8 : setup.bestEntry - 0.5;
+  const highVal = isBuy ? setup.bestEntry + 0.5 : setup.bestEntry + 0.8;
 
-🎯 <b>TP:</b> <code>${setup.tp1.toFixed(2)} | ${setup.tp2.toFixed(2)} | ${setup.tp3.toFixed(2)} | ${setup.tp4.toFixed(2)}</code>
-⚖️ <b>R:R:</b> <code>${setup.riskReward}</code>
-🔥 <b>Confidence:</b> <code>${setup.confidenceScore}% A+</code>
-
-🧠 <b>${setup.reasonForEntry}</b>
-<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
-  `.trim();
+  return formatHaramiSignalMessage({
+    direction: setup.direction,
+    symbolShort,
+    assetName,
+    h4Context: isBuy ? "Bullish" : "Bearish",
+    h1Bias: isBuy ? "BULLISH" : "BEARISH",
+    m15Setup: isBuy ? "BULLISH" : "BEARISH",
+    m5Entry: "CONFIRMED",
+    entryLow: lowVal,
+    entryHigh: highVal,
+    bestEntry: setup.bestEntry,
+    currentPrice: setup.bestEntry,
+    sl: setup.stopLoss,
+    tp1: setup.tp1,
+    tp2: setup.tp2,
+    tp3: setup.tp3,
+    tp4: setup.tp4,
+    rr: calculatedRR,
+    confidence: setup.confidenceScore,
+    reason: setup.reasonForEntry,
+  });
 }
 
 /**

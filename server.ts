@@ -747,30 +747,42 @@ async function startServer() {
               } else if (text.startsWith("/signal")) {
                 if (serverActiveTrade) {
                   const t = serverActiveTrade;
-                  replyText = `
-<b>🔥 HARAMI AI — ACTIVE TRADE SIGNAL</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🎯 FOREXCOM:XAUUSD — ${t.direction}</b>
-<b>📍 BEST ENTRY:</b> <code>$${t.entry.toFixed(2)}</code>
-<b>🛑 STOP LOSS:</b> <code>$${t.sl.toFixed(2)}</code>
-<b>🎯 TAKE PROFIT 1:</b> <code>$${t.tp1.toFixed(2)}</code>
-<b>🎯 TAKE PROFIT 2:</b> <code>$${t.tp2.toFixed(2)}</code>
-<b>🎯 TAKE PROFIT 3:</b> <code>$${t.tp3.toFixed(2)}</code>
-<b>🎯 TAKE PROFIT 4:</b> <code>$${t.tp4.toFixed(2)}</code>
-<b>🔥 CONFIDENCE:</b> ${t.confidence}% • ${t.reason}
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
-                  `.trim();
-                } else {
-                  replyText = `
-<b>🧠 HARAMI AI — MARKET STATUS</b>
-━━━━━━━━━━━━━━━━━━━
-<b>📊 ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
-<b>📢 STATUS:</b> <code>NO ACTIVE TRADE SETUP</code>
-<b>💡 AI MODE:</b> Silent Monitoring Active (Scanning Order Blocks & Liquidity Sweeps)
+                  const isBuy = t.direction === "BUY";
+                  const risk = Math.abs(t.entry - t.sl);
+                  const reward = Math.abs(t.tp1 - t.entry);
+                  const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
 
-<i>⚡ Signals dispatch ONLY when a confirmed A+ SMC trade setup appears. No unnecessary messages.</i>
-                  `.trim();
+                  replyText = formatHaramiSignalMessage({
+                    direction: t.direction,
+                    symbolShort: "XAUUSD",
+                    assetName: "GOLD",
+                    h4Context: isBuy ? "Bullish" : "Bearish",
+                    h1Bias: isBuy ? "BULLISH" : "BEARISH",
+                    m15Setup: isBuy ? "BULLISH" : "BEARISH",
+                    m5Entry: "CONFIRMED",
+                    entryLow: t.entry - 0.8,
+                    entryHigh: t.entry + 0.5,
+                    bestEntry: t.entry,
+                    currentPrice: t.entry,
+                    sl: t.sl,
+                    tp1: t.tp1,
+                    tp2: t.tp2,
+                    tp3: t.tp3,
+                    tp4: t.tp4,
+                    rr: calculatedRR,
+                    confidence: t.confidence,
+                    reason: t.reason,
+                  });
+                } else {
+                  replyText = formatHaramiSignalMessage({
+                    direction: "NO_TRADE",
+                    symbolShort: "XAUUSD",
+                    h4Context: "Neutral",
+                    h1Bias: "Neutral",
+                    m15Setup: "Neutral",
+                    m5Entry: "Waiting",
+                    reason: "No active trade setup. AI scanning Order Blocks & Liquidity Sweeps in silent monitoring mode.",
+                  });
                 }
               } else if (text.startsWith("/help") || text.startsWith("/tools")) {
                 replyText = `
@@ -1239,18 +1251,28 @@ async function startServer() {
 
           const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
+          const risk = Math.abs(entry - sl);
+          const reward = Math.abs(tp1 - entry);
+          const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
+
           const signalText = formatHaramiSignalMessage({
             direction,
             symbolShort: "XAUUSD",
+            assetName: "GOLD",
+            h4Context: isBuy ? "Bullish" : "Bearish",
+            h1Bias: isBuy ? "BULLISH" : "BEARISH",
+            m15Setup: isBuy ? "BULLISH" : "BEARISH",
+            m5Entry: "CONFIRMED",
             entryLow,
             entryHigh,
             bestEntry: entry,
+            currentPrice,
             sl,
             tp1,
             tp2,
             tp3,
             tp4,
-            rr: "1 : 1.6",
+            rr: calculatedRR,
             confidence,
             reason: reasonForEntry,
           });

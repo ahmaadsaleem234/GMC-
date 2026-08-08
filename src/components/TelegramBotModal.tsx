@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Send, CheckCircle2, X, Bell, ShieldCheck, AlertCircle, Copy, ExternalLink, Sparkles, MessageSquare, Zap, Radio } from "lucide-react";
 import { getTelegramConfig, saveTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram";
+import { formatHaramiSignalMessage } from "../utils/haramiSignalFormatter";
 
 interface TelegramBotModalProps {
   isOpen: boolean;
@@ -115,21 +116,27 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
 
     let testMsg = "";
     if (type === "ENTRY") {
-      testMsg = `
-<b>🟢🔥 HARAMI AI — BUY GOLD</b>
-
-<b>📊 XAUUSD | BUY</b>
-📍 <b>Entry:</b> <code>$4347.62 - $4348.92</code>
-💎 <b>Best:</b> <code>4348.42</code>
-🛡️ <b>SL:</b> <code>4343.92</code>
-
-🎯 <b>TP:</b> <code>4355.42 | 4358.42 | 4362.42 | 4368.42</code>
-⚖️ <b>R:R:</b> <code>1:1.6</code>
-🔥 <b>Confidence:</b> <code>96.9% A+</code>
-
-🧠 <b>Apex Demand-Zone Reaction + Sell-Side Liquidity Sweep + Institutional Buyer Influx</b>
-<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
-      `.trim();
+      testMsg = formatHaramiSignalMessage({
+        direction: "BUY",
+        symbolShort: "XAUUSD",
+        assetName: "GOLD",
+        h4Context: "Bullish",
+        h1Bias: "BULLISH",
+        m15Setup: "BULLISH",
+        m5Entry: "CONFIRMED",
+        entryLow: 4347.62,
+        entryHigh: 4348.92,
+        bestEntry: 4348.42,
+        currentPrice: 4348.20,
+        sl: 4343.92,
+        tp1: 4355.42,
+        tp2: 4358.42,
+        tp3: 4362.42,
+        tp4: 4368.42,
+        rr: "1 : 1.56",
+        confidence: 96.9,
+        reason: "H1 bullish structure + M15 liquidity sweep + bullish FVG mitigation + M5 CHOCH confirmation",
+      });
     } else if (type === "TP_HIT") {
       testMsg = `
 <b>🎉 💰 GMC TRADE OUTCOME NOTIFICATION</b>

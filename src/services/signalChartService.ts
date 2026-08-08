@@ -376,7 +376,7 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
 
   ctx.fillStyle = "#d4af37";
   ctx.font = "bold 12px sans-serif";
-  ctx.fillText(`● 5m Candlesticks • FOREX.com Spot Feed • Harami AI Engine`, 25, 52);
+  ctx.fillText(`● Chart TF: M15 | Entry Confirmation: M5 | Bias TF: H1 | Context TF: H4`, 25, 52);
 
   // Direction & Confidence Gold Pill
   const badgeX = width - 260;

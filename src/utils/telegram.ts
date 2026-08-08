@@ -1,5 +1,5 @@
 // Telegram Bot Signal Alert Dispatcher
-import { generateDynamicReason } from "./haramiSignalFormatter";
+import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter";
 
 export interface TelegramConfig {
   botToken: string;
@@ -212,21 +212,27 @@ export async function dispatchTradeAlertToTelegram(trade: {
   const symbolShort = trade.asset.includes("XAU") ? "XAUUSD" : trade.asset.split(" ")[0].replace("FOREXCOM:", "");
   const dynamicReason = trade.reason || trade.confluence || generateDynamicReason(trade.type);
 
-  const message = `
-<b>${iconEmoji} HARAMI AI — ${trade.type} ${assetName}</b>
-
-<b>📊 ${symbolShort} | ${trade.type}</b>
-📍 <b>Entry:</b> <code>${entryZone}</code>
-💎 <b>Best:</b> <code>${trade.entry.toFixed(2)}</code>
-🛡️ <b>SL:</b> <code>${trade.sl.toFixed(2)}</code>
-
-🎯 <b>TP:</b> <code>${trade.tp1.toFixed(2)} | ${tp2.toFixed(2)} | ${tp3.toFixed(2)} | ${tp4.toFixed(2)}</code>
-⚖️ <b>R:R:</b> <code>${rr}</code>
-🔥 <b>Confidence:</b> <code>${confidence}% A+</code>
-
-🧠 <b>${dynamicReason}</b>
-<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
-  `.trim();
+  const message = formatHaramiSignalMessage({
+    direction: trade.type,
+    symbolShort,
+    assetName,
+    h4Context: isBuy ? "Bullish" : "Bearish",
+    h1Bias: isBuy ? "BULLISH" : "BEARISH",
+    m15Setup: isBuy ? "BULLISH" : "BEARISH",
+    m5Entry: "CONFIRMED",
+    entryLow: trade.entry - 0.55,
+    entryHigh: trade.entry + 0.65,
+    bestEntry: trade.entry,
+    currentPrice: trade.entry,
+    sl: trade.sl,
+    tp1: trade.tp1,
+    tp2,
+    tp3,
+    tp4,
+    rr,
+    confidence,
+    reason: dynamicReason,
+  });
 
   return await sendTelegramMessage(message, alertId);
 }
