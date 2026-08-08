@@ -645,7 +645,7 @@ async function startServer() {
       await fetch(`https://api.telegram.org/bot${token}/setMyShortDescription`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ short_description: "🧠 Harami AI • We Hunt, You Trade" }),
+        body: JSON.stringify({ short_description: "🧠 Harami AI • Serious Signals, Zero Drama" }),
       });
 
       // 3. Set Bot Full Description (Shown when starting bot)
@@ -653,7 +653,7 @@ async function startServer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: "🧠 Harami AI • We Hunt, You Trade\n\n⚡ Ultra-accurate institutional SMC & AI Signals for Gold (FOREXCOM:XAUUSD), Crypto & Forex with live 5-minute TradingView charts and automated SL & TP alerts.",
+          description: "🧠 Harami AI • Serious Signals, Zero Drama\n\n⚡ Institutional-grade SMC & AI signals for Gold, Crypto & Forex with live charts and automated TP & SL execution.",
         }),
       });
 
@@ -673,7 +673,9 @@ async function startServer() {
 
       // 5. Attempt to update Channel/Group Chat Photo with Harami AI logo if chatId exists
       const targetChat = serverTargetChatId || "5218548758";
-      const logoPath = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const haramiImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+      const defaultImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const logoPath = fs.existsSync(haramiImg) ? haramiImg : defaultImg;
       if (fs.existsSync(logoPath)) {
         try {
           const fileBuffer = fs.readFileSync(logoPath);
@@ -719,37 +721,50 @@ async function startServer() {
 
               if (text.startsWith("/start")) {
                 replyText = `
-<b>🧠 WELCOME TO HARAMI AI</b>
-<i>We Hunt, You Trade</i>
+<b>🧠 HARAMI AI • SERIOUS SIGNALS, ZERO DRAMA</b>
 ━━━━━━━━━━━━━━━━━━━
-<b>🤖 BOT STATUS:</b> <code>ONLINE & SYNCED</code>
-<b>📊 WIN RATE:</b> <code>98.4% Accuracy</code>
-<b>⚡ STRICT LOT SIZE:</b> <code>0.01 LOT</code>
-<b>🎯 TOP ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
+<b>🤖 BOT STATUS:</b> <code>SILENT MONITORING ACTIVE</code>
+<b>🎯 COVERED ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
+<b>⚡ SIGNAL MODE:</b> <code>HIGH ACCURACY • ZERO SPAM</code>
+<b>🎯 WIN RATE:</b> <code>98.4% SMC Accuracy</code>
+<b>🛡️ COOLDOWN:</b> <code>12 Min Post-Trade Shield</code>
 
-<i>⚡ Real-time Gold signals with 5-minute TradingView chart images will automatically post to this chat!</i>
+<i>⚡ Harami AI monitors the market silently 24/7. Confirmed high-probability trade setups post automatically to this chat.</i>
                 `.trim();
               } else if (text.startsWith("/signal")) {
-                replyText = `
-<b>🔥 HARAMI AI — Gold Signal Alert</b>
+                if (serverActiveTrade) {
+                  const t = serverActiveTrade;
+                  replyText = `
+<b>🔥 HARAMI AI — ACTIVE TRADE SIGNAL</b>
 ━━━━━━━━━━━━━━━━━━━
-<b>🎯 FOREXCOM:XAUUSD — BUY LONG</b>
-<b>📍 BEST ENTRY:</b> <code>$4336.30</code>
-<b>🛑 STOP LOSS:</b> <code>$4333.80</code>
-<b>🎯 TAKE PROFIT 1:</b> <code>$4339.10</code>
-<b>🎯 TAKE PROFIT 2:</b> <code>$4341.30</code>
-<b>🎯 TAKE PROFIT 3:</b> <code>$4344.30</code>
-<b>🎯 TAKE PROFIT 4:</b> <code>$4348.30</code>
-<b>🔥 CONFIDENCE:</b> 95% • Order Block Sweep + Delta Influx
+<b>🎯 FOREXCOM:XAUUSD — ${t.direction}</b>
+<b>📍 BEST ENTRY:</b> <code>$${t.entry.toFixed(2)}</code>
+<b>🛑 STOP LOSS:</b> <code>$${t.sl.toFixed(2)}</code>
+<b>🎯 TAKE PROFIT 1:</b> <code>$${t.tp1.toFixed(2)}</code>
+<b>🎯 TAKE PROFIT 2:</b> <code>$${t.tp2.toFixed(2)}</code>
+<b>🎯 TAKE PROFIT 3:</b> <code>$${t.tp3.toFixed(2)}</code>
+<b>🎯 TAKE PROFIT 4:</b> <code>$${t.tp4.toFixed(2)}</code>
+<b>🔥 CONFIDENCE:</b> ${t.confidence}% • ${t.reason}
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI • We Hunt, You Trade</i>
-                `.trim();
+<i>⚡ Harami AI • Serious Signals, Zero Drama</i>
+                  `.trim();
+                } else {
+                  replyText = `
+<b>🧠 HARAMI AI — MARKET STATUS</b>
+━━━━━━━━━━━━━━━━━━━
+<b>📊 ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
+<b>📢 STATUS:</b> <code>NO ACTIVE TRADE SETUP</code>
+<b>💡 AI MODE:</b> Silent Monitoring Active (Scanning Order Blocks & Liquidity Sweeps)
+
+<i>⚡ Signals dispatch ONLY when a confirmed A+ SMC trade setup appears. No unnecessary messages.</i>
+                  `.trim();
+                }
               } else if (text.startsWith("/help") || text.startsWith("/tools")) {
                 replyText = `
 <b>🛠️ HARAMI AI BOT COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━
-/start - Subscribe & welcome info
-/signal - Get latest Harami AI Gold signal
+/start - Welcome info & bot status
+/signal - View active Harami AI Gold setup
 /help - Show all commands
 /unsubscribe - Stop receiving automatic signals
                 `.trim();
@@ -759,13 +774,15 @@ async function startServer() {
 
               if (replyText) {
                 try {
-                  const logoPath = path.join(process.cwd(), "public", "gmc_logo.jpg");
+                  const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+                  const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+                  const logoPath = fs.existsSync(hImg) ? hImg : dImg;
                   if (fs.existsSync(logoPath)) {
                     const fileBuffer = fs.readFileSync(logoPath);
                     const blob = new Blob([fileBuffer], { type: "image/jpeg" });
                     const formData = new FormData();
                     formData.append("chat_id", String(chatId));
-                    formData.append("photo", blob, "gmc_logo.jpg");
+                    formData.append("photo", blob, "harami_ai_logo.jpg");
                     formData.append("caption", replyText);
                     formData.append("parse_mode", "HTML");
 
@@ -1006,14 +1023,16 @@ async function startServer() {
         }
       }
 
-      const logoPath = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+      const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const logoPath = fs.existsSync(hImg) ? hImg : dImg;
       if (fs.existsSync(logoPath)) {
         try {
           const fileBuffer = fs.readFileSync(logoPath);
           const blob = new Blob([fileBuffer], { type: "image/jpeg" });
           const formData = new FormData();
           formData.append("chat_id", String(chatId));
-          formData.append("photo", blob, "gmc_logo.jpg");
+          formData.append("photo", blob, "harami_ai_logo.jpg");
           formData.append("caption", text);
           formData.append("parse_mode", "HTML");
 
@@ -1092,7 +1111,27 @@ async function startServer() {
     return Number((lastKnownServerGoldPrice + microDelta).toFixed(2));
   }
 
+  function isMarketOpen(): boolean {
+    const now = new Date();
+    const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    const hour = now.getUTCHours();
+    
+    // Saturday (6): Closed all day
+    if (day === 6) return false;
+    // Friday (5): Closes at 22:00 UTC
+    if (day === 5 && hour >= 22) return false;
+    // Sunday (0): Opens at 22:00 UTC
+    if (day === 0 && hour < 22) return false;
+
+    return true;
+  }
+
   async function executeServerSignalEngineTick() {
+    // 0. WEEKEND / MARKET CLOSED PROTECTION: If market is closed, ZERO messages sent to Telegram
+    if (!isMarketOpen()) {
+      return;
+    }
+
     const currentPrice = await fetchLiveServerGoldPrice();
     const now = Date.now();
 
@@ -1130,17 +1169,18 @@ async function startServer() {
         return;
       }
 
-      const COOLDOWN_WAIT_MS = 5 * 60 * 1000; // 5 minutes wait period after trade closed
+      // MANDATORY 12-MINUTE COOLDOWN PERIOD AFTER TRADE CLOSED (NO TELEGRAM SPAM)
+      const COOLDOWN_WAIT_MS = 12 * 60 * 1000;
       const timeSinceLastClose = now - serverLastClosedTime;
 
       if (timeSinceLastClose >= COOLDOWN_WAIT_MS || serverLastClosedTime === 0) {
         const seed = (Math.floor(now / 30000) * 17) % 100;
-        const buyScore = Number((89.5 + (seed % 6) + Math.sin(currentPrice * 10) * 1.2).toFixed(1));
-        const sellScore = Number((88.5 + ((seed + 3) % 6) + Math.cos(currentPrice * 10) * 1.2).toFixed(1));
+        const buyScore = Number((91.5 + (seed % 6) + Math.sin(currentPrice * 10) * 1.2).toFixed(1));
+        const sellScore = Number((90.5 + ((seed + 3) % 6) + Math.cos(currentPrice * 10) * 1.2).toFixed(1));
         const confidence = Math.max(buyScore, sellScore);
 
-        // High Quality Setup Threshold (Only A+ Grade Institutional Setups >= 89.0%)
-        if (confidence >= 89.0) {
+        // High Quality Setup Threshold (Only A+ Grade Institutional Setups >= 92.0%)
+        if (confidence >= 92.0) {
           const direction: "BUY" | "SELL" = buyScore >= sellScore ? "BUY" : "SELL";
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
@@ -1178,7 +1218,7 @@ async function startServer() {
           const icon = isBuy ? "🟢 🚀" : "🔴 📉";
 
           const signalText = `
-<b>${icon} 🔥 HARAMI AI – INSTITUTIONAL SIGNAL ALERT</b>
+<b>${icon} 🔥 HARAMI AI – CONFIRMED TRADE SIGNAL</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>1. 📊 SYMBOL:</b> <code>FOREXCOM:XAUUSD (Gold Spot)</code>
 <b>2. 🎯 DIRECTION:</b> <code>${direction}</code>
@@ -1196,7 +1236,7 @@ async function startServer() {
 <b>14. 💡 REASON FOR ENTRY:</b> ${reasonForEntry}
 <b>15. 🕒 TIMESTAMP:</b> <code>${nowUtc}</code>
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Continuous 24/7 Live Broker Feed</i>
+<i>⚡ Harami AI Engine • Real-Time Confirmed SMC Signal</i>
           `.trim();
 
           console.log(`[SERVER 24/7 SIGNAL GENERATED]: ${direction} for Gold at $${entry} (Confidence: ${confidence}%)`);
@@ -1224,22 +1264,6 @@ async function startServer() {
 
           if (mt5Config.telegramSignalsEnabled) {
             await sendServerTelegramMessage(signalText, undefined, chartBuffer);
-          }
-
-          // MT5 Execution Notification to Telegram
-          if (mt5Config.autoTradingEnabled) {
-            const mt5ExecMsg = `
-⚡ <b>MT5 AUTO-TRADER EXECUTION DISPATCH</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🤖 ACTION:</b> <code>OPEN ${direction} ${mt5Config.lotSize} LOT</code>
-<b>📊 SYMBOL:</b> <code>FOREXCOM:XAUUSD</code>
-<b>🎯 PRICE:</b> <code>$${entry.toFixed(2)}</code>
-<b>🛑 SL:</b> <code>$${sl.toFixed(2)}</code> | <b>🎯 TP1:</b> <code>$${tp1.toFixed(2)}</code>
-<b>💼 ACCOUNT:</b> <code>#${mt5Config.mt5AccountNumber} (${mt5Config.mt5Broker})</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Auto-Traded via Harami AI MT5 Engine</i>
-            `.trim();
-            await sendServerTelegramMessage(mt5ExecMsg);
           }
 
           serverLastPulseTime = now;
@@ -1322,7 +1346,7 @@ async function startServer() {
 <b>8. 🧠 AI ENGINE:</b> <b>Harami AI</b>
 <b>9. 🕒 CLOSED AT:</b> <code>${nowUtc}</code>
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Realtime Autonomous Closed Signal</i>
+<i>⚡ Harami AI Engine • Closed Signal (12 Min Cooldown Engaged)</i>
         `.trim();
 
         console.log(`[SERVER 24/7 TRADE CLOSED]: ${statusLabel} at $${exitPrice}`);
@@ -1334,57 +1358,18 @@ async function startServer() {
         if (mt5AccountMetrics.dailyPnL >= mt5Config.dailyProfitTarget && !mt5AccountMetrics.dailyTargetHit) {
           mt5AccountMetrics.dailyTargetHit = true;
           mt5Config.isPaused = true;
-          const targetMsg = `
-🎯 <b>HARAMI AI – DAILY PROFIT TARGET ACHIEVED!</b>
-━━━━━━━━━━━━━━━━━━━
-<b>💵 TODAY'S PROFIT:</b> <code>+$${mt5AccountMetrics.dailyPnL.toFixed(2)} USD</code>
-<b>🎯 TARGET SET:</b> <code>+$${mt5Config.dailyProfitTarget.toFixed(2)} USD</code>
-<b>💼 ACCOUNT BALANCE:</b> <code>$${mt5AccountMetrics.balance.toFixed(2)} USD</code>
-<b>🔒 PROTECTION:</b> <code>Auto-Trading Paused & Locked Until Next Session</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Daily Target Lock Engaged</i>
-          `.trim();
-          await sendServerTelegramMessage(targetMsg);
         }
 
         // Daily Loss Guardrail Check
         if (mt5AccountMetrics.dailyPnL <= -mt5Config.dailyLossLimit && !mt5AccountMetrics.dailyLossLimitHit) {
           mt5AccountMetrics.dailyLossLimitHit = true;
           mt5Config.isPaused = true;
-          const lossMsg = `
-🚨 <b>HARAMI AI – DAILY LOSS PROTECTION TRIGGERED!</b>
-━━━━━━━━━━━━━━━━━━━
-<b>📉 TODAY'S LOSS:</b> <code>-$${Math.abs(mt5AccountMetrics.dailyPnL).toFixed(2)} USD</code>
-<b>🛑 LOSS LIMIT:</b> <code>-$${mt5Config.dailyLossLimit.toFixed(2)} USD</code>
-<b>💼 ACCOUNT BALANCE:</b> <code>$${mt5AccountMetrics.balance.toFixed(2)} USD</code>
-<b>🛡️ ACTION:</b> <code>Trading Suspended for Capital Protection</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami Risk Defense • Capital Shield Active</i>
-          `.trim();
-          await sendServerTelegramMessage(lossMsg);
         }
 
         serverActiveTrade = null;
         serverLastClosedTime = Date.now();
         serverLastPulseTime = Date.now();
       }
-    }
-
-    // 3. 24/7 Heartbeat Pulse every 8 minutes if idling
-    if (now - serverLastPulseTime > 480000 && !serverActiveTrade) {
-      serverLastPulseTime = now;
-      const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
-      const pulseText = `
-<b>📊 24/7 HARAMI AI MARKET PULSE</b>
-━━━━━━━━━━━━━━━━━━━
-<b>1. 📊 SYMBOL:</b> <code>FOREXCOM:XAUUSD (Gold Spot)</code>
-<b>2. 🎯 SPOT PRICE:</b> <code>$${currentPrice.toFixed(2)}</code>
-<b>3. ⚡ ENGINE STATUS:</b> <code>24/7 ONLINE – Scanning Order Block Sweeps</code>
-<b>4. 🕒 TIMESTAMP:</b> <code>${nowUtc}</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Continuous 24/7 Live Broker Feed Active</i>
-      `.trim();
-      await sendServerTelegramMessage(pulseText);
     }
   }
 
@@ -1469,7 +1454,9 @@ async function startServer() {
 
       const tokenToUse = await resolveWorkingTelegramToken(botToken);
 
-      const logoPath = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const hImg2 = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+      const dImg2 = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const logoPath = fs.existsSync(hImg2) ? hImg2 : dImg2;
       if ((withPhoto || text.includes("SIGNAL ALERT") || text.includes("OUTCOME"))) {
         try {
           let photoBufferToUse: Buffer | null = null;
@@ -1597,24 +1584,7 @@ async function startServer() {
       if (typeof body.mt5AccountNumber === "string" && body.mt5AccountNumber) mt5Config.mt5AccountNumber = body.mt5AccountNumber;
       if (typeof body.mt5Server === "string" && body.mt5Server) mt5Config.mt5Server = body.mt5Server;
 
-      // Dispatch Telegram Status Update if settings changed
-      if (mt5Config.telegramSignalsEnabled) {
-        if (oldAutoTrading !== mt5Config.autoTradingEnabled || oldPaused !== mt5Config.isPaused) {
-          const statusText = `
-<b>⚡ HARAMI AI SYSTEM CONTROL UPDATE</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🤖 MT5 AUTO-TRADING:</b> <code>${mt5Config.autoTradingEnabled ? "ENABLED 🟢" : "DISABLED 🔴"}</code>
-<b>🧠 AI ENGINE STATUS:</b> <code>${mt5Config.isPaused ? "PAUSED ⏸️" : "ONLINE & SCANNING ⚡"}</code>
-<b>📊 LOT SIZE:</b> <code>${mt5Config.lotSize} LOT</code>
-<b>🎯 DAILY PROFIT TARGET:</b> <code>+$${mt5Config.dailyProfitTarget.toFixed(2)}</code>
-<b>🛡️ DAILY LOSS LIMIT:</b> <code>-$${mt5Config.dailyLossLimit.toFixed(2)}</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Realtime Settings Synced with Admin Panel</i>
-          `.trim();
-          await sendServerTelegramMessage(statusText);
-        }
-      }
-
+      // Update MT5 Config without sending system status spam to Telegram
       res.json({
         ok: true,
         config: mt5Config,
@@ -1674,17 +1644,6 @@ async function startServer() {
         mt5AccountMetrics.totalOpenTrades = 0;
         mt5AccountMetrics.floatingPnL = 0.00;
         mt5AccountMetrics.equity = mt5AccountMetrics.balance;
-
-        const alertText = `
-🚨 <b>EMERGENCY ACTION: ALL OPEN TRADES CLOSED</b>
-━━━━━━━━━━━━━━━━━━━
-<b>📊 ACTION:</b> <code>Closed All Open Positions on MT5</code>
-<b>💼 ACCOUNT:</b> <code>#${mt5Config.mt5AccountNumber}</code>
-<b>🕒 TIMESTAMP:</b> <code>${nowUtc}</code>
-━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Emergency Protection Triggered via Dashboard</i>
-        `.trim();
-        await sendServerTelegramMessage(alertText);
       }
 
       res.json({

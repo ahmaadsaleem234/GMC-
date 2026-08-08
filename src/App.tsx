@@ -269,28 +269,6 @@ export function App() {
   // Activate Hands-Free Automatic Telegram Trade Signal Broadcaster
   useAutoTelegramBroadcaster();
 
-  // Send automatic session startup notification to Telegram
-  useEffect(() => {
-    const sentinel = sessionStorage.getItem("gmc_telegram_welcome_sent_v2");
-    if (!sentinel) {
-      sessionStorage.setItem("gmc_telegram_welcome_sent_v2", "true");
-      sendTelegramMessage(
-        `
-<b>🟢 GMC AI BRAIN TELEGRAM BOT CONNECTED</b>
-━━━━━━━━━━━━━━━━━━━
-<b>STATUS:</b> <code>ONLINE & READY</code>
-<b>BOT:</b> <code>@Gmctradingaibot</code>
-<b>CHAT ID:</b> <code>5218548758</code>
-<b>MODULES:</b> Harami AI, Master Brain, Bond 007, White Crow Radar
-<b>STRICT LOT SIZE:</b> <code>0.01 LOT</code>
-
-<i>⚡ Automated signal broadcasting is active! Any executed trade will post SL & TP details here automatically.</i>
-        `.trim(),
-        "welcome-session-init"
-      );
-    }
-  }, []);
-
   const handleOpenRiskCopilot = (assetKey?: string, type?: "BUY" | "SELL") => {
     if (!isLoggedIn) {
       setIsEnterpriseModalOpen(true);

@@ -213,7 +213,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
         {/* Description Banner */}
         <div className="p-4 bg-sky-950/30 border border-sky-500/30 rounded-2xl space-y-2 font-sans text-slate-300">
           <p className="leading-relaxed">
-            Integrate your Telegram Channel or Group to receive real-time signals from <strong>GMC Harami AI Master</strong>, <strong>GMC Master AI Brain</strong>, <strong>Bond 007 Liquidity Sniper</strong>, and top AI tools directly on your phone!
+            Integrate your Telegram Channel or Group to receive real-time signals from <strong>Harami AI</strong> directly on your phone!
           </p>
           <div className="flex items-center gap-2 text-sky-400 font-mono text-xs font-bold pt-1 border-t border-sky-500/20">
             <Zap className="w-4 h-4 text-amber-400" />

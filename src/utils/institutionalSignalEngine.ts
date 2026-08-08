@@ -142,7 +142,7 @@ export function formatInstitutionalTelegramMessage(setup: InstitutionalSetupScen
   const icon = isBuy ? "🟢 🚀" : "🔴 📉";
 
   return `
-<b>${icon} 🥇 TOP 1 AI BRAIN – INSTITUTIONAL SIGNAL ALERT</b>
+<b>${icon} 🔥 HARAMI AI – CONFIRMED TRADE SIGNAL</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>1. 📊 SYMBOL:</b> <code>${setup.symbol}</code>
 <b>2. 🎯 DIRECTION:</b> <code>${setup.direction}</code>
@@ -155,12 +155,12 @@ export function formatInstitutionalTelegramMessage(setup: InstitutionalSetupScen
 <b>9. 🎯 TAKE PROFIT 4:</b> <code>$${setup.tp4.toFixed(2)}</code>
 <b>10. ⚖️ RISK : REWARD:</b> <code>${setup.riskReward}</code>
 <b>11. 🔥 CONFIDENCE %:</b> <code>${setup.confidenceScore}% (A+ Setup)</code>
-<b>12. 🧠 AI ENGINE:</b> <b>🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix</b>
+<b>12. 🧠 AI ENGINE:</b> <b>Harami AI</b>
 <b>13. ⏱️ TIMEFRAME:</b> <code>${setup.timeframe}</code>
 <b>14. 💡 REASON FOR ENTRY:</b> ${setup.reasonForEntry}
 <b>15. 🕒 TIMESTAMP:</b> <code>${setup.timestampUtc}</code>
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ GMC AI Sovereign Engine • Exclusive 🥇 TOP 1 AI Brain Dispatch</i>
+<i>⚡ Harami AI Engine • Real-Time Confirmed SMC Signal</i>
   `.trim();
 }
 

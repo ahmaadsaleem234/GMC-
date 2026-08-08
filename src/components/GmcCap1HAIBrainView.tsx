@@ -157,7 +157,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const fetchOrderbook = async () => {
       // If Gold Spot, generate FOREX.com institutional liquidity depth directly without Binance crypto
       if (selectedAsset.includes("XAU") || selectedAsset.includes("GOLD")) {
-        const bp = basePrice;
+        const bp = liveMarketPrice || 4348.50;
         const bids = [
           { price: parseFloat((bp - 0.20).toFixed(2)), qty: 145.5 },
           { price: parseFloat((bp - 0.50).toFixed(2)), qty: 280.2 },

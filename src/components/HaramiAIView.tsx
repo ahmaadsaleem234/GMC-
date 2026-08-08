@@ -64,17 +64,6 @@ export function HaramiAIView({
   useEffect(() => {
     const updated = getOrCreateLockedSetup("harami", "🥷 GMC HARAMI AI MASTER", assetKey, asset.label, px, asset.category, asset.decimals);
     setActiveSetup(updated);
-
-    if (updated.status === "TP_HIT" || updated.status === "SL_HIT") {
-      dispatchSLTPResultToTelegram({
-        source: "🥷 GMC HARAMI AI MASTER",
-        asset: asset.label,
-        type: updated.direction,
-        outcome: updated.status,
-        pnlUSD: updated.pnlResultUSD || 18.50,
-        price: updated.status === "TP_HIT" ? updated.takeProfit1 : updated.stopLoss,
-      });
-    }
   }, [px, assetKey]);
 
   const handleRefreshSetup = () => {

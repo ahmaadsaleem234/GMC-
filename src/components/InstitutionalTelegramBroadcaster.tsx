@@ -19,15 +19,26 @@ export const InstitutionalTelegramBroadcaster: React.FC<InstitutionalTelegramBro
   useEffect(() => {
     if (!currentPrice || currentPrice <= 0) return;
 
-    // Run dual-scenario evaluation every 10 seconds
-    const timer = setTimeout(() => {
+    // Run dual-scenario evaluation every 10 seconds, checking server active trade lock first
+    const timer = setTimeout(async () => {
+      try {
+        const accRes = await fetch("/api/mt5/account");
+        const accData = await accRes.json();
+        if (accData.activeTrade) {
+          // Active trade lock exists on server -> block client dispatch
+          return;
+        }
+      } catch (e) {
+        // Fallback
+      }
+
       ALLOWED_TELEGRAM_ENGINES.forEach((engine) => {
         const key = `${engine.id}_${assetKey}`;
         const lastSent = lastDispatchedMs.current[key] || 0;
         const now = Date.now();
 
-        // Send at most once every 10 minutes per engine/asset to prevent spamming
-        if (now - lastSent > 600000) {
+        // Send at most once every 12 minutes per engine/asset to enforce cooldown
+        if (now - lastSent > 720000) {
           const setup = evaluateDualScenarioInstitutionalSetup(
             "gmcgold",
             assetKey,
@@ -39,11 +50,11 @@ export const InstitutionalTelegramBroadcaster: React.FC<InstitutionalTelegramBro
             dispatchInstitutionalSignalToTelegram(setup)
               .then((res) => {
                 if (res.success) {
-                  console.log(`[TELEGRAM TOP 1 DISPATCH SUCCESS]: ${setup.engineName} dispatched ${setup.direction} signal for ${setup.symbol}`);
+                  console.log(`[TELEGRAM HARAMI AI DISPATCH SUCCESS]: ${setup.direction} signal dispatched for ${setup.symbol}`);
                 }
               })
               .catch((err) => {
-                console.error("[TELEGRAM TOP 1 DISPATCH ERROR]:", err);
+                console.error("[TELEGRAM HARAMI AI DISPATCH ERROR]:", err);
               });
           }
         }

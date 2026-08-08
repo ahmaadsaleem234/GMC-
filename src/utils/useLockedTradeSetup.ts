@@ -60,20 +60,6 @@ export function useLockedTradeSetup(
       overrideReason
     );
 
-    // If status transitioned to TP_HIT or SL_HIT
-    if (updated.status === "TP_HIT" || updated.status === "SL_HIT") {
-      if (setup.status === "ACTIVE_LOCKED") {
-        dispatchSLTPResultToTelegram({
-          source: moduleName,
-          asset: assetLabel,
-          type: updated.direction,
-          outcome: updated.status,
-          pnlUSD: updated.pnlResultUSD || 24.50,
-          price: updated.status === "TP_HIT" ? updated.takeProfit1 : updated.stopLoss,
-        });
-      }
-    }
-
     setSetup(updated);
   }, [currentPrice, moduleId, assetKey, moduleName, assetLabel, category, decimals]);
 

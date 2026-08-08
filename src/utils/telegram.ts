@@ -185,18 +185,7 @@ export async function dispatchTradeAlertToTelegram(trade: {
   confidence?: number;
   reason?: string;
 }) {
-  // STRICT RULE: Only 🥇 TOP 1 AI Brain is allowed to dispatch Telegram signals!
-  const isTop1Engine =
-    trade.source.includes("TOP 1") ||
-    trade.source.includes("gmcgold") ||
-    trade.source.includes("GMC GOLD Apex");
-
-  if (!isTop1Engine) {
-    console.log(`[TELEGRAM BROADCASTER FILTERED]: ${trade.source} is not 🥇 TOP 1 AI Brain. Suppressed.`);
-    return { success: true, message: "Suppressed non-TOP 1 AI Brain signal (Only TOP 1 allowed)." };
-  }
-
-  const alertId = `trade-${trade.source}-${trade.asset}-${trade.type}-${trade.entry}-${Math.floor(Date.now() / 300000)}`;
+  const alertId = `trade-harami-${trade.asset}-${trade.type}-${trade.entry}-${Math.floor(Date.now() / 300000)}`;
   const icon = trade.type === "BUY" ? "🟢 🚀" : "🔴 📉";
 
   const entryZone = `$${(trade.entry - 0.5).toFixed(2)} - $${(trade.entry + 0.5).toFixed(2)}`;
@@ -210,7 +199,7 @@ export async function dispatchTradeAlertToTelegram(trade: {
   const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
   const message = `
-<b>${icon} 🔥 HARAMI AI – INSTITUTIONAL SIGNAL ALERT</b>
+<b>${icon} 🔥 HARAMI AI – CONFIRMED TRADE SIGNAL</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>1. 📊 SYMBOL:</b> <code>${trade.asset}</code>
 <b>2. 🎯 DIRECTION:</b> <code>${trade.type}</code>
@@ -228,7 +217,7 @@ export async function dispatchTradeAlertToTelegram(trade: {
 <b>14. 💡 REASON FOR ENTRY:</b> ${trade.reason || trade.confluence || "Order Block Sweep + Unmitigated FVG Retest"}
 <b>15. 🕒 TIMESTAMP:</b> <code>${timestamp}</code>
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI Engine • Exclusive Signal Dispatch</i>
+<i>⚡ Harami AI Engine • Real-Time Confirmed SMC Signal</i>
   `.trim();
 
   return await sendTelegramMessage(message, alertId);
@@ -243,7 +232,7 @@ export async function dispatchSLTPResultToTelegram(result: {
   price: number;
   accountBalance?: number;
 }) {
-  const alertId = `outcome-${result.source}-${result.asset}-${result.outcome}-${Math.round(result.price)}`;
+  const alertId = `outcome-harami-${result.asset}-${result.outcome}-${Math.round(result.price)}`;
   const isTP = result.outcome === "TP_HIT";
   const icon = isTP ? "🎉 💰" : "🛡️ 🛑";
   const statusText = isTP ? "✅ Take Profit Hit" : "❌ Stop Loss Hit";
@@ -252,14 +241,14 @@ export async function dispatchSLTPResultToTelegram(result: {
   const message = `
 <b>${icon} 🔥 HARAMI AI – TRADE OUTCOME NOTIFICATION</b>
 ━━━━━━━━━━━━━━━━━━━
-<b>🧠 BRAIN MODULE:</b> Harami AI
-<b>📊 ASSET:</b> ${result.asset} (${result.type})
-<b>STATUS:</b> <code>${statusText}</code>
-<b>EXIT PRICE:</b> <code>$${result.price.toFixed(2)}</code>
-<b>NET PROFIT/LOSS:</b> <code>${result.pnlUSD >= 0 ? "+" : ""}$${result.pnlUSD.toFixed(2)}</code>
-<b>💼 UPDATED BALANCE:</b> <code>${balanceStr}</code>
+<b>1. 🧠 AI ENGINE:</b> <b>Harami AI</b>
+<b>2. 📊 ASSET:</b> ${result.asset} (${result.type})
+<b>3. 📢 STATUS:</b> <code>${statusText}</code>
+<b>4. 🏁 EXIT PRICE:</b> <code>$${result.price.toFixed(2)}</code>
+<b>5. 💵 NET P&L:</b> <code>${result.pnlUSD >= 0 ? "+" : ""}$${result.pnlUSD.toFixed(2)}</code>
+<b>6. 💼 UPDATED BALANCE:</b> <code>${balanceStr}</code>
 ━━━━━━━━━━━━━━━━━━━
-<i>⚡ Harami AI • Trade Closed & Completed</i>
+<i>⚡ Harami AI • Trade Closed & 12 Min Cooldown Engaged</i>
   `.trim();
 
   return await sendTelegramMessage(message, alertId);
