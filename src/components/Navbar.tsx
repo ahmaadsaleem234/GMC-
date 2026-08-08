@@ -98,27 +98,27 @@ export const Navbar: React.FC<NavbarProps> = ({
   const activeItemLabel = NAV_ITEMS.find((i) => i.id === activeTab)?.label || "Dashboard";
 
   return (
-    <header id="gmc-navbar" className="bg-[#070A10]/95 backdrop-blur-2xl border-b border-[#D4AF37]/30 text-slate-200 sticky top-0 z-50 shadow-2xl">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 font-mono">
-        {/* Left: Gold Outlined Back & Home Buttons */}
+    <header id="gmc-navbar" className="bg-[#080A0D] border-b border-[#292E35] text-[#F3F4F5] sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 font-sans">
+        {/* Left: Back & Home & Top Apex Zone Buttons */}
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             id="header-nav-back-btn"
             onClick={onGoBack || (() => setActiveTab("vault"))}
-            className="flex items-center gap-2 px-3.5 py-2 bg-[#070A10] hover:bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/60 hover:border-[#D4AF37] rounded-xl font-mono font-bold text-xs uppercase transition-all shadow-[0_0_12px_rgba(212,175,55,0.2)] active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] hover:border-[rgba(241,204,107,0.5)] rounded-xl font-medium text-xs transition-all active:scale-95 cursor-pointer"
             title="Go Back"
           >
-            <ArrowLeft className="w-4 h-4 text-[#D4AF37]" />
+            <ArrowLeft className="w-4 h-4 text-[#F1CC6B]" />
             <span>Back</span>
           </button>
 
           <button
             id="header-nav-home-btn"
             onClick={onGoHome || (() => setActiveTab("vault"))}
-            className="flex items-center gap-2 px-3.5 py-2 bg-[#070A10] hover:bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/60 hover:border-[#D4AF37] rounded-xl font-mono font-bold text-xs uppercase transition-all shadow-[0_0_12px_rgba(212,175,55,0.2)] active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] hover:border-[rgba(241,204,107,0.5)] rounded-xl font-medium text-xs transition-all active:scale-95 cursor-pointer"
             title="Go Home (Vault)"
           >
-            <Home className="w-4 h-4 text-[#D4AF37]" />
+            <Home className="w-4 h-4 text-[#F1CC6B]" />
             <span className="hidden sm:inline">Home</span>
           </button>
 
@@ -126,38 +126,38 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             id="header-nav-apexzone-btn"
             onClick={() => setActiveTab("gmcgold")}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-mono font-extrabold text-xs uppercase transition-all shadow-md active:scale-95 cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer ${
               activeTab === "gmcgold"
-                ? "bg-amber-400 text-black border-2 border-amber-300 shadow-[0_0_16px_rgba(234,179,8,0.6)]"
-                : "bg-gradient-to-r from-amber-500/20 via-amber-600/20 to-amber-950/40 text-amber-300 hover:text-white border-2 border-amber-500/70 hover:border-amber-400 shadow-[0_0_12px_rgba(212,175,55,0.3)] animate-pulse"
+                ? "bg-[#F1CC6B] text-[#111111] border border-[#F1CC6B]"
+                : "bg-rgba(241,204,107,0.04) text-[#E2BA57] border border-[rgba(241,204,107,0.38)] hover:bg-[rgba(241,204,107,0.12)]"
             }`}
             title="Launch Top #1 GMC Gold Apex Bank Zone Matrix"
           >
-            <Crown className="w-4 h-4 text-amber-300" />
-            <span>🥇 TOP 1 APEX ZONE</span>
+            <Crown className="w-4 h-4 text-[#F1CC6B]" />
+            <span>TOP 1 APEX ZONE</span>
           </button>
         </div>
 
         {/* Center: GMC Brand Title */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#D4AF37] to-amber-800 flex items-center justify-center font-black text-black text-xs shadow-[0_0_10px_rgba(212,175,55,0.4)]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-[#111419] border border-[#292E35] flex items-center justify-center font-bold text-[#F1CC6B] text-xs">
             👑
           </div>
-          <span className="text-sm sm:text-base font-black tracking-wider text-white uppercase hidden xs:inline">
-            GMC <span className="text-[#D4AF37]">TRADING AI</span>
+          <span className="text-sm sm:text-base font-semibold tracking-wide text-[#F3F4F5] uppercase hidden xs:inline">
+            GMC <span className="text-[#F1CC6B]">TRADING AI</span>
           </span>
         </div>
 
-        {/* Right: Module Drawer & Account Terminal Status */}
+        {/* Right: Module Drawer & Feeds */}
         <div className="flex items-center gap-2">
           {onOpenMarketDataModal && (
             <button
               onClick={onOpenMarketDataModal}
               id="open-market-data-hub-btn"
-              className="hidden sm:flex items-center gap-1.5 text-xs font-mono font-bold px-3 py-2 rounded-xl transition-all bg-[#070A10] hover:bg-[#131821] text-emerald-400 border border-emerald-500/40 shadow-sm cursor-pointer"
+              className="hidden sm:flex items-center gap-1.5 text-xs font-mono font-medium px-3 py-2 rounded-xl transition-all bg-[#101318] hover:bg-[#161A21] text-[#74D8A0] border border-[#2C3239] cursor-pointer"
               title="View Institutional Market Data Feeds"
             >
-              <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <Radio className="w-3.5 h-3.5 text-[#74D8A0]" />
               <span>FEEDS ({latencyMs}ms)</span>
             </button>
           )}
@@ -165,63 +165,63 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             id="open-gmc-nav-drawer-btn"
             onClick={() => setIsNavDrawerOpen(!isNavDrawerOpen)}
-            className="px-3 py-2 bg-[#070A10] hover:bg-[#131821] text-amber-300 border border-[#D4AF37]/40 hover:border-[#D4AF37] rounded-xl font-mono font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+            className="px-3.5 py-2 bg-[#101318] hover:bg-[#161A21] text-[#F3F4F5] border border-[#2C3239] hover:border-[#383F48] rounded-xl font-medium text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95"
             title="Browse All GMC AI Modules"
           >
-            <LayoutGrid className="w-4 h-4 text-[#D4AF37]" />
+            <LayoutGrid className="w-4 h-4 text-[#F1CC6B]" />
             <span className="hidden md:inline uppercase">MODULES</span>
           </button>
         </div>
       </div>
 
-      {/* FULL VERTICAL GMC NAVIGATION TABS DRAWER / MODAL (DESKTOP & MOBILE) */}
+      {/* FULL VERTICAL GMC NAVIGATION TABS DRAWER / MODAL */}
       {isNavDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-[#04060E]/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 font-mono text-xs animate-fade-in">
-          <div className="relative w-full max-w-4xl bg-[#080B14] border-2 border-amber-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl text-slate-200 space-y-4 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 bg-[#050608]/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 font-sans text-xs">
+          <div className="relative w-full max-w-4xl bg-[#080A0D] border border-[#292E35] rounded-2xl p-4 sm:p-6 shadow-2xl text-[#F3F4F5] space-y-4 flex flex-col max-h-[90vh]">
             {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center justify-between border-b border-[#292E35] pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-500/20 border border-amber-500/50 rounded-2xl flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+                <div className="w-10 h-10 bg-[#111419] border border-[#292E35] rounded-xl flex items-center justify-center text-[#F1CC6B]">
                   <LayoutGrid className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-tight">
-                      GMC NAVIGATION TABS &amp; ALL MODULES
+                    <h2 className="text-base sm:text-lg font-semibold text-white uppercase tracking-tight">
+                      GMC MODULE REGISTRY
                     </h2>
-                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded bg-[rgba(241,204,107,0.1)] text-[#F1CC6B] border border-[rgba(241,204,107,0.3)] text-[10px] font-mono font-bold">
                       {visibleNavItems.length} MODULES
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-                    Browse and search through all available GMC AI trading tools, strategy engines &amp; analytics desks in one vertical view.
+                  <p className="text-xs text-[#9299A3] mt-0.5">
+                    Browse all active GMC AI analytics desks and execution engines.
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setIsNavDrawerOpen(false)}
-                className="p-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl transition-all cursor-pointer"
+                className="p-2 text-[#9299A3] hover:text-white bg-[#101318] hover:bg-[#161A21] border border-[#2C3239] rounded-xl transition-all cursor-pointer"
                 title="Close Navigation Menu"
               >
-                <X className="w-5 h-5 text-rose-400" />
+                <X className="w-4 h-4 text-[#EE777F]" />
               </button>
             </div>
 
             {/* Live Search Input Bar */}
             <div className="relative">
-              <Search className="w-4 h-4 text-amber-400 absolute left-3.5 top-3" />
+              <Search className="w-4 h-4 text-[#F1CC6B] absolute left-3.5 top-3" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search all tools (e.g. Harami, D3 Heatmap, Gold, SMC, Vault, Admin)..."
-                className="w-full bg-[#04060E] border-2 border-slate-800 focus:border-amber-500/80 rounded-2xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-500 outline-none transition-all shadow-inner"
+                placeholder="Search modules..."
+                className="w-full bg-[#111419] border border-[#292E35] focus:border-[#F1CC6B] rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-[#646C77] outline-none transition-all"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3.5 top-2.5 text-slate-500 hover:text-white"
+                  className="absolute right-3.5 top-2.5 text-[#646C77] hover:text-white"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -236,10 +236,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1 rounded-xl font-bold transition-all border whitespace-nowrap cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl font-medium transition-all border whitespace-nowrap cursor-pointer ${
                       isSelected
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-md"
-                        : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
+                        ? "bg-[#F1CC6B] text-[#111111] border-[#F1CC6B]"
+                        : "bg-[#101318] text-[#9299A3] border-[#2C3239] hover:text-white"
                     }`}
                   >
                     {cat === "ALL" ? `SHOW ALL (${visibleNavItems.length})` : cat}
@@ -251,14 +251,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* COMPLETE VERTICAL MODULE LIST */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 my-1 text-left custom-scrollbar">
               {filteredNavItems.length === 0 ? (
-                <div className="p-8 bg-[#04060E] border border-slate-800 rounded-2xl text-center space-y-2">
-                  <p className="text-amber-400 font-bold">No modules matched your search filter "{searchQuery}"</p>
+                <div className="p-8 bg-[#111419] border border-[#292E35] rounded-xl text-center space-y-2">
+                  <p className="text-[#F1CC6B] font-medium">No modules matched your search filter "{searchQuery}"</p>
                   <button
                     onClick={() => {
                       setSearchQuery("");
                       setSelectedCategory("ALL");
                     }}
-                    className="text-xs text-blue-400 hover:underline"
+                    className="text-xs text-[#74D8A0] hover:underline"
                   >
                     Reset Search &amp; Show All Tools
                   </button>
@@ -276,30 +276,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                         setActiveTab(item.id);
                         setIsNavDrawerOpen(false);
                       }}
-                      className={`w-full p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left cursor-pointer group ${
+                      className={`w-full p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left cursor-pointer group ${
                         isActive
-                          ? "bg-gradient-to-r from-amber-500/20 via-amber-600/10 to-amber-950/30 text-white border-amber-500/80 shadow-lg shadow-amber-500/10 scale-[1.005]"
-                          : "bg-[#05070E] hover:bg-[#0A0E1A] text-slate-300 border-slate-800/80 hover:border-slate-700"
+                          ? "bg-[#111419] text-white border-[#F1CC6B]"
+                          : "bg-[#0E1115] hover:bg-[#111419] text-[#9299A3] border-[#252A31] hover:border-[#383F48]"
                       }`}
                     >
                       <div className="flex items-start gap-3.5">
                         <div className={`p-2.5 rounded-xl border shrink-0 ${
                           isActive
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-md shadow-amber-500/20"
-                            : "bg-slate-900 text-amber-400 border-slate-800 group-hover:border-amber-500/30"
+                            ? "bg-[#F1CC6B] text-[#111111] border-[#F1CC6B]"
+                            : "bg-[#101318] text-[#F1CC6B] border-[#2C3239]"
                         }`}>
-                          <Icon className="w-5 h-5" />
+                          <Icon className="w-4 h-4" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-white text-xs sm:text-sm group-hover:text-amber-300 transition-colors">
+                            <span className="font-semibold text-white text-xs sm:text-sm group-hover:text-[#F1CC6B] transition-colors">
                               {item.label}
                             </span>
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-slate-400 font-bold">
+                            <span className="px-2 py-0.5 rounded bg-[#101318] border border-[#2C3239] text-[10px] text-[#646C77] font-mono">
                               {item.category}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 font-sans mt-1 leading-relaxed">
+                          <p className="text-[11px] text-[#858C96] mt-1 leading-relaxed">
                             {item.desc}
                           </p>
                         </div>
@@ -307,12 +307,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                       <div className="shrink-0 self-end sm:self-center">
                         {isActive ? (
-                          <span className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/60 text-amber-300 font-bold text-[10px] flex items-center gap-1">
-                            <span>ACTIVE MODULE</span>
+                          <span className="px-3 py-1.5 rounded-xl bg-[rgba(241,204,107,0.15)] border border-[rgba(241,204,107,0.4)] text-[#F1CC6B] font-medium text-[10px] flex items-center gap-1">
+                            <span>ACTIVE</span>
                           </span>
                         ) : (
-                          <span className="px-3 py-1.5 rounded-xl bg-slate-900 group-hover:bg-amber-500/20 border border-slate-800 group-hover:border-amber-500/40 text-slate-300 group-hover:text-amber-300 font-bold text-[10px] flex items-center gap-1 transition-all">
-                            <span>LAUNCH MODULE</span>
+                          <span className="px-3 py-1.5 rounded-xl bg-[#101318] group-hover:bg-[#161A21] border border-[#2C3239] text-[#9299A3] group-hover:text-[#F3F4F5] font-medium text-[10px] flex items-center gap-1 transition-all">
+                            <span>LAUNCH</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </span>
                         )}
@@ -324,9 +324,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between text-[10px] text-slate-500 font-sans gap-2">
+            <div className="pt-3 border-t border-[#292E35] flex flex-wrap items-center justify-between text-[10px] text-[#646C77] gap-2">
               <span>Showing {filteredNavItems.length} of {visibleNavItems.length} available tools</span>
-              <span className="text-amber-400 font-mono">💡 Click any tool to switch immediately without reloading</span>
+              <span className="text-[#F1CC6B] font-mono">Select any module to switch view</span>
             </div>
           </div>
         </div>

@@ -452,41 +452,41 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   return (
     <div
       id="brain-vault-grid"
-      className="space-y-6 pb-20 font-sans text-slate-200 max-w-7xl mx-auto px-3 sm:px-6"
+      className="space-y-6 pb-20 font-sans text-[#F3F4F5] max-w-7xl mx-auto px-3 sm:px-6"
     >
       {/* MAIN DASHBOARD HEADER & USER WELCOME CARD */}
-      <div className="bg-gradient-to-r from-[#0D1117] via-[#070A10] to-[#0D1117] border border-[#D4AF37]/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+      <div className="bg-[#080A0D] border border-[#292E35] rounded-2xl p-6 sm:p-8 shadow-none relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-mono font-bold tracking-widest uppercase">
+              <span className="px-3 py-1 rounded bg-[rgba(241,204,107,0.08)] text-[#F1CC6B] border border-[rgba(241,204,107,0.3)] text-xs font-mono font-semibold tracking-wider uppercase">
                 INSTITUTIONAL AI PLATFORM
               </span>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-mono text-xs font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#101318] border border-[#2C3239] text-[#74D8A0] font-mono text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-[#74D8A0]" />
                 <span>System Online</span>
               </div>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white font-mono tracking-tight uppercase drop-shadow-md">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white font-mono tracking-tight uppercase">
               GMC AI COMMAND CENTER
             </h1>
-            <p className="text-sm sm:text-base text-amber-200/80 font-mono tracking-wide">
+            <p className="text-xs sm:text-sm text-[#9299A3] font-mono tracking-wide">
               Institutional Market Intelligence • Quantitative Decision Platform
             </p>
           </div>
 
           {/* User Welcome Card */}
-          <div className="bg-[#070A10]/90 border border-[#D4AF37]/40 p-4 rounded-2xl flex items-center justify-between gap-4 shadow-xl min-w-[260px]">
+          <div className="bg-[#111419] border border-[#292E35] p-4 rounded-xl flex items-center justify-between gap-4 min-w-[260px]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-amber-700 flex items-center justify-center font-bold text-black font-mono shadow-md">
+              <div className="w-9 h-9 rounded-lg bg-[#101318] border border-[#2C3239] flex items-center justify-center font-bold text-[#F1CC6B] font-mono">
                 👑
               </div>
               <div>
-                <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+                <div className="text-[11px] font-mono text-[#9299A3] uppercase tracking-wider">
                   AUTHENTICATED TRADER
                 </div>
-                <div className="text-sm font-black text-amber-300 font-mono">
+                <div className="text-xs font-semibold text-[#F1CC6B] font-mono">
                   Welcome, {displayUsername}
                 </div>
               </div>
@@ -494,7 +494,7 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
 
             <button
               onClick={onOpenLoginModal}
-              className="px-3 py-1.5 rounded-xl text-xs font-mono font-bold border border-[#D4AF37]/50 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold border border-[rgba(241,204,107,0.4)] text-[#E2BA57] bg-[rgba(241,204,107,0.04)] hover:bg-[rgba(241,204,107,0.1)] transition-all cursor-pointer"
             >
               PROFILE
             </button>
@@ -508,26 +508,26 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
       {/* ⭐ INTELLIGENCE MODULES SECTION */}
       <div className="pt-4 space-y-6">
         {/* Section Heading */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/20 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#272C32] pb-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">⭐</span>
-            <h2 className="text-2xl sm:text-3xl font-black font-mono uppercase tracking-tight text-white flex items-center gap-2">
+            <span className="text-xl">⭐</span>
+            <h2 className="text-xl sm:text-2xl font-bold font-mono uppercase tracking-tight text-white flex items-center gap-2">
               INTELLIGENCE MODULES
             </h2>
-            <span className="px-3 py-1 rounded-full bg-[#D4AF37]/10 text-amber-300 border border-[#D4AF37]/30 text-xs font-mono font-bold">
+            <span className="px-3 py-1 rounded bg-[rgba(241,204,107,0.08)] text-[#F1CC6B] border border-[rgba(241,204,107,0.3)] text-xs font-mono font-semibold">
               {filteredTools.length} ACTIVE ENGINES
             </span>
           </div>
 
           {/* Search Input */}
           <div className="relative flex items-center min-w-[240px]">
-            <Search className="w-4 h-4 absolute left-3.5 text-slate-400 pointer-events-none" />
+            <Search className="w-4 h-4 absolute left-3.5 text-[#646C77] pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search AI modules..."
-              className="w-full bg-[#070A10] border border-[#D4AF37]/30 focus:border-[#D4AF37] text-slate-100 placeholder:text-slate-500 rounded-xl pl-10 pr-4 py-2 text-xs focus:outline-none transition-all font-mono"
+              className="w-full bg-[#0E1115] border border-[#2B3138] focus:border-[rgba(241,204,107,0.65)] text-[#F3F4F5] placeholder:text-[#646C77] rounded-xl pl-10 pr-4 py-2 text-xs focus:outline-none transition-all font-mono"
             />
           </div>
         </div>
@@ -540,10 +540,10 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all uppercase whitespace-nowrap cursor-pointer border ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold font-mono transition-all uppercase whitespace-nowrap cursor-pointer border ${
                   isActive
-                    ? "bg-[#D4AF37] text-black border-[#D4AF37] shadow-[0_0_12px_rgba(212,175,55,0.4)]"
-                    : "bg-[#070A10] text-slate-400 border-slate-800 hover:text-white hover:border-[#D4AF37]/40"
+                    ? "pill-filter-active"
+                    : "pill-filter-inactive"
                 }`}
               >
                 {cat.label}
@@ -553,45 +553,45 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
         </div>
 
         {/* INTELLIGENCE MODULE CARDS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTools.map((tool) => (
             <div
               key={tool.id}
               onClick={() => onSelectTab(tool.tabTarget)}
-              className="bg-gradient-to-b from-[#0D1117] to-[#070A10] border border-[#D4AF37]/25 hover:border-[#D4AF37]/80 rounded-2xl group cursor-pointer overflow-hidden flex flex-col justify-between p-5 space-y-4 relative transition-all duration-300 hover:shadow-[0_0_25px_rgba(212,175,55,0.18)] hover:-translate-y-1 backdrop-blur-xl"
+              className="bg-[#111419] border border-[#292E35] hover:border-[rgba(241,204,107,0.5)] rounded-2xl group cursor-pointer overflow-hidden flex flex-col justify-between p-5 space-y-4 relative transition-all"
             >
               {/* Card Top Row */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="w-11 h-11 bg-[#070A10] border border-[#D4AF37]/40 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:border-[#D4AF37] group-hover:shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all">
+                  <div className="w-10 h-10 bg-[#0E1115] border border-[#252A31] rounded-xl flex items-center justify-center text-xl group-hover:border-[rgba(241,204,107,0.5)] transition-all">
                     {tool.emoji}
                   </div>
-                  <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border ${tool.tagColor || "bg-amber-500/10 text-amber-300 border-amber-500/30"}`}>
+                  <span className="text-[10px] font-mono font-medium px-2.5 py-1 rounded-lg border bg-[#101318] border-[#2B3037] text-[#9299A3]">
                     {tool.tag}
                   </span>
                 </div>
 
                 {/* Module Title & Description */}
                 <div>
-                  <h3 className="text-base sm:text-lg font-black text-white group-hover:text-[#D4AF37] transition-colors tracking-tight font-mono">
+                  <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-[#F1CC6B] transition-colors tracking-tight font-mono">
                     {tool.title}
                   </h3>
-                  <p className="text-xs text-slate-300 font-normal leading-relaxed mt-2 line-clamp-2">
+                  <p className="text-xs text-[#9299A3] font-normal leading-relaxed mt-1.5 line-clamp-2">
                     {tool.desc}
                   </p>
                 </div>
               </div>
 
               {/* Card Bottom CTA Row */}
-              <div className="pt-3 border-t border-slate-800/90 flex items-center justify-between gap-2">
-                <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="pt-3 border-t border-[#252A31] flex items-center justify-between gap-2">
+                <span className="px-2.5 py-1 rounded bg-[#17342E] text-[#74D8A0] border border-[rgba(116,216,160,0.4)] text-[10px] font-mono font-medium flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#74D8A0]" />
                   <span>SYNCHRONIZED</span>
                 </span>
 
-                <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-[#D4AF37] group-hover:translate-x-1 transition-transform">
+                <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-[#F1CC6B] group-hover:translate-x-1 transition-transform">
                   <span>LAUNCH</span>
-                  <ArrowRight className="w-4 h-4 text-[#D4AF37]" />
+                  <ArrowRight className="w-4 h-4 text-[#F1CC6B]" />
                 </div>
               </div>
             </div>

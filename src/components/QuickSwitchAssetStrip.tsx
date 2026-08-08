@@ -38,33 +38,33 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
         key={asset.key}
         id={`quick-switch-card-${asset.key}`}
         onClick={() => setActiveAssetKey(asset.key)}
-        className={`p-3 rounded-2xl transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between ${
+        className={`p-3 rounded-xl transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
           isSelected
-            ? "card-3d-gold shadow-[0_10px_25px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/80 scale-[1.02]"
-            : "card-3d card-3d-hover hover:border-amber-500/40"
+            ? "bg-[#111419] border border-[rgba(241,204,107,0.5)] text-white"
+            : "bg-[#0E1115] hover:bg-[#111419] border border-[#242A31] hover:border-[#383F48] text-[#9299A3]"
         }`}
       >
         {isSelected && (
-          <div className="absolute top-0 right-0 w-3 h-3 bg-amber-400 rounded-bl-lg shadow-[0_0_12px_#F59E0B]" />
+          <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#F1CC6B] rounded-bl-md" />
         )}
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span
-              className="w-2.5 h-2.5 rounded-full shadow-[0_0_6px_currentColor]"
-              style={{ backgroundColor: asset.color || "#F59E0B", color: asset.color || "#F59E0B" }}
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: asset.color || "#F1CC6B" }}
             />
-            <span className="font-black text-xs text-white uppercase tracking-tight font-mono">
+            <span className="font-semibold text-xs text-white uppercase tracking-tight font-mono">
               {asset.short}
             </span>
           </div>
           <span
-            className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border shadow-sm ${
+            className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${
               bias === "BUY"
-                ? "text-emerald-300 bg-emerald-500/20 border-emerald-500/50 shadow-emerald-500/10"
+                ? "text-[#74D8A0] bg-[#17342E] border-[rgba(116,216,160,0.4)]"
                 : bias === "SELL"
-                ? "text-rose-300 bg-rose-500/20 border-rose-500/50 shadow-rose-500/10"
-                : "text-slate-400 bg-slate-800 border-slate-700"
+                ? "text-[#EE777F] bg-[#352329] border-[rgba(238,119,127,0.4)]"
+                : "text-[#9299A3] bg-[#101318] border-[#2C3239]"
             }`}
           >
             {bias}
@@ -72,12 +72,12 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
         </div>
 
         <div className="mt-2 flex items-baseline justify-between">
-          <span className="text-xs font-black text-amber-300 tracking-tight font-mono">
+          <span className="text-xs font-bold text-[#F1CC6B] tracking-tight font-mono">
             ${live.price.toLocaleString(undefined, { minimumFractionDigits: asset.decimals })}
           </span>
           <span
-            className={`text-[10px] font-extrabold flex items-center gap-0.5 font-mono ${
-              isPos ? "text-emerald-400" : "text-rose-400"
+            className={`text-[10px] font-semibold flex items-center gap-0.5 font-mono ${
+              isPos ? "text-[#74D8A0]" : "text-[#EE777F]"
             }`}
           >
             {isPos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
@@ -88,13 +88,13 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
 
         {/* Quick Execution Trigger */}
         {onOpenRiskCopilot && (
-          <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+          <div className="mt-2 pt-2 border-t border-[#242A31] flex items-center justify-between gap-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenRiskCopilot(asset.key, "BUY");
               }}
-              className="px-2.5 py-1 btn-3d-emerald text-[9px] font-black rounded-lg w-full active:scale-95 transition-all shadow-md"
+              className="px-2 py-1 btn-buy text-[9px] font-semibold rounded-lg w-full active:scale-95 transition-all cursor-pointer"
             >
               BUY
             </button>
@@ -103,7 +103,7 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
                 e.stopPropagation();
                 onOpenRiskCopilot(asset.key, "SELL");
               }}
-              className="px-2.5 py-1 bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white text-[9px] font-black rounded-lg w-full active:scale-95 transition-all shadow-md border border-rose-400/40"
+              className="px-2 py-1 btn-sell text-[9px] font-semibold rounded-lg w-full active:scale-95 transition-all cursor-pointer"
             >
               SELL
             </button>
@@ -116,16 +116,16 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
   return (
     <div
       id="quick-switch-asset-strip"
-      className="bg-[#131821]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-xl space-y-3 font-mono"
+      className="bg-[#080A0D] border border-[#292E35] rounded-2xl p-3.5 shadow-none space-y-3 font-mono"
     >
-      <div className="flex flex-wrap items-center justify-between text-xs border-b border-white/10 pb-2.5 gap-2">
+      <div className="flex flex-wrap items-center justify-between text-xs border-b border-[#242A31] pb-2.5 gap-2">
         <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-amber-400" />
-          <span className="font-extrabold uppercase tracking-wider text-slate-200">
+          <Activity className="w-4 h-4 text-[#F1CC6B]" />
+          <span className="font-semibold uppercase tracking-wider text-[#F3F4F5]">
             MARKET PAIRS MONITORING (CRYPTO LEFT | INDICES & FOREX RIGHT)
           </span>
           {!isExpanded && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300 font-bold uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[10px] text-[#F1CC6B] font-semibold uppercase">
               COLLAPSED
             </span>
           )}
@@ -134,31 +134,31 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
         <button
           id="toggle-market-pairs-btn"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-amber-500/30 text-amber-300 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
+          className="flex items-center gap-1.5 px-3 py-1 bg-[#101318] hover:bg-[#161A21] border border-[#2C3239] text-[#E2BA57] rounded-xl text-xs font-semibold transition-all cursor-pointer"
         >
           {isExpanded ? (
             <>
               <span>Collapse Pairs</span>
-              <ChevronUp className="w-4 h-4 text-amber-400" />
+              <ChevronUp className="w-4 h-4 text-[#F1CC6B]" />
             </>
           ) : (
             <>
               <span>Expand Pairs</span>
-              <ChevronDown className="w-4 h-4 text-amber-400" />
+              <ChevronDown className="w-4 h-4 text-[#F1CC6B]" />
             </>
           )}
         </button>
       </div>
 
       {isExpanded && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* LEFT SIDE: CRYPTO TOP 10 */}
-          <div className="space-y-2 bg-[#04060C] p-3 rounded-xl border border-slate-800/80">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <span className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+          <div className="space-y-2 bg-[#0E1115] p-3 rounded-xl border border-[#242A31]">
+            <div className="flex items-center justify-between border-b border-[#242A31] pb-1.5">
+              <span className="text-[11px] font-semibold text-[#F1CC6B] uppercase tracking-wider flex items-center gap-1.5">
                 <span>🪙</span> LEFT SIDE: CRYPTO TOP 10 PAIRS
               </span>
-              <span className="text-[9px] text-slate-400">10 REAL-TIME PAIRS</span>
+              <span className="text-[9px] text-[#646C77]">10 REAL-TIME PAIRS</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {cryptoAssets.map(renderAssetCard)}
@@ -166,12 +166,12 @@ export const QuickSwitchAssetStrip: React.FC<QuickSwitchAssetStripProps> = ({
           </div>
 
           {/* RIGHT SIDE: US30, GOLD & FOREX */}
-          <div className="space-y-2 bg-[#04060C] p-3 rounded-xl border border-slate-800/80">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <span className="text-[11px] font-extrabold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+          <div className="space-y-2 bg-[#0E1115] p-3 rounded-xl border border-[#242A31]">
+            <div className="flex items-center justify-between border-b border-[#242A31] pb-1.5">
+              <span className="text-[11px] font-semibold text-[#F1CC6B] uppercase tracking-wider flex items-center gap-1.5">
                 <span>📊</span> RIGHT SIDE: US30, GOLD & FOREX
               </span>
-              <span className="text-[9px] text-slate-400">5 MACRO ASSETS</span>
+              <span className="text-[9px] text-[#646C77]">5 MACRO ASSETS</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {otherAssets.map(renderAssetCard)}

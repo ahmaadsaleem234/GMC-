@@ -406,43 +406,39 @@ export const UniversalInstitutionalTabHeader: React.FC<
   return (
     <div
       id="universal-tab-header-card"
-      className="w-full bg-gradient-to-b from-[#0D1117] via-[#070A10] to-[#040609] border border-[#D4AF37]/40 rounded-3xl p-4 sm:p-6 shadow-[0_10px_35px_rgba(0,0,0,0.8)] shadow-amber-950/20 backdrop-blur-2xl font-sans transition-all mb-4 relative overflow-hidden"
+      className="w-full bg-[#080A0D] border border-[#292E35] rounded-2xl p-4 sm:p-5 shadow-none font-sans mb-4 relative overflow-hidden"
     >
-      {/* Background Ambient Glows */}
-      <div className="absolute -top-20 -right-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-
       {/* TOP HEADER ROW: Logo (Left), Tab Title (Center), Live Gold Feed (Right) */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-[#D4AF37]/20 pb-4">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-[#272C32] pb-4">
         {/* Left: Official GMC Crown Logo Badge */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-gradient-to-br from-[#D4AF37] via-amber-600 to-amber-950 rounded-2xl flex items-center justify-center border border-amber-300/60 shadow-[0_0_20px_rgba(212,175,55,0.4)] text-black font-extrabold text-xl">
+            <div className="w-10 h-10 bg-[#111419] border border-[#292E35] rounded-xl flex items-center justify-center text-[#F1CC6B] font-bold text-lg">
               👑
             </div>
             <div>
-              <div className="text-[10px] font-mono font-bold text-[#D4AF37] uppercase tracking-widest flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-[#D4AF37]" /> OFFICIAL GMC BRAND
+              <div className="text-[10px] font-mono font-medium text-[#F1CC6B] uppercase tracking-widest flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#F1CC6B]" /> GMC ENTERPRISE
               </div>
-              <h2 className="text-sm sm:text-base font-black text-white font-mono tracking-tight uppercase">
-                GMC SOVEREIGN TERMINAL
+              <h2 className="text-xs sm:text-sm font-semibold text-[#F3F4F5] font-mono tracking-tight uppercase">
+                SOVEREIGN TERMINAL
               </h2>
             </div>
           </div>
 
           {/* Session Badge on Mobile */}
-          <div className="md:hidden px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-[10px] font-bold rounded-xl">
+          <div className="md:hidden px-2.5 py-1 bg-[#101318] border border-[#2C3239] text-[#DDB458] font-mono text-[10px] font-medium rounded-lg">
             {session}
           </div>
         </div>
 
         {/* Center: Dynamic Tab Title */}
         <div className="text-center w-full md:w-auto px-2">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-xs font-mono font-bold tracking-widest uppercase mb-1 shadow-sm">
-            <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-md bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[#F1CC6B] text-[10px] font-mono font-semibold tracking-wider uppercase mb-1">
+            <Radio className="w-3 h-3 text-[#F1CC6B]" />
             <span>ACTIVE MODULE</span>
           </div>
-          <h1 className="text-base sm:text-lg lg:text-xl font-black text-white font-mono uppercase tracking-tight text-gradient-gold">
+          <h1 className="text-sm sm:text-base lg:text-lg font-bold text-white font-mono uppercase tracking-tight">
             {tabTitle}
           </h1>
         </div>
@@ -450,18 +446,18 @@ export const UniversalInstitutionalTabHeader: React.FC<
         {/* Right: Live Gold Price & Session Metric */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
           <div className="text-right font-mono">
-            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center justify-end gap-1">
-              <Activity className="w-3 h-3 text-[#D4AF37]" /> LIVE XAU/USD SPOT
+            <div className="text-[10px] text-[#9299A3] font-medium uppercase tracking-wider flex items-center justify-end gap-1">
+              <Activity className="w-3 h-3 text-[#F1CC6B]" /> LIVE XAU/USD SPOT
             </div>
             <div className="flex items-center gap-2 justify-end">
-              <span className="text-xl sm:text-2xl font-black text-white drop-shadow-sm">
+              <span className="text-lg sm:text-xl font-bold text-white">
                 ${goldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span
-                className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
                   isPositive
-                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40"
-                    : "bg-rose-500/15 text-rose-400 border-rose-500/40"
+                    ? "bg-[#17342E] text-[#74D8A0] border-[rgba(116,216,160,0.4)]"
+                    : "bg-[#352329] text-[#EE777F] border-[rgba(238,119,127,0.4)]"
                 }`}
               >
                 {isPositive ? "+" : ""}
@@ -471,49 +467,49 @@ export const UniversalInstitutionalTabHeader: React.FC<
           </div>
 
           <div className="hidden md:flex flex-col items-end text-xs font-mono">
-            <span className="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold text-[11px] whitespace-nowrap">
+            <span className="px-2.5 py-1 rounded-lg bg-[#101318] text-[#DDB458] border border-[#2C3239] font-medium text-[10px] whitespace-nowrap">
               {session}
             </span>
-            <span className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
-              <Clock className="w-3 h-3 text-slate-400" /> {timeStr}
+            <span className="text-[10px] text-[#646C77] mt-1 flex items-center gap-1 font-mono">
+              <Clock className="w-3 h-3 text-[#646C77]" /> {timeStr}
             </span>
           </div>
         </div>
       </div>
 
       {/* SECOND ROW: Market Parameters Strip (Bid, Ask, Spread, Session Time) */}
-      <div className="mt-3 py-2 px-3 bg-[#070A10]/90 border border-slate-800/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+      <div className="mt-3 py-2 px-3 bg-[#0E1115] border border-[#242A31] rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium">BID:</span>
-            <span className="text-emerald-400 font-black">${bidPrice}</span>
+            <span className="text-[#9299A3] font-medium">BID:</span>
+            <span className="text-[#74D8A0] font-semibold">${bidPrice}</span>
           </div>
-          <span className="text-slate-800">|</span>
+          <span className="text-[#272C32]">|</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium">ASK:</span>
-            <span className="text-rose-400 font-black">${askPrice}</span>
+            <span className="text-[#9299A3] font-medium">ASK:</span>
+            <span className="text-[#EE777F] font-semibold">${askPrice}</span>
           </div>
-          <span className="text-slate-800">|</span>
+          <span className="text-[#272C32]">|</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium">SPREAD:</span>
-            <span className="text-amber-300 font-bold">{spread}</span>
+            <span className="text-[#9299A3] font-medium">SPREAD:</span>
+            <span className="text-[#F1CC6B] font-semibold">{spread}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-slate-300 text-[11px]">
-            <Globe className="w-3.5 h-3.5 text-amber-400" />
-            <span>GLOBAL FEED: <strong className="text-emerald-400 font-bold">100% SYNCHRONIZED</strong></span>
+          <div className="flex items-center gap-1.5 text-[#9299A3] text-[11px]">
+            <Globe className="w-3.5 h-3.5 text-[#F1CC6B]" />
+            <span>FEED STATUS: <strong className="text-[#74D8A0] font-semibold">SYNCHRONIZED</strong></span>
           </div>
         </div>
       </div>
 
       {/* THIRD ROW: DYNAMIC AI INTELLIGENCE COMMENTARY BOX */}
-      <div className="mt-4 bg-gradient-to-r from-[#070A10] via-[#0D1117] to-[#070A10] border border-[#D4AF37]/35 rounded-2xl p-4 relative overflow-hidden shadow-inner space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
+      <div className="mt-3 bg-[#111419] border border-[#292E35] rounded-xl p-3.5 relative overflow-hidden space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#242A31] pb-2">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-[#D4AF37] animate-pulse" />
-            <span className="text-xs font-mono font-black text-amber-300 uppercase tracking-widest">
+            <Zap className="w-3.5 h-3.5 text-[#F1CC6B]" />
+            <span className="text-xs font-mono font-semibold text-[#F1CC6B] uppercase tracking-wider">
               INSTITUTIONAL AI INTELLIGENCE COMMENTARY
             </span>
           </div>
@@ -521,37 +517,37 @@ export const UniversalInstitutionalTabHeader: React.FC<
           {/* Dynamic Status Badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <span
-              className={`px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold uppercase border ${
+              className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase border ${
                 insight.bias === "BULLISH"
-                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                  ? "bg-[#17342E] text-[#74D8A0] border-[rgba(116,216,160,0.4)]"
                   : insight.bias === "BEARISH"
-                  ? "bg-rose-500/20 text-rose-300 border-rose-500/50"
-                  : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                  ? "bg-[#352329] text-[#EE777F] border-[rgba(238,119,127,0.4)]"
+                  : "bg-[#101318] text-[#DDB458] border-[#2C3239]"
               }`}
             >
               BIAS: {insight.bias}
             </span>
 
-            <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold">
+            <span className="px-2 py-0.5 rounded bg-[#101318] text-[#DDB458] border border-[#2C3239] text-[10px] font-mono font-semibold">
               CONFIDENCE: {insight.confidence}
             </span>
 
-            <span className="px-2.5 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/30 text-[10px] font-mono font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-blue-400" />
+            <span className="px-2 py-0.5 rounded bg-[#101318] text-[#9299A3] border border-[#2C3239] text-[10px] font-mono font-semibold flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-[#74D8A0]" />
               {insight.confirmation}
             </span>
           </div>
         </div>
 
         {/* Dynamic Commentary Text */}
-        <p className="text-xs sm:text-sm text-slate-200 font-mono font-medium leading-relaxed tracking-wide pt-1">
+        <p className="text-xs text-[#F3F4F5] font-mono font-normal leading-relaxed tracking-wide pt-0.5">
           {dynamicMessage}
         </p>
 
         {/* Action Recommendation Banner */}
         <div className="pt-1 flex items-center justify-between text-[11px] font-mono">
-          <span className="text-slate-400">RECOMMENDED TACTIC:</span>
-          <span className="text-[#D4AF37] font-black uppercase tracking-wider bg-[#D4AF37]/10 px-2.5 py-0.5 rounded-md border border-[#D4AF37]/30">
+          <span className="text-[#9299A3]">RECOMMENDED TACTIC:</span>
+          <span className="text-[#F1CC6B] font-semibold uppercase tracking-wider bg-[rgba(241,204,107,0.08)] px-2 py-0.5 rounded border border-[rgba(241,204,107,0.3)]">
             {insight.recommendation}
           </span>
         </div>

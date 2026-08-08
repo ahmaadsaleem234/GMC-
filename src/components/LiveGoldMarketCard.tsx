@@ -55,28 +55,24 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
   return (
     <div
       id="live-gold-market-card"
-      className="relative w-full bg-gradient-to-b from-[#0D1117] via-[#070A10] to-[#040609] border border-[#D4AF37]/40 rounded-3xl p-5 sm:p-7 shadow-[0_10px_35px_rgba(0,0,0,0.8)] shadow-amber-950/20 backdrop-blur-2xl overflow-hidden font-sans transition-all hover:border-[#D4AF37]/70"
+      className="relative w-full bg-[#080A0D] border border-[#292E35] rounded-2xl p-4 sm:p-6 shadow-none font-sans transition-all overflow-hidden"
     >
-      {/* Background Subtle Ambient Glow */}
-      <div className="absolute -top-24 -right-24 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-
       {/* Header Row */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/20 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#272C32] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-[#D4AF37] via-amber-600 to-amber-950 rounded-2xl flex items-center justify-center border border-amber-300/60 shadow-[0_0_18px_rgba(212,175,55,0.35)] text-black font-extrabold text-lg">
+          <div className="w-10 h-10 bg-[#111419] border border-[#292E35] rounded-xl flex items-center justify-center text-[#F1CC6B] font-bold text-lg">
             👑
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-black tracking-tight text-white font-mono uppercase">
-                SPOT GOLD <span className="text-[#D4AF37]">(XAU/USD)</span>
+              <h2 className="text-sm sm:text-base font-semibold tracking-tight text-[#F3F4F5] font-mono uppercase">
+                SPOT GOLD <span className="text-[#F1CC6B]">(XAU/USD)</span>
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold tracking-wider uppercase">
+              <span className="px-2.5 py-0.5 rounded bg-[rgba(241,204,107,0.08)] text-[#F1CC6B] border border-[rgba(241,204,107,0.3)] text-[10px] font-mono font-medium tracking-wider uppercase">
                 INSTITUTIONAL BENCHMARK
               </span>
             </div>
-            <p className="text-xs text-slate-400 font-mono">
+            <p className="text-xs text-[#9299A3] font-mono">
               London Bullion & COMEX Intermarket Real-Time Feed
             </p>
           </div>
@@ -84,8 +80,8 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
 
         {/* Live Market Status Badge */}
         <div className="flex items-center gap-2">
-          <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold flex items-center gap-2 shadow-inner">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
+          <div className="px-3 py-1.5 rounded-xl bg-[#101318] border border-[#2C3239] text-[#74D8A0] font-mono text-xs font-semibold flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#74D8A0]" />
             <span>LIVE INSTITUTIONAL SPOT</span>
           </div>
         </div>
@@ -95,21 +91,21 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
       <div className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
         {/* Left Column: Big Gold Price & Direction */}
         <div className="md:col-span-5 space-y-2">
-          <div className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-[#D4AF37]" />
-            LIVE SPOT SPOT PRICE (OZ)
+          <div className="text-[11px] font-mono font-medium text-[#9299A3] uppercase tracking-wider flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-[#F1CC6B]" />
+            LIVE SPOT PRICE (OZ)
           </div>
 
           <div className="flex items-baseline gap-3">
-            <span className="text-3xl sm:text-4xl lg:text-5xl font-black font-mono tracking-tight text-white drop-shadow-md">
+            <span className="text-3xl sm:text-4xl font-bold font-mono tracking-tight text-white">
               ${goldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
 
             <div
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs sm:text-sm font-mono font-black border ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border ${
                 isPositive
-                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40"
-                  : "bg-rose-500/15 text-rose-400 border-rose-500/40"
+                  ? "bg-[#17342E] text-[#74D8A0] border-[rgba(116,216,160,0.4)]"
+                  : "bg-[#352329] text-[#EE777F] border-[rgba(238,119,127,0.4)]"
               }`}
             >
               {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
@@ -122,35 +118,35 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
 
           {/* Bid & Ask Price Row */}
           <div className="pt-2 flex items-center gap-4 text-xs font-mono">
-            <div className="px-3 py-1.5 rounded-xl bg-[#070A10] border border-slate-800 flex items-center gap-2">
-              <span className="text-slate-400 font-semibold">BID:</span>
-              <span className="text-emerald-400 font-black">${bidPrice}</span>
+            <div className="px-3 py-1.5 rounded-xl bg-[#0E1115] border border-[#242A31] flex items-center gap-2">
+              <span className="text-[#9299A3] font-medium">BID:</span>
+              <span className="text-[#74D8A0] font-semibold">${bidPrice}</span>
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-[#070A10] border border-slate-800 flex items-center gap-2">
-              <span className="text-slate-400 font-semibold">ASK:</span>
-              <span className="text-rose-400 font-black">${askPrice}</span>
+            <div className="px-3 py-1.5 rounded-xl bg-[#0E1115] border border-[#242A31] flex items-center gap-2">
+              <span className="text-[#9299A3] font-medium">ASK:</span>
+              <span className="text-[#EE777F] font-semibold">${askPrice}</span>
             </div>
-            <div className="text-[11px] text-slate-400">
-              SPREAD: <strong className="text-amber-300">0.60</strong>
+            <div className="text-[11px] text-[#9299A3]">
+              SPREAD: <strong className="text-[#F1CC6B]">0.60</strong>
             </div>
           </div>
         </div>
 
         {/* Center Column: Mini Live Trend Chart */}
-        <div className="md:col-span-4 bg-[#070A10]/90 border border-amber-500/20 rounded-2xl p-3.5 space-y-2">
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span className="font-bold flex items-center gap-1 text-amber-300">
-              <Zap className="w-3 h-3 text-amber-400" /> MINI LIVE TREND (H1)
+        <div className="md:col-span-4 bg-[#0E1115] border border-[#242A31] rounded-xl p-3.5 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-mono text-[#9299A3]">
+            <span className="font-semibold flex items-center gap-1 text-[#F1CC6B]">
+              <Zap className="w-3 h-3 text-[#F1CC6B]" /> MINI LIVE TREND (H1)
             </span>
-            <span className="text-emerald-400 font-bold">{isPositive ? "BULLISH 📈" : "BEARISH 📉"}</span>
+            <span className="text-[#74D8A0] font-semibold">{isPositive ? "BULLISH 📈" : "BEARISH 📉"}</span>
           </div>
 
           <div className="h-16 w-full relative flex items-center justify-center">
             <svg className="w-full h-full overflow-visible" viewBox="0 0 260 60">
               <defs>
                 <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.0" />
+                  <stop offset="0%" stopColor="#F1CC6B" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#F1CC6B" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
               {/* Sparkline Fill */}
@@ -162,8 +158,8 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
               <path
                 d={svgPath}
                 fill="none"
-                stroke={isPositive ? "#D4AF37" : "#f43f5e"}
-                strokeWidth="2.5"
+                stroke={isPositive ? "#F1CC6B" : "#EE777F"}
+                strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -173,20 +169,20 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
 
         {/* Right Column: Institutional Market Direction Metrics */}
         <div className="md:col-span-3 space-y-2">
-          <div className="p-3 bg-[#070A10]/90 border border-slate-800/80 rounded-xl space-y-1">
-            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">24H HIGH / LOW</span>
-            <div className="flex items-center justify-between text-xs font-mono font-bold">
-              <span className="text-emerald-400">${xauObj.high24h?.toLocaleString() || (goldPrice * 1.01).toFixed(1)}</span>
-              <span className="text-slate-400">/</span>
-              <span className="text-rose-400">${xauObj.low24h?.toLocaleString() || (goldPrice * 0.99).toFixed(1)}</span>
+          <div className="p-3 bg-[#0E1115] border border-[#242A31] rounded-xl space-y-1">
+            <span className="text-[10px] font-mono font-medium text-[#9299A3] uppercase">24H HIGH / LOW</span>
+            <div className="flex items-center justify-between text-xs font-mono font-semibold">
+              <span className="text-[#74D8A0]">${xauObj.high24h?.toLocaleString() || (goldPrice * 1.01).toFixed(1)}</span>
+              <span className="text-[#646C77]">/</span>
+              <span className="text-[#EE777F]">${xauObj.low24h?.toLocaleString() || (goldPrice * 0.99).toFixed(1)}</span>
             </div>
           </div>
 
-          <div className="p-3 bg-[#070A10]/90 border border-slate-800/80 rounded-xl space-y-1">
-            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">INSTITUTIONAL BIAS</span>
-            <div className="flex items-center justify-between text-xs font-mono font-black text-amber-300">
+          <div className="p-3 bg-[#0E1115] border border-[#242A31] rounded-xl space-y-1">
+            <span className="text-[10px] font-mono font-medium text-[#9299A3] uppercase">INSTITUTIONAL BIAS</span>
+            <div className="flex items-center justify-between text-xs font-mono font-semibold text-[#F1CC6B]">
               <span>99.1% LIQUIDITY ACCUMULATION</span>
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-[#74D8A0]" />
             </div>
           </div>
         </div>

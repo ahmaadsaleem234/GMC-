@@ -1,6 +1,6 @@
 {
   "name": "GMC AI Brain Trading Dashboard",
-  "description": "Professional 3D GMC AI Brain Trading Platform for Crypto, Forex, and Gold with Smart Money Concepts, live order flow, high win-rate signals, and terminal authentication.",
+  "description": "Premium Dark Institutional Financial Dashboard for Crypto, Forex, and Gold with Smart Money Concepts, live order flow, high win-rate signals, and automated Telegram trading backend.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

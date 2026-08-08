@@ -914,6 +914,17 @@ async function startServer() {
   let serverLastRecheckTime = 0; // Tracks 30-minute re-check interval
   let isBroadcasterLoopRunning = false;
 
+  // Telemetry & Status Variables for 24/7 Engine
+  let serverCurrentDecision: "BUY" | "SELL" | "WAIT — NO VALID SETUP" | "WAIT — MARKET CLOSED" = "WAIT — NO VALID SETUP";
+  let serverTelegramDeliveryStatus: "Sent" | "Failed" | "Retrying" | "Idle" = "Idle";
+  let serverLastAnalysisTime: number = 0;
+  let serverNextAnalysisTime: number = 0;
+  let serverLastSignalTime: number = 0;
+  let serverMarketDataStatus: "Live" | "Stale" = "Live";
+  let serverTelegramStatus: "Connected" | "Disconnected" = "Connected";
+  let serverEngineStatus: "Running" | "Stopped" = "Running";
+  let serverLastDispatchedSignal: { direction: string; entry: number; timestamp: number } | null = null;
+
   // MT5 Auto-Trading Ecosystem State
   let mt5Config = {
     autoTradingEnabled: true,
@@ -1021,83 +1032,102 @@ async function startServer() {
     overrideChatId?: string,
     customPhotoBuffer?: Buffer
   ): Promise<boolean> {
-    try {
-      const token = await resolveWorkingTelegramToken();
-      const chatId = overrideChatId ? cleanServerTelegramInput(overrideChatId) : (serverTargetChatId || "5218548758");
-      
-      // If custom generated chart photo buffer or fallback logo image is provided
-      if (customPhotoBuffer) {
-        try {
-          const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
-          const formData = new FormData();
-          formData.append("chat_id", String(chatId));
-          formData.append("photo", blob, "gmc_chart_signal.jpg");
-          formData.append("caption", text);
-          formData.append("parse_mode", "HTML");
+    const maxRetries = 3;
+    let attempt = 0;
 
-          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-            method: "POST",
-            body: formData,
-          });
-          const photoData = await photoRes.json();
-          if (photoData.ok) {
-            console.log(`[SERVER 24/7 BROADCASTER]: TradingView Signal Chart Photo dispatched to Telegram (${chatId}) successfully!`);
-            return true;
+    while (attempt < maxRetries) {
+      attempt++;
+      if (attempt > 1) {
+        serverTelegramDeliveryStatus = "Retrying";
+        await new Promise((r) => setTimeout(r, 1500 * (attempt - 1)));
+      }
+
+      try {
+        const token = await resolveWorkingTelegramToken();
+        const chatId = overrideChatId ? cleanServerTelegramInput(overrideChatId) : (serverTargetChatId || "5218548758");
+        
+        // If custom generated chart photo buffer is provided
+        if (customPhotoBuffer) {
+          try {
+            const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
+            const formData = new FormData();
+            formData.append("chat_id", String(chatId));
+            formData.append("photo", blob, "gmc_chart_signal.jpg");
+            formData.append("caption", text);
+            formData.append("parse_mode", "HTML");
+
+            const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+              method: "POST",
+              body: formData,
+            });
+            const photoData = await photoRes.json();
+            if (photoData.ok) {
+              console.log(`[SERVER 24/7 BROADCASTER]: TradingView Signal Chart Photo dispatched to Telegram (${chatId}) successfully!`);
+              serverTelegramDeliveryStatus = "Sent";
+              serverTelegramStatus = "Connected";
+              return true;
+            }
+          } catch (e) {
+            console.warn("[SERVER 24/7 BROADCASTER]: Photo upload failed, falling back to logo/text:", e);
           }
-        } catch (e) {
-          console.warn("[SERVER 24/7 BROADCASTER]: Photo upload failed, falling back to logo/text:", e);
         }
-      }
 
-      const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
-      const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
-      const logoPath = fs.existsSync(hImg) ? hImg : dImg;
-      if (fs.existsSync(logoPath)) {
-        try {
-          const fileBuffer = fs.readFileSync(logoPath);
-          const blob = new Blob([fileBuffer], { type: "image/jpeg" });
-          const formData = new FormData();
-          formData.append("chat_id", String(chatId));
-          formData.append("photo", blob, "harami_ai_logo.jpg");
-          formData.append("caption", text);
-          formData.append("parse_mode", "HTML");
+        const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+        const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+        const logoPath = fs.existsSync(hImg) ? hImg : dImg;
+        if (fs.existsSync(logoPath)) {
+          try {
+            const fileBuffer = fs.readFileSync(logoPath);
+            const blob = new Blob([fileBuffer], { type: "image/jpeg" });
+            const formData = new FormData();
+            formData.append("chat_id", String(chatId));
+            formData.append("photo", blob, "harami_ai_logo.jpg");
+            formData.append("caption", text);
+            formData.append("parse_mode", "HTML");
 
-          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-            method: "POST",
-            body: formData,
-          });
-          const photoData = await photoRes.json();
-          if (photoData.ok) {
-            console.log(`[SERVER 24/7 BROADCASTER]: Photo signal dispatched to Telegram (${chatId}) successfully!`);
-            return true;
+            const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+              method: "POST",
+              body: formData,
+            });
+            const photoData = await photoRes.json();
+            if (photoData.ok) {
+              console.log(`[SERVER 24/7 BROADCASTER]: Photo signal dispatched to Telegram (${chatId}) successfully!`);
+              serverTelegramDeliveryStatus = "Sent";
+              serverTelegramStatus = "Connected";
+              return true;
+            }
+          } catch (e) {
+            // Fall back to text message
           }
-        } catch (e) {
-          // Fall back to text message
         }
-      }
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        console.log(`[SERVER 24/7 BROADCASTER]: Text signal dispatched to Telegram (${chatId}) successfully!`);
-        return true;
-      } else {
-        console.warn("[SERVER 24/7 BROADCASTER WARNING]: Telegram API rejected message:", data.description || data);
-        return false;
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          console.log(`[SERVER 24/7 BROADCASTER]: Text signal dispatched to Telegram (${chatId}) successfully!`);
+          serverTelegramDeliveryStatus = "Sent";
+          serverTelegramStatus = "Connected";
+          return true;
+        } else {
+          console.warn(`[SERVER 24/7 BROADCASTER WARNING] Attempt ${attempt}: Telegram API rejected message:`, data.description || data);
+        }
+      } catch (err) {
+        console.error(`[SERVER 24/7 BROADCASTER ERROR] Attempt ${attempt} failed to dispatch:`, err);
       }
-    } catch (err) {
-      console.error("[SERVER 24/7 BROADCASTER ERROR]: Failed to dispatch to Telegram:", err);
-      return false;
     }
+
+    serverTelegramDeliveryStatus = "Failed";
+    serverTelegramStatus = "Disconnected";
+    return false;
   }
 
   let lastKnownServerGoldPrice = 4348.50;
@@ -1153,13 +1183,23 @@ async function startServer() {
   }
 
   async function executeServerSignalEngineTick() {
+    serverEngineStatus = mt5Config.isPaused ? "Stopped" : "Running";
+
     // 0. WEEKEND / MARKET CLOSED PROTECTION: If market is closed, ZERO messages sent to Telegram
     if (!isMarketOpen()) {
+      serverCurrentDecision = "WAIT — MARKET CLOSED";
+      serverMarketDataStatus = "Stale";
       return;
     }
 
     const currentPrice = await fetchLiveServerGoldPrice();
     const now = Date.now();
+
+    if (currentPrice > 2000 && currentPrice < 6000) {
+      serverMarketDataStatus = "Live";
+    } else {
+      serverMarketDataStatus = "Stale";
+    }
 
     // Check daily UTC reset
     const todayStr = new Date().toISOString().substring(0, 10);
@@ -1192,6 +1232,7 @@ async function startServer() {
     if (!serverActiveTrade) {
       // Respect pause, disable, or daily target/loss limits
       if (mt5Config.isPaused || !mt5Config.autoTradingEnabled || mt5AccountMetrics.dailyTargetHit || mt5AccountMetrics.dailyLossLimitHit) {
+        serverCurrentDecision = "WAIT — NO VALID SETUP";
         return;
       }
 
@@ -1202,18 +1243,26 @@ async function startServer() {
       // Only perform market re-check if 30 minutes have elapsed or on initial boot
       if (timeSinceLastRecheck >= RECHECK_INTERVAL_MS || serverLastRecheckTime === 0) {
         serverLastRecheckTime = now;
+        serverLastAnalysisTime = now;
+        serverNextAnalysisTime = now + RECHECK_INTERVAL_MS;
 
         // Perform SMC Market Structure & Liquidity Influx Analysis
         const seed = (Math.floor(now / 30000) * 17) % 100;
         const buyScore = Number((93.0 + (seed % 6) + Math.sin(currentPrice * 10) * 1.5).toFixed(1));
         const sellScore = Number((92.0 + ((seed + 3) % 6) + Math.cos(currentPrice * 10) * 1.5).toFixed(1));
         const confidence = Math.max(buyScore, sellScore);
+        const scoreDiff = Math.abs(buyScore - sellScore);
+
+        const direction: "BUY" | "SELL" = buyScore >= sellScore ? "BUY" : "SELL";
+
+        // Check duplicate signal protection (same direction and entry price within $3.00 within 2 hours)
+        const isDuplicate = serverLastDispatchedSignal && 
+          serverLastDispatchedSignal.direction === direction &&
+          Math.abs(serverLastDispatchedSignal.entry - currentPrice) < 3.0 &&
+          (now - serverLastDispatchedSignal.timestamp) < 7200000;
 
         // Quality Over Quantity: Only genuine A+ Grade setups (Confidence >= 95.0%)
-        // Also ensure market is not conflicting (buy/sell difference must be clear)
-        const scoreDiff = Math.abs(buyScore - sellScore);
-        if (confidence >= 95.0 && scoreDiff >= 2.0) {
-          const direction: "BUY" | "SELL" = buyScore >= sellScore ? "BUY" : "SELL";
+        if (confidence >= 95.0 && scoreDiff >= 2.0 && !isDuplicate) {
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
 
@@ -1228,7 +1277,8 @@ async function startServer() {
 
           // Check if current live price is strictly within entry zone (expiry check)
           if (currentPrice < entryLow - 1.50 || currentPrice > entryHigh + 1.50) {
-            console.log(`[HARAMI AI 30-MIN RE-CHECK]: Setup expired (price moved out of entry zone). Skipping.`);
+            console.log(`[HARAMI AI 30-MIN RE-CHECK]: Price moved out of entry zone ($${currentPrice}). Skipping.`);
+            serverCurrentDecision = "WAIT — NO VALID SETUP";
             return;
           }
 
@@ -1248,6 +1298,10 @@ async function startServer() {
             reason: reasonForEntry,
             createdAt: now,
           };
+
+          serverCurrentDecision = direction;
+          serverLastSignalTime = now;
+          serverLastDispatchedSignal = { direction, entry, timestamp: now };
 
           const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
@@ -1306,7 +1360,8 @@ async function startServer() {
 
           serverLastPulseTime = now;
         } else {
-          console.log(`[HARAMI AI 30-MIN RE-CHECK]: No valid A+ setup found (Confidence: ${confidence}%). Maintaining silence.`);
+          serverCurrentDecision = "WAIT — NO VALID SETUP";
+          console.log(`[HARAMI AI 30-MIN RE-CHECK]: RECORDED "WAIT — NO VALID SETUP" (Confidence: ${confidence}%). Next analysis in 30 minutes.`);
         }
       }
     }
@@ -1468,6 +1523,26 @@ async function startServer() {
     }
   });
 
+  app.get("/api/telegram/status", (req, res) => {
+    res.json({
+      ok: true,
+      engineStatus: serverEngineStatus,
+      telegramStatus: serverTelegramStatus,
+      marketDataStatus: serverMarketDataStatus,
+      lastAnalysisTime: serverLastAnalysisTime ? new Date(serverLastAnalysisTime).toISOString() : null,
+      nextAnalysisTime: serverNextAnalysisTime ? new Date(serverNextAnalysisTime).toISOString() : null,
+      lastSignalTime: serverLastSignalTime ? new Date(serverLastSignalTime).toISOString() : null,
+      currentDecision: serverCurrentDecision,
+      telegramDeliveryStatus: serverTelegramDeliveryStatus,
+      hasActiveTrade: !!serverActiveTrade,
+      activeTrade: serverActiveTrade,
+      accountMetrics: mt5AccountMetrics,
+      history: serverTradeHistory,
+      config: mt5Config,
+      chatId: serverTargetChatId,
+    });
+  });
+
   app.get("/api/telegram/active-signal", (req, res) => {
     res.json({
       ok: true,
@@ -1476,6 +1551,15 @@ async function startServer() {
       lastClosedTime: serverLastClosedTime,
       chatId: serverTargetChatId,
       status: "24/7 Autonomous Background Broadcaster Active",
+      engineStatus: serverEngineStatus,
+      telegramStatus: serverTelegramStatus,
+      marketDataStatus: serverMarketDataStatus,
+      lastAnalysisTime: serverLastAnalysisTime ? new Date(serverLastAnalysisTime).toISOString() : null,
+      nextAnalysisTime: serverNextAnalysisTime ? new Date(serverNextAnalysisTime).toISOString() : null,
+      lastSignalTime: serverLastSignalTime ? new Date(serverLastSignalTime).toISOString() : null,
+      currentDecision: serverCurrentDecision,
+      telegramDeliveryStatus: serverTelegramDeliveryStatus,
+      hasActiveTrade: !!serverActiveTrade,
     });
   });
 

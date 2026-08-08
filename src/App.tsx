@@ -459,53 +459,53 @@ export function App() {
             />
 
             {/* Navigation Action Bar - Header Nav & Active Module Tracker */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#070A10]/90 backdrop-blur-xl border border-[#D4AF37]/30 p-3 rounded-2xl shadow-xl font-mono text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#080A0D] border border-[#292E35] p-3 rounded-2xl font-mono text-xs">
               <div className="flex items-center gap-2">
                 <button
                   id="global-nav-back-btn"
                   onClick={handleGoBack}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#070A10] hover:bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/60 rounded-xl font-bold text-xs transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <ArrowLeft className="w-3.5 h-3.5 text-[#F1CC6B]" />
                   <span>Back</span>
                 </button>
 
                 <button
                   id="global-nav-home-btn"
                   onClick={handleGoHome}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#070A10] hover:bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/60 rounded-xl font-bold text-xs transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer"
                 >
-                  <Home className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <Home className="w-3.5 h-3.5 text-[#F1CC6B]" />
                   <span>Home</span>
                 </button>
 
                 <button
                   onClick={() => handleSelectTab("landing")}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer ${
                     activeTab === "landing"
-                      ? "bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/60 font-black shadow-sm"
-                      : "bg-[#070A10] hover:bg-[#131821] text-amber-300 border border-[#D4AF37]/30"
+                      ? "bg-[#F1CC6B] text-[#111111] border border-[#F1CC6B]"
+                      : "bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239]"
                   }`}
                 >
                   <span>🌐 Landing Portal</span>
                 </button>
 
-                <span className="text-slate-700 hidden sm:inline">|</span>
-                <span className="text-slate-400 font-bold hidden sm:inline text-[11px] tracking-wider">GMC AI MATRIX</span>
+                <span className="text-[#292E35] hidden sm:inline">|</span>
+                <span className="text-[#9299A3] font-semibold hidden sm:inline text-[11px] tracking-wider">GMC AI MATRIX</span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsTelegramModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-400/30 rounded-xl font-bold shadow-sm flex items-center gap-1.5 transition-all text-[11px]"
+                  className="px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#74D8A0] border border-[#2C3239] rounded-xl font-semibold flex items-center gap-1.5 transition-all text-[11px] cursor-pointer"
                   title="Configure Telegram Bot Alerts"
                 >
                   <span>✈️ TELEGRAM BOT</span>
                 </button>
 
-                <span className="px-3.5 py-1.5 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-amber-300 font-bold rounded-xl uppercase tracking-tight text-[11px] shadow-sm flex items-center gap-1">
+                <span className="px-3.5 py-1.5 bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[#F1CC6B] font-semibold rounded-xl uppercase tracking-tight text-[11px] flex items-center gap-1">
                   <span>{NAV_ITEMS.find((n) => n.id === activeTab)?.label || activeTab}</span>
-                  <ChevronRight className="w-3 h-3 text-[#D4AF37] inline" />
+                  <ChevronRight className="w-3 h-3 text-[#F1CC6B] inline" />
                 </span>
               </div>
             </div>
