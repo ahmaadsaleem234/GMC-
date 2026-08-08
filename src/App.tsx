@@ -27,6 +27,7 @@ import { HaramiAIView } from "./components/HaramiAIView";
 import { GmcCap1HAIBrainView } from "./components/GmcCap1HAIBrainView";
 import { GmcGoldZoneCardView } from "./components/GmcGoldZoneCardView";
 import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
+import { LevelKeystoneView } from "./components/LevelKeystoneView";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { GmcLandingPage } from "./components/GmcLandingPage";
 import { EnterpriseAccessModal } from "./components/EnterpriseAccessModal";
@@ -543,6 +544,31 @@ export function App() {
               setIsTelegramModalOpen(true);
             }}
           />
+        )}
+
+        {activeTab === "levelkeystone" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["levelkeystone"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("levelkeystone", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice * 0.995,
+                  takeProfit: currentPrice * 1.012,
+                  lotSize: 0.1,
+                  signalSource: "👑 LEVEL KEYSTONE — XAUUSD Premium AI Brain Setup",
+                })
+              }
+            />
+            <LevelKeystoneView
+              currentPrice={currentPrice}
+              assetKey={activeAssetKey}
+              prices={prices}
+              onOpenTradeCopilot={handleOpenRiskCopilot}
+            />
+          </div>
         )}
 
         {activeTab === "goldintelligence" && (

@@ -52,346 +52,635 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   ];
 
   const topTools = [
+    // 👑 TOP 1 LEVEL KEYSTONE PREMIUM GOLD SETUP MODULE
     {
-      id: "goldintelligence",
-      title: "🌟 Gold Intelligence — 25-Yr Research & Forecast Core",
-      emoji: "🌟",
-      tag: "25-YR GOLD INTELLIGENCE",
-      tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
-      desc: "25-Year Gold seasonality engine, economic news reactions, event scenario planner & probability forecast core",
-      tabTarget: "goldintelligence",
+      id: "levelkeystone",
+      title: "👑 LEVEL KEYSTONE — XAUUSD Premium AI Brain Setups",
+      emoji: "👑",
+      tag: "LEVEL KEYSTONE TOP 1",
+      statusLabel: "FLAGSHIP",
+      desc: "XAUUSD high-confidence setups with 4-timeframe AI Brain analysis (H1→M30→M15→M5) & news filter.",
+      useCase: "Top 1 filtered Gold setups with Entry, SL, TP1, TP2 & AI reasoning.",
+      btnText: "Open Keystone",
+      tabTarget: "levelkeystone",
       highlight: true,
+      category: "SIGNALS",
     },
+    // 🏆 TOP RANKED PRIMARY TOOLS (EXACT EXISTING RANKING PRESERVED)
     {
       id: "gmcgold",
       title: "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix",
       emoji: "🥇",
-      tag: "TOP 1 APEX BANK-ZONE",
-      tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
-      desc: "Top #1 Apex Bank-Zone liquidity matrix, Gold institutional order blocks & zone maps with live trade execution",
+      tag: "APEX BANK-ZONE",
+      statusLabel: "FLAGSHIP",
+      desc: "Top #1 Apex Bank-Zone liquidity matrix, Gold institutional order blocks & zone maps with live trade execution.",
+      useCase: "Bank-level institutional supply & demand liquidity zones.",
+      btnText: "Open Matrix",
       tabTarget: "gmcgold",
       highlight: true,
+      category: "SUPPORT_RESISTANCE",
     },
     {
       id: "gmccap",
       title: "🥈 TOP 2 – GMC Alpha 1H Trend Command Engine",
       emoji: "🥈",
-      tag: "TOP 2 ALPHA H1 COMMAND",
-      tagColor: "bg-amber-400/20 text-amber-300 border-amber-400/60 shadow-[0_0_12px_rgba(234,179,8,0.4)]",
-      desc: "The supreme 1-Hour H1 Timeframe AI Brain Master — High precision institutional H1 zone matrix with live trade execution, supply/demand maps & scenarios",
+      tag: "ALPHA H1 COMMAND",
+      statusLabel: "LIVE",
+      desc: "Top #2 Supreme 1-Hour H1 Timeframe AI Brain Master with high-precision institutional zone matrix.",
+      useCase: "High-precision H1 timeframe trend direction & execution.",
+      btnText: "Launch Engine",
       tabTarget: "gmccap",
       highlight: true,
+      category: "SIGNALS",
+    },
+    {
+      id: "goldintelligence",
+      title: "🌟 Gold Intelligence — 25-Yr Research & Forecast Core",
+      emoji: "🌟",
+      tag: "25-YR GOLD INTEL",
+      statusLabel: "FLAGSHIP",
+      desc: "25-Year Gold seasonality engine, economic news reactions, event scenario planner & probability forecast core.",
+      useCase: "Multi-dimensional 25-year gold macro analytics.",
+      btnText: "View Intelligence",
+      tabTarget: "goldintelligence",
+      highlight: true,
+      category: "GOLD",
     },
     {
       id: "harami",
-      title: "GMC Reversal Rejection Neural Radar",
+      title: "⚔️ GMC Reversal Rejection Neural Radar",
       emoji: "⚔️",
       tag: "REVERSAL RADAR",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "Top AI Master matrix synthesizing M15 order block sweeps with 99.1% Win Rate for Gold & BTC",
+      statusLabel: "LIVE",
+      desc: "M15 order block reversal rejection neural radar with 99.1% Win Rate for Gold & BTC.",
+      useCase: "Micro order-block sweep & rejection sniper execution.",
+      btnText: "Open Radar",
       tabTarget: "harami",
       highlight: true,
+      category: "PRICE_ACTION",
     },
     {
       id: "masterbrain",
-      title: "GMC Sovereign AI Signal Fusion Core",
+      title: "👑 GMC Sovereign AI Signal Fusion Core",
       emoji: "👑",
       tag: "FUSION CORE",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "Reads signals from all sub-tools & synthesizes 1 unified Master Consensus verdict",
+      statusLabel: "FLAGSHIP",
+      desc: "Reads signals from all sub-tools & synthesizes 1 unified Master Consensus verdict.",
+      useCase: "Multi-engine signal synthesis & consensus validation.",
+      btnText: "View Fusion",
       tabTarget: "masterbrain",
       highlight: true,
+      category: "SIGNALS",
     },
+
+    // 🌟 10 STRUCTURED CORE INTELLIGENCE MODULES
+    {
+      id: "mod_signals",
+      title: "1. AI Trade Signal Module",
+      emoji: "🤖",
+      tag: "SIGNALS ENGINE",
+      statusLabel: "LIVE",
+      desc: "Realtime market data, trend direction, entry zones, stop loss, take profit & confidence scores.",
+      useCase: "Live high-probability trade entry & risk setup generation.",
+      btnText: "Open Signals",
+      tabTarget: "aibrain",
+      highlight: true,
+      category: "SIGNALS",
+    },
+    {
+      id: "mod_news_analyzer",
+      title: "2. News Impact Analyzer",
+      emoji: "📡",
+      tag: "NEWS ANALYZER",
+      statusLabel: "ACTIVE",
+      desc: "Upcoming high-impact news (NFP, FOMC, CPI, Interest Rate) & gold price impact analysis.",
+      useCase: "Macro economic news event impact & volatility calculation.",
+      btnText: "Analyze Impact",
+      tabTarget: "ainews",
+      highlight: true,
+      category: "FORECASTING",
+    },
+    {
+      id: "mod_xauusd_intel",
+      title: "3. XAUUSD Market Intelligence",
+      emoji: "🌟",
+      tag: "XAUUSD INTEL",
+      statusLabel: "FLAGSHIP",
+      desc: "Technical, fundamental & 25-yr historical data combined analysis for Gold.",
+      useCase: "Multi-dimensional XAUUSD spot market assessment.",
+      btnText: "View Intelligence",
+      tabTarget: "goldintelligence",
+      highlight: true,
+      category: "GOLD",
+    },
+    {
+      id: "mod_25y_data",
+      title: "4. 25-Year Historical Data Module",
+      emoji: "📊",
+      tag: "HISTORICAL DATA",
+      statusLabel: "LIVE",
+      desc: "25 years of gold historical patterns (2001–2026), monthly movement & seasonal reactions.",
+      useCase: "Long-term statistical gold pattern back-testing & research.",
+      btnText: "Explore Data",
+      tabTarget: "goldintelligence",
+      highlight: true,
+      category: "GOLD",
+    },
+    {
+      id: "mod_econ_calendar",
+      title: "5. Economic Calendar Module",
+      emoji: "📅",
+      tag: "ECONOMIC CALENDAR",
+      statusLabel: "ACTIVE",
+      desc: "Important upcoming news events, release time (UTC/GST), expected impact & countdown system.",
+      useCase: "Event tracking & news release countdown warnings.",
+      btnText: "Open Calendar",
+      tabTarget: "news",
+      highlight: false,
+      category: "FORECASTING",
+    },
+    {
+      id: "mod_ai_pred",
+      title: "6. AI Prediction Engine",
+      emoji: "🔮",
+      tag: "PREDICTION ENGINE",
+      statusLabel: "NEW",
+      desc: "Past data, live market conditions & news analysis for future movement prediction.",
+      useCase: "Predictive scenario modeling & directional bias estimation.",
+      btnText: "Run Prediction",
+      tabTarget: "cipher",
+      highlight: true,
+      category: "FORECASTING",
+    },
+    {
+      id: "mod_risk_calc",
+      title: "7. Risk Management Calculator",
+      emoji: "🧮",
+      tag: "RISK CALCULATOR",
+      statusLabel: "ACTIVE",
+      desc: "Lot size (0.01 std), stop loss, account balance & risk percentage trade calculation.",
+      useCase: "Position sizing & account drawdown prevention.",
+      btnText: "Open Calculator",
+      tabTarget: "risk",
+      highlight: false,
+      category: "PRICE_ACTION",
+    },
+    {
+      id: "mod_sentiment",
+      title: "8. Market Sentiment Module",
+      emoji: "🎯",
+      tag: "SENTIMENT GAUGE",
+      statusLabel: "LIVE",
+      desc: "Bullish or bearish market sentiment, order flow volume behavior & trend strength.",
+      useCase: "Real-time buyer/seller sentiment gauge & confidence score.",
+      btnText: "Check Sentiment",
+      tabTarget: "sentiment",
+      highlight: false,
+      category: "VOLUME",
+    },
+    {
+      id: "mod_prenew_setup",
+      title: "9. Pre-News Trade Setup Module",
+      emoji: "⚡",
+      tag: "PRE-NEWS SETUP",
+      statusLabel: "FLAGSHIP",
+      desc: "AI-based T-2H pre-news trade setup generated only during high-probability conditions.",
+      useCase: "Qualified news catalyst preparation & T-2H signal gating.",
+      btnText: "View Setup",
+      tabTarget: "goldintelligence",
+      highlight: true,
+      category: "SIGNALS",
+    },
+    {
+      id: "mod_monthly_forecast",
+      title: "10. Monthly Gold Forecast Module",
+      emoji: "🗓️",
+      tag: "MONTHLY FORECAST",
+      statusLabel: "LIVE",
+      desc: "Monthly gold direction forecast based on previous years data & upcoming news.",
+      useCase: "Long-term monthly trend projection & macro planning.",
+      btnText: "View Forecast",
+      tabTarget: "goldintelligence",
+      highlight: true,
+      category: "GOLD",
+    },
+
+    // ⚡ ADDITIONAL SYSTEM & SPECIALIZED TRADING TOOLS (COMPLETE CATALOG)
     {
       id: "bond007",
       title: "GMC Secret Agent Order Block Sniper",
       emoji: "🕵️‍♂️",
       tag: "SECRET AGENT",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "7-layer fusion • master verdict • London breaker block reclaim & high-precision sniper execution",
+      statusLabel: "LIVE",
+      desc: "7-layer fusion • London breaker block reclaim & high-precision sniper execution.",
+      useCase: "Breaker block reclaim & London session sniper trades.",
+      btnText: "Open Sniper",
       tabTarget: "bond007",
       highlight: true,
+      category: "SIGNALS",
     },
     {
       id: "institutional",
       title: "GMC Sovereign SMC Liquidity Desk",
       emoji: "🏛️",
       tag: "SOVEREIGN SMC",
-      tagColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      desc: "Institutional Order Blocks, FVG imbalances, Premium/Discount zones & institutional liquidity sweep engine",
+      statusLabel: "ACTIVE",
+      desc: "Institutional Order Blocks, FVG imbalances, Premium/Discount zones & liquidity sweeps.",
+      useCase: "SMC structure, FVG gaps & liquidity pool mapping.",
+      btnText: "Launch SMC Desk",
       tabTarget: "institutional",
       highlight: true,
+      category: "SUPPORT_RESISTANCE",
     },
     {
       id: "blackshark",
       title: "GMC Apex Predator DOM & Depth Scanner",
       emoji: "🦈",
       tag: "PREDATOR DOM",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Order-flow depth of market + institutional bid/ask wall radar for BTC & Gold",
+      statusLabel: "LIVE",
+      desc: "Order-flow depth of market + institutional bid/ask wall radar for BTC & Gold.",
+      useCase: "Depth of market order book wall analysis.",
+      btnText: "Open Scanner",
       tabTarget: "blackshark",
       highlight: true,
-    },
-    {
-      id: "sentiment",
-      title: "GMC Macro Sentiment & Order Flow Gauge",
-      emoji: "🎯",
-      tag: "ORDER FLOW GAUGE",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "Cross-reference AI signals with live order flow for real-time Bullish/Bearish confidence score",
-      tabTarget: "sentiment",
+      category: "VOLUME",
     },
     {
       id: "heatmap",
       title: "GMC Deep Order Book Volatility Thermal",
       emoji: "🌋",
       tag: "VOLATILITY THERMAL",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Clusters of stop-loss & take-profit pools • BSL/SSL entry & exit radar",
+      statusLabel: "ACTIVE",
+      desc: "Clusters of stop-loss & take-profit pools • BSL/SSL entry & exit radar.",
+      useCase: "Heatmap visualization of liquidity clusters.",
+      btnText: "View Heatmap",
       tabTarget: "heatmap",
+      highlight: false,
+      category: "VOLUME",
+    },
+    {
+      id: "d3heatmap",
+      title: "GMC D3 Institutional Liquidity Thermal",
+      emoji: "🔥",
+      tag: "D3 THERMAL",
+      statusLabel: "LIVE",
+      desc: "Interactive D3 liquidity thermal map & real-time order book cluster radar.",
+      useCase: "D3 interactive heatmap order book depth visualization.",
+      btnText: "Launch Thermal",
+      tabTarget: "d3heatmap",
+      highlight: false,
+      category: "VOLUME",
     },
     {
       id: "comparative",
       title: "GMC Cross-Asset Intermarket Scanner",
       emoji: "⚖️",
       tag: "INTERMARKET SCAN",
-      tagColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      desc: "Dual asset side-by-side price action (Gold vs USD Index DXY) • divergence entry timing",
+      statusLabel: "ACTIVE",
+      desc: "Dual asset side-by-side price action (Gold vs USD Index DXY) • divergence entry timing.",
+      useCase: "Intermarket DXY vs XAUUSD divergence tracking.",
+      btnText: "Open Terminal",
       tabTarget: "comparative",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "aimaster",
       title: "GMC Vanguard 5-System Signal Matrix",
       emoji: "🦁",
-      tag: "VANGUARD FUSION",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "5-system ensemble: Command + AI Chains + GMC zones + Meer safety + Snake timing",
+      tag: "VANGUARD MATRIX",
+      statusLabel: "ACTIVE",
+      desc: "5-system ensemble: Command + AI Chains + GMC zones + Meer safety + Snake timing.",
+      useCase: "Multi-system ensemble consensus validation.",
+      btnText: "Launch Vanguard",
       tabTarget: "aimaster",
+      highlight: false,
+      category: "SIGNALS",
     },
     {
       id: "breakout",
       title: "GMC Kinetic Momentum Breakout Radar",
       emoji: "🚀",
       tag: "MOMENTUM BREAKOUT",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "XAUUSD H1 advance zone • breakout • retest • shadow setups + performance",
+      statusLabel: "NEW",
+      desc: "XAUUSD H1 advance zone • breakout • retest • shadow setups + performance.",
+      useCase: "Momentum breakout & retest confirmation.",
+      btnText: "Open Radar",
       tabTarget: "breakout",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "aibrain",
       title: "GMC Quantum AI Trade Signal Director",
       emoji: "✨",
       tag: "QUANTUM DIRECTOR",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "69-voter consensus • GMC engine • hardening gates • MTF-aware verdict",
+      statusLabel: "FLAGSHIP",
+      desc: "69-voter consensus • GMC engine • hardening gates • MTF-aware verdict.",
+      useCase: "Quantum voter consensus trade signals.",
+      btnText: "Open Director",
       tabTarget: "aibrain",
+      highlight: true,
+      category: "SIGNALS",
     },
     {
       id: "chart",
       title: "GMC Live Professional Charting Suite",
       emoji: "📊",
       tag: "CHARTING SUITE",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "Live XAUUSD & BTCUSD chart • zones, entries, volume profile and target map",
+      statusLabel: "LIVE",
+      desc: "Live XAUUSD & BTCUSD chart • zones, entries, volume profile and target map.",
+      useCase: "Interactive charting with institutional overlay.",
+      btnText: "Open Charts",
       tabTarget: "chart",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "sniper",
       title: "GMC Micro Order Block Trigger Scanner",
       emoji: "🎯",
       tag: "ORDER BLOCK TRIGGER",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "Full XAUUSD & BTCUSD sniper dashboard • live order block price-action signals",
+      statusLabel: "ACTIVE",
+      desc: "Full XAUUSD & BTCUSD sniper dashboard • live order block price-action signals.",
+      useCase: "Micro timeframe order block triggers.",
+      btnText: "Open Trigger",
       tabTarget: "sniper",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "nexus",
       title: "GMC Horizon Tactical Command Core",
       emoji: "⚡",
       tag: "HORIZON COMMAND",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "Gold intelligence platform • 10-agent council • calibrated probability • live zones",
+      statusLabel: "LIVE",
+      desc: "Gold intelligence platform • 10-agent council • calibrated probability • live zones.",
+      useCase: "10-agent AI council strategy decision engine.",
+      btnText: "Open Command",
       tabTarget: "nexus",
+      highlight: false,
+      category: "SIGNALS",
     },
     {
       id: "mtfdoji",
       title: "GMC Multi-Layer Supply & Demand Grid",
       emoji: "🔮",
-      tag: "SUPPLY & DEMAND GRID",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "MTF Red Doji supply & demand zones matrix with real-time zone testing alerts",
+      tag: "SUPPLY DEMAND GRID",
+      statusLabel: "ACTIVE",
+      desc: "MTF Red Doji supply & demand zones matrix with real-time zone testing alerts.",
+      useCase: "Multi-timeframe supply & demand zone grid.",
+      btnText: "View Grid",
       tabTarget: "mtfdoji",
+      highlight: false,
+      category: "SUPPORT_RESISTANCE",
     },
     {
       id: "cipher",
       title: "GMC Cyber-Reactor ML Pattern Predictor",
       emoji: "🤖",
       tag: "CYBER REACTOR ML",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "XAUUSD supply/demand ML • respect vs break probability • zone map • shadow track",
+      statusLabel: "ACTIVE",
+      desc: "XAUUSD supply/demand ML • respect vs break probability • zone map • shadow track.",
+      useCase: "Machine learning pattern recognition & zone respect predictions.",
+      btnText: "Run ML Engine",
       tabTarget: "cipher",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "doji",
       title: "GMC Stealth Candle Reversal Trigger",
       emoji: "🐍",
       tag: "STEALTH REVERSAL",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "Zone-lifecycle snake scanner • macro overlay • mechanical entry timing decision",
+      statusLabel: "LIVE",
+      desc: "Zone-lifecycle snake scanner • macro overlay • mechanical entry timing decision.",
+      useCase: "Stealth candlestick pattern rejection trigger.",
+      btnText: "Launch Trigger",
       tabTarget: "doji",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "smc",
       title: "GMC Structural Market Cycle Engine",
       emoji: "🌊",
       tag: "MARKET CYCLE",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Smart money flow, change of character (CHoCH) & market structure break radar",
+      statusLabel: "ACTIVE",
+      desc: "Smart money flow, change of character (CHoCH) & market structure break radar.",
+      useCase: "Market structure shift (MSS) & CHoCH tracking.",
+      btnText: "View Cycles",
       tabTarget: "smc",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "falcon",
       title: "GMC Eagle-Eye Institutional Order Pilot",
       emoji: "🦅",
       tag: "EAGLE-EYE PILOT",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "High-altitude market scanner detecting institutional order block mitigation",
+      statusLabel: "LIVE",
+      desc: "High-altitude market scanner detecting institutional order block mitigation.",
+      useCase: "Institutional order block mitigation scanner.",
+      btnText: "Open Pilot",
       tabTarget: "falcon",
+      highlight: false,
+      category: "SUPPORT_RESISTANCE",
     },
     {
       id: "brainspro",
       title: "GMC Multi-Agent AI Strategy Synthesizer",
       emoji: "🧠",
       tag: "STRATEGY SYNTHESIZER",
-      tagColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      desc: "AI chains reasoning — multi-agent verdict aggregation and deep trade synthesis",
+      statusLabel: "FLAGSHIP",
+      desc: "AI chains reasoning — multi-agent verdict aggregation and deep trade synthesis.",
+      useCase: "Deep multi-agent chain reasoning synthesis.",
+      btnText: "Synthesize",
       tabTarget: "brainspro",
+      highlight: true,
+      category: "SIGNALS",
     },
     {
       id: "satoshi",
       title: "GMC Digital Asset Crypto Macro Desk",
       emoji: "🪙",
       tag: "CRYPTO MACRO DESK",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "BTCUSD institutional suite • order blocks, liquidity pools & real-time crypto setups",
+      statusLabel: "NEW",
+      desc: "BTCUSD institutional suite • order blocks, liquidity pools & real-time crypto setups.",
+      useCase: "Institutional crypto & Bitcoin macro analysis.",
+      btnText: "Open Desk",
       tabTarget: "satoshi",
+      highlight: false,
+      category: "SIGNALS",
     },
     {
       id: "liquidity",
       title: "GMC Market Liquidity & Depth Analyzer",
       emoji: "💧",
       tag: "DEPTH ANALYZER",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Granular market depth map showing buy/sell stop liquidity build-up across pairs",
+      statusLabel: "ACTIVE",
+      desc: "Granular market depth map showing buy/sell stop liquidity build-up across pairs.",
+      useCase: "Granular order book market depth analysis.",
+      btnText: "Analyze Depth",
       tabTarget: "liquidity",
+      highlight: false,
+      category: "VOLUME",
     },
     {
       id: "multitf",
       title: "GMC Multi-Timeframe Trend Alignment Engine",
       emoji: "📐",
       tag: "TREND ALIGNMENT",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "M15 • M30 • H1 • H4 • D1 sub-brain matrix — 14 voters per timeframe",
+      statusLabel: "ACTIVE",
+      desc: "M15 • M30 • H1 • H4 • D1 sub-brain matrix — 14 voters per timeframe.",
+      useCase: "Multi-timeframe trend alignment check.",
+      btnText: "Check Alignment",
       tabTarget: "multitf",
+      highlight: false,
+      category: "SIGNALS",
     },
     {
       id: "whale",
       title: "GMC Whale Order Tracker & Big Money Radar",
       emoji: "🐳",
       tag: "BIG MONEY RADAR",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "XAUUSD & BTCUSD whale volume spike & Fair Value Gap (FVG) execution radar",
+      statusLabel: "LIVE",
+      desc: "XAUUSD & BTCUSD whale volume spike & Fair Value Gap (FVG) execution radar.",
+      useCase: "Whale order volume spike & FVG execution radar.",
+      btnText: "Track Whales",
       tabTarget: "whale",
+      highlight: false,
+      category: "VOLUME",
     },
     {
       id: "journal",
       title: "GMC AI Precision Trade Logger & Analytics",
       emoji: "📓",
       tag: "PRECISION JOURNAL",
-      tagColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      desc: "Automated AI journal tracking every trade, analyzing mistakes & refining win rates",
+      statusLabel: "SYNCHRONIZED",
+      desc: "Automated AI journal tracking every trade, analyzing mistakes & refining win rates.",
+      useCase: "Automated trade journaling & error diagnosis.",
+      btnText: "Open Journal",
       tabTarget: "journal",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "equitytracker",
       title: "GMC Dynamic Portfolio Risk & Drawdown Monitor",
       emoji: "📈",
-      tag: "RISK & EQUITY MONITOR",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "Live equity curve, peak-to-trough drawdown tracker & account risk telemetry",
+      tag: "RISK MONITOR",
+      statusLabel: "ACTIVE",
+      desc: "Live equity curve, peak-to-trough drawdown tracker & account risk telemetry.",
+      useCase: "Account equity curve & peak-to-trough drawdown monitor.",
+      btnText: "Open Monitor",
       tabTarget: "equitytracker",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "demoleaderboard",
       title: "GMC $5K Institutional Trader Hall",
       emoji: "🥇",
       tag: "TRADER HALL",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "Live performance rankings of top algorithmic AI signal models",
+      statusLabel: "LIVE",
+      desc: "Live performance rankings of top algorithmic AI signal models.",
+      useCase: "Top performing AI trading model rankings.",
+      btnText: "View Rankings",
       tabTarget: "demoleaderboard",
+      highlight: false,
+      category: "SIGNALS",
     },
     {
       id: "tradelog",
       title: "GMC Live Execution History & Ledger",
       emoji: "📜",
-      tag: "EXECUTION HISTORY",
-      tagColor: "bg-slate-500/20 text-slate-300 border-slate-500/40",
-      desc: "Real-time log of every trade entry, stop-loss adjustment, and take-profit execution",
+      tag: "EXECUTION LOG",
+      statusLabel: "SYNCHRONIZED",
+      desc: "Real-time log of every trade entry, stop-loss adjustment, and take-profit execution.",
+      useCase: "Real-time trade entry/exit ledger.",
+      btnText: "View Ledger",
       tabTarget: "tradelog",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "metrics",
       title: "GMC Quantitative Analytics & Win-Rate Lab",
       emoji: "📉",
       tag: "WIN-RATE LAB",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Sharpe ratio, Profit Factor, win/loss breakdown & quantitative risk metrics",
+      statusLabel: "ACTIVE",
+      desc: "Sharpe ratio, Profit Factor, win/loss breakdown & quantitative risk metrics.",
+      useCase: "Quantitative metrics & profit factor analytics.",
+      btnText: "Open Lab",
       tabTarget: "metrics",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "news",
       title: "GMC Macro Economic News Terminal",
       emoji: "📅",
       tag: "LIVE NEWS",
-      tagColor: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-      desc: "Live economic calendar • high-impact CPI, NFP & FOMC alerts for XAUUSD & FX",
+      statusLabel: "LIVE",
+      desc: "Live economic calendar • high-impact CPI, NFP & FOMC alerts for XAUUSD & FX.",
+      useCase: "Economic calendar & live news event triggers.",
+      btnText: "Open Terminal",
       tabTarget: "news",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "ainews",
       title: "GMC AI Global News & Sentiment Desk",
       emoji: "📡",
       tag: "AI NEWS",
-      tagColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      desc: "Real-time AI news scraper converting financial headlines into market bias scores",
+      statusLabel: "ACTIVE",
+      desc: "Real-time AI news scraper converting financial headlines into market bias scores.",
+      useCase: "AI news headline sentiment scoring.",
+      btnText: "Open News Desk",
       tabTarget: "ainews",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "backtest",
       title: "GMC Quantitative Backtest Engine",
       emoji: "🔬",
       tag: "BACKTESTER",
-      tagColor: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-      desc: "Historical strategy backtester testing GMC rules against 5+ years of market tick data",
+      statusLabel: "ACTIVE",
+      desc: "Historical strategy backtester testing GMC rules against 5+ years of market tick data.",
+      useCase: "Quantitative historical strategy testing & rule validation.",
+      btnText: "Run Backtest",
       tabTarget: "backtest",
+      highlight: false,
+      category: "FORECASTING",
     },
     {
       id: "risk",
       title: "GMC Position Risk & Lot Calculator",
       emoji: "🧮",
       tag: "RISK CALCULATOR",
-      tagColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-      desc: "Calculate exact lot sizes (0.01 standard) based on account balance & SL pip distance",
+      statusLabel: "ACTIVE",
+      desc: "Calculate exact lot sizes (0.01 standard) based on account balance & SL pip distance.",
+      useCase: "Exact lot size & risk calculation.",
+      btnText: "Open Calculator",
       tabTarget: "risk",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
     {
       id: "alerts",
       title: "GMC Real-Time Smart Price Alerts",
       emoji: "🔔",
       tag: "PRICE ALERTS",
-      tagColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      desc: "Set custom price alerts for key order blocks, liquidity sweeps, and breakout triggers",
+      statusLabel: "SYNCHRONIZED",
+      desc: "Set custom price alerts for key order blocks, liquidity sweeps, and breakout triggers.",
+      useCase: "Automated price level & zone alerts.",
+      btnText: "Set Alerts",
       tabTarget: "alerts",
+      highlight: false,
+      category: "PRICE_ACTION",
     },
   ];
 
@@ -553,49 +842,78 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
         </div>
 
         {/* INTELLIGENCE MODULE CARDS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTools.map((tool) => (
-            <div
-              key={tool.id}
-              onClick={() => onSelectTab(tool.tabTarget)}
-              className="bg-[#111419] border border-[#292E35] hover:border-[rgba(241,204,107,0.5)] rounded-2xl group cursor-pointer overflow-hidden flex flex-col justify-between p-5 space-y-4 relative transition-all"
-            >
-              {/* Card Top Row */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="w-10 h-10 bg-[#0E1115] border border-[#252A31] rounded-xl flex items-center justify-center text-xl group-hover:border-[rgba(241,204,107,0.5)] transition-all">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+          {filteredTools.map((tool) => {
+            let statusLabel = tool.statusLabel || "SYNCHRONIZED";
+            let statusStyle = "bg-[#101318] text-[#9299A3] border-[#2B3037]";
+            let dotColor = "bg-[#74D8A0]";
+
+            if (statusLabel === "FLAGSHIP") {
+              statusStyle = "bg-[rgba(241,204,107,0.1)] text-[#F1CC6B] border-[rgba(241,204,107,0.35)]";
+              dotColor = "bg-[#F1CC6B]";
+            } else if (statusLabel === "LIVE") {
+              statusStyle = "bg-[#17342E] text-[#74D8A0] border-[rgba(116,216,160,0.35)]";
+              dotColor = "bg-[#74D8A0]";
+            } else if (statusLabel === "ACTIVE") {
+              statusStyle = "bg-[#17342E] text-[#74D8A0] border-[rgba(116,216,160,0.35)]";
+              dotColor = "bg-[#74D8A0]";
+            } else if (statusLabel === "NEW") {
+              statusStyle = "bg-[rgba(241,204,107,0.08)] text-[#F1CC6B] border-[rgba(241,204,107,0.25)]";
+              dotColor = "bg-[#F1CC6B]";
+            }
+
+            return (
+              <div
+                key={tool.id}
+                onClick={() => onSelectTab(tool.tabTarget)}
+                className={`bg-[#111419] border ${
+                  tool.highlight
+                    ? "border-[rgba(241,204,107,0.35)] shadow-[0_0_12px_rgba(241,204,107,0.05)]"
+                    : "border-[#292E35]"
+                } hover:border-[rgba(241,204,107,0.55)] rounded-xl group cursor-pointer p-3 sm:p-3.5 transition-all flex flex-col justify-between space-y-2.5 relative overflow-hidden`}
+              >
+                {/* Top Row: Icon + Category Tag & Status Badge */}
+                <div className="flex items-start justify-between gap-1.5">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 bg-[#0E1115] border border-[#252A31] rounded-lg flex items-center justify-center text-base sm:text-lg shrink-0 group-hover:border-[rgba(241,204,107,0.5)] transition-colors">
                     {tool.emoji}
                   </div>
-                  <span className="text-[10px] font-mono font-medium px-2.5 py-1 rounded-lg border bg-[#101318] border-[#2B3037] text-[#9299A3]">
-                    {tool.tag}
-                  </span>
+
+                  <div className="flex flex-col items-end gap-1 min-w-0">
+                    <span className="text-[9px] font-mono font-medium text-[#9299A3] uppercase tracking-tight truncate max-w-[100px] sm:max-w-[120px] text-right">
+                      {tool.tag}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase tracking-wider flex items-center gap-1 border shrink-0 ${statusStyle}`}
+                    >
+                      <span className={`w-1 h-1 rounded-full ${dotColor}`} />
+                      <span>{statusLabel}</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Module Title & Description */}
-                <div>
-                  <h3 className="text-sm sm:text-base font-semibold text-white group-hover:text-[#F1CC6B] transition-colors tracking-tight font-mono">
+                {/* Module Title & Short Explanation */}
+                <div className="space-y-1">
+                  <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-[#F1CC6B] transition-colors tracking-tight font-mono leading-snug line-clamp-2">
                     {tool.title}
                   </h3>
-                  <p className="text-xs text-[#9299A3] font-normal leading-relaxed mt-1.5 line-clamp-2">
+                  <p className="text-[10px] sm:text-xs text-[#9299A3] font-sans leading-tight line-clamp-2">
                     {tool.desc}
                   </p>
                 </div>
-              </div>
 
-              {/* Card Bottom CTA Row */}
-              <div className="pt-3 border-t border-[#252A31] flex items-center justify-between gap-2">
-                <span className="px-2.5 py-1 rounded bg-[#17342E] text-[#74D8A0] border border-[rgba(116,216,160,0.4)] text-[10px] font-mono font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#74D8A0]" />
-                  <span>SYNCHRONIZED</span>
-                </span>
-
-                <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-[#F1CC6B] group-hover:translate-x-1 transition-transform">
-                  <span>LAUNCH</span>
-                  <ArrowRight className="w-4 h-4 text-[#F1CC6B]" />
+                {/* Use Case & Action Button */}
+                <div className="pt-2 border-t border-[#252A31] flex items-center justify-between gap-1 text-[10px] font-mono">
+                  <span className="text-[#9299A3] truncate text-[9px] hidden xs:inline">
+                    {tool.useCase ? tool.useCase.slice(0, 24) + "..." : "XAUUSD Analytics"}
+                  </span>
+                  <div className="flex items-center gap-1 font-semibold text-[#F1CC6B] group-hover:translate-x-0.5 transition-transform ml-auto shrink-0">
+                    <span>{tool.btnText || "Open"}</span>
+                    <ArrowRight className="w-3 h-3 text-[#F1CC6B]" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
