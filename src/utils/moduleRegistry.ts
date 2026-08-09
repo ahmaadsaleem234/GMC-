@@ -92,6 +92,16 @@ export const MODULE_REGISTRY: ModuleRegistryItem[] = [
     tagColor: "bg-blue-500/20 text-blue-300 border-blue-500/40",
   },
   {
+    id: "orderflow",
+    label: "🌐 Order Flow & Volume Profile (POC / CVD)",
+    icon: BarChart3,
+    category: "Analytics",
+    desc: "Point of Control (POC), Value Area (VAH/VAL), CVD & Institutional Absorption Radar",
+    emoji: "📊",
+    tag: "POC / CVD VOLUME",
+    tagColor: "bg-blue-500/20 text-blue-300 border-blue-500/40 font-bold",
+  },
+  {
     id: "d3heatmap",
     label: "🔥 GMC D3 Institutional Liquidity Heatmap",
     icon: Flame,

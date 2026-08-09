@@ -30,6 +30,7 @@ import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
 import { LevelKeystoneView } from "./components/LevelKeystoneView";
 import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
+import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
 import { GmcLandingPage } from "./components/GmcLandingPage";
 import { EnterpriseAccessModal } from "./components/EnterpriseAccessModal";
 import { InstitutionalMarketDataHubModal } from "./components/InstitutionalMarketDataHubModal";
@@ -654,6 +655,13 @@ export function App() {
             assetKey={activeAssetKey}
             prices={prices}
             isOverlay={false}
+          />
+        )}
+
+        {activeTab === "orderflow" && (
+          <OrderFlowVolumeProfile
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
           />
         )}
 

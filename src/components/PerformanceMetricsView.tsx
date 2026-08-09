@@ -80,6 +80,14 @@ const MONTHLY_PERFORMANCE = [
   { month: "Aug 2026 (Mtd)", trades: 42, winPct: "92.4%", profit: "+18.2%", status: "ACTIVE" },
 ];
 
+// Session Profitability Comparison Data
+const SESSION_PROFITABILITY_DATA = [
+  { session: "London Open", winRate: 91.2, pnl: 14250, profitFactor: 3.82, trades: 410, color: "#3B82F6" },
+  { session: "New York Open", winRate: 89.6, pnl: 18800, profitFactor: 3.45, trades: 520, color: "#10B981" },
+  { session: "London/NY Overlap", winRate: 94.1, pnl: 22400, profitFactor: 4.20, trades: 380, color: "#EAB308" },
+  { session: "Asian Killzone", winRate: 82.4, pnl: 4120, profitFactor: 2.10, trades: 172, color: "#A855F7" },
+];
+
 export const PerformanceMetricsView: React.FC = () => {
   const [timeframe, setTimeframe] = useState<"7D" | "30D" | "90D" | "ALL">("90D");
   const [selectedAsset, setSelectedAsset] = useState<string>("ALL");
@@ -352,6 +360,69 @@ export const PerformanceMetricsView: React.FC = () => {
                 />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* London vs. New York Session Profitability Comparison Section */}
+      <div className="bg-[#0A0D14] border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800/80 pb-3">
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2 font-sans">
+              <Globe className="w-4 h-4 text-blue-400" />
+              LONDON VS. NEW YORK SESSION PROFITABILITY ANALYTICS
+            </h3>
+            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+              Comparative volume, win-rate, and profit factor analysis across major global institutional trading sessions.
+            </p>
+          </div>
+          <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold">
+            HIGHEST EDGE: LONDON / NY OVERLAP (94.1% WIN RATE)
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Session Bar Chart */}
+          <div className="lg:col-span-2 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={SESSION_PROFITABILITY_DATA}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                <XAxis dataKey="session" stroke="#64748B" fontSize={10} fontFamily="monospace" />
+                <YAxis stroke="#64748B" fontSize={10} fontFamily="monospace" tickFormatter={(val) => `$${val / 1000}k`} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#050505",
+                    borderColor: "#334155",
+                    borderRadius: "8px",
+                    fontSize: "11px",
+                    fontFamily: "monospace",
+                    color: "#F8FAFC",
+                  }}
+                  formatter={(val: any) => [`$${val.toLocaleString()}`, "Net Profit"]}
+                />
+                <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
+                  {SESSION_PROFITABILITY_DATA.map((entry, index) => (
+                    <Cell key={`sess-cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Session Metrics Breakdown Cards */}
+          <div className="space-y-2.5">
+            {SESSION_PROFITABILITY_DATA.map((s, idx) => (
+              <div key={idx} className="p-3 bg-black/50 border border-slate-800 rounded-xl space-y-1 hover:border-slate-700 transition-colors">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white text-xs font-sans">{s.session}</span>
+                  <span className="text-[10px] text-emerald-400 font-bold">{s.winRate}% Win Rate</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80 font-mono">
+                  <span>Net PnL: <strong className="text-white">${s.pnl.toLocaleString()}</strong></span>
+                  <span>Profit Factor: <strong className="text-amber-400">{s.profitFactor}</strong></span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

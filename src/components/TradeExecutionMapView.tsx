@@ -99,18 +99,21 @@ interface PointOfInterest {
   score: number; // 0 - 100
   grade: "A+" | "A" | "B+";
   confluenceFactors: string[];
-  statusText: "PRICE IN POI" | "WAITING FOR RETRACEMENT";
+  statusText: "PRICE IN POI" | "PRICE APPROACHING" | "WAITING FOR RETRACEMENT";
 }
 
 interface TimeframeDataset {
   timeframe: TimeframeKey;
   candles: Candle[];
   atr: number;
+  latestPrice: number;
   bias: "BULLISH" | "BEARISH" | "NEUTRAL";
   internalStructure: "BULLISH" | "BEARISH" | "CONSOLIDATING";
   externalStructure: "BULLISH" | "BEARISH" | "RANGE";
   structureText: string;
   structureCondition: string;
+  bosPrice: number;
+  chochPrice: number;
   latestSwingHigh: number;
   latestSwingLow: number;
   orderBlocks: OrderBlock[];
@@ -118,7 +121,8 @@ interface TimeframeDataset {
     type: "BULLISH" | "BEARISH";
     low: number;
     high: number;
-    status: "FRESH" | "MITIGATED" | "PARTIALLY_MITIGATED" | "INVALIDATED" | "NONE";
+    status: "FRESH" | "PRICE INSIDE" | "PRICE APPROACHING" | "MITIGATED" | "PARTIALLY_MITIGATED" | "INVALIDATED" | "NONE";
+    statusText: string;
     label: string;
   };
   fvgs: FairValueGap[];
@@ -128,6 +132,7 @@ interface TimeframeDataset {
     top: number;
     ce: number;
     status: "FRESH" | "PARTIALLY_FILLED" | "FILLED" | "NONE";
+    statusText: string;
     label: string;
   };
   liquidityPools: LiquidityPool[];
@@ -137,7 +142,7 @@ interface TimeframeDataset {
     status: string;
   };
   structureMarkers: StructureMarker[];
-  poi: PointOfInterest;
+  poi: PointOfInterest & { statusText: "PRICE IN POI" | "PRICE APPROACHING" | "WAITING FOR RETRACEMENT" };
   premiumDiscount: {
     swingHigh: number;
     swingLow: number;
@@ -153,6 +158,26 @@ interface TimeframeDataset {
   actionStatus: string;
   minPrice: number;
   maxPrice: number;
+}
+
+function formatDistance(targetPrice: number, currentPrice: number): string {
+  if (!targetPrice || !currentPrice) return "$0.00";
+  const diff = targetPrice - currentPrice;
+  const absDiff = Math.abs(diff).toFixed(2);
+  if (diff > 0) return `+$${absDiff}`;
+  if (diff < 0) return `-$${absDiff}`;
+  return `+$0.00`;
+}
+
+function formatRangeDistance(low: number, high: number, currentPrice: number): string {
+  if (!low || !high || !currentPrice) return "$0.00";
+  if (currentPrice >= low && currentPrice <= high) {
+    return "Inside Zone";
+  }
+  if (currentPrice > high) {
+    return `-$${(currentPrice - high).toFixed(2)}`;
+  }
+  return `+$${(low - currentPrice).toFixed(2)}`;
 }
 
 // Timeframe configuration for live XAUUSD market feeds
@@ -283,25 +308,28 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
     bias = "NEUTRAL";
   }
 
-  // 5. Structure Condition & Text
+  // 5. Structure Condition, Text & Levels
+  const bosPrice = Math.round((latestSwingHigh - calculatedAtr * (tf === "4H" ? 0.3 : tf === "1H" ? 0.2 : 0.1)) * 100) / 100;
+  const chochPrice = Math.round((latestSwingLow + calculatedAtr * (tf === "1M" ? 0.08 : 0.15)) * 100) / 100;
+
   let structureCondition = "HH + HL";
-  let structureText = `Bullish BOS above $${latestSwingHigh.toFixed(2)}`;
+  let structureText = `Bullish BOS @ $${bosPrice.toFixed(2)}`;
 
   if (tf === "4H") {
     structureCondition = "HH + HL | Bullish BOS";
-    structureText = `Bullish BOS above $${(latestSwingHigh - calculatedAtr * 0.4).toFixed(2)}`;
+    structureText = `Bullish BOS @ $${bosPrice.toFixed(2)}`;
   } else if (tf === "1H") {
     structureCondition = "Bullish BOS";
-    structureText = `Displacement BOS above $${(latestPrice - calculatedAtr * 0.35).toFixed(2)}`;
+    structureText = `Displacement BOS @ $${bosPrice.toFixed(2)}`;
   } else if (tf === "15M") {
     structureCondition = "Bullish MSS";
-    structureText = `Bullish MSS above $${(latestPrice - calculatedAtr * 0.25).toFixed(2)}`;
+    structureText = `Bullish MSS @ $${chochPrice.toFixed(2)}`;
   } else if (tf === "5M") {
     structureCondition = "Bullish MSS + Displacement";
-    structureText = `MSS + Bullish FVG Created`;
+    structureText = `MSS @ $${chochPrice.toFixed(2)} + FVG`;
   } else if (tf === "1M") {
     structureCondition = "Micro CHOCH";
-    structureText = `Micro CHOCH Retest @ $${latestPrice.toFixed(2)}`;
+    structureText = `Micro CHOCH @ $${chochPrice.toFixed(2)}`;
   }
 
   // 6. Order Block Calculation
@@ -322,14 +350,29 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
     },
   ];
 
-  const obStatus: "FRESH" | "MITIGATED" | "PARTIALLY_MITIGATED" | "INVALIDATED" | "NONE" =
-    latestPrice >= obLow && latestPrice <= obHigh + calculatedAtr * 0.5 ? "FRESH" : "MITIGATED";
+  let obStatus: "FRESH" | "PRICE INSIDE" | "PRICE APPROACHING" | "MITIGATED" | "PARTIALLY_MITIGATED" | "INVALIDATED" | "NONE" = "FRESH";
+  let obStatusText = "Fresh";
+
+  if (latestPrice >= obLow && latestPrice <= obHigh) {
+    obStatus = "PRICE INSIDE";
+    obStatusText = "Price Inside";
+  } else if (latestPrice > obHigh && latestPrice <= obHigh + calculatedAtr * 0.4) {
+    obStatus = "PRICE APPROACHING";
+    obStatusText = "Approaching";
+  } else if (latestPrice > obHigh + calculatedAtr * 0.4) {
+    obStatus = "FRESH";
+    obStatusText = "Fresh";
+  } else {
+    obStatus = "MITIGATED";
+    obStatusText = "Mitigated";
+  }
 
   const primaryOrderBlock = {
     type: "BULLISH" as const,
     low: obLow,
     high: obHigh,
     status: obStatus,
+    statusText: obStatusText,
     label: `Bullish OB: $${obLow.toFixed(2)} – $${obHigh.toFixed(2)}`,
   };
 
@@ -352,12 +395,27 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
     },
   ];
 
+  let fvgStatus: "FRESH" | "PARTIALLY_FILLED" | "FILLED" | "NONE" = "FRESH";
+  let fvgStatusText = "Fresh";
+
+  if (latestPrice >= fvgBottom && latestPrice <= fvgTop) {
+    fvgStatus = "PARTIALLY_FILLED";
+    fvgStatusText = "Partially Filled";
+  } else if (latestPrice > fvgTop) {
+    fvgStatus = "FRESH";
+    fvgStatusText = "Fresh";
+  } else {
+    fvgStatus = "FILLED";
+    fvgStatusText = "Filled";
+  }
+
   const primaryFVG = {
     type: "BULLISH" as const,
     bottom: fvgBottom,
     top: fvgTop,
     ce: fvgCe,
-    status: "FRESH" as const,
+    status: fvgStatus,
+    statusText: fvgStatusText,
     label: `Bullish FVG: $${fvgBottom.toFixed(2)} – $${fvgTop.toFixed(2)}`,
   };
 
@@ -387,7 +445,7 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
   const liquidityInfo = {
     bsl: bslPrice,
     ssl: sslPrice,
-    status: tf === "1M" ? "SSL Swept" : tf === "5M" ? "SSL Swept" : tf === "15M" ? "SSL Swept" : tf === "1H" ? "SSL Swept" : "SSL Swept",
+    status: latestPrice <= sslPrice + 0.3 ? "SSL Swept" : latestPrice >= bslPrice - 0.3 ? "BSL Swept" : "Unswept",
   };
 
   // 9. Structure Markers
@@ -405,13 +463,20 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
   const poiLow = obLow;
   const poiHigh = fvgTop;
   const preferredReaction = Math.round(((poiLow + poiHigh) / 2) * 100) / 100;
-  const isPriceInPoi = latestPrice >= poiLow - 0.2 && latestPrice <= poiHigh + calculatedAtr * 0.3;
-  const poiStatusText: "PRICE IN POI" | "WAITING FOR RETRACEMENT" = isPriceInPoi ? "PRICE IN POI" : "WAITING FOR RETRACEMENT";
+  
+  let poiStatusText: "PRICE IN POI" | "PRICE APPROACHING" | "WAITING FOR RETRACEMENT" = "WAITING FOR RETRACEMENT";
+  if (latestPrice >= poiLow && latestPrice <= poiHigh) {
+    poiStatusText = "PRICE IN POI";
+  } else if (latestPrice > poiHigh && latestPrice <= poiHigh + calculatedAtr * 0.4) {
+    poiStatusText = "PRICE APPROACHING";
+  } else {
+    poiStatusText = "WAITING FOR RETRACEMENT";
+  }
 
   const poiScore = Math.min(99, 88 + (tf === "15M" ? 8 : tf === "1H" ? 6 : tf === "4H" ? 6 : 4));
   const poiGrade = tf === "15M" || tf === "1H" ? "A+" : "A";
 
-  const poi: PointOfInterest & { statusText: "PRICE IN POI" | "WAITING FOR RETRACEMENT" } = {
+  const poi: PointOfInterest & { statusText: "PRICE IN POI" | "PRICE APPROACHING" | "WAITING FOR RETRACEMENT" } = {
     timeframe: tf,
     type: "BULLISH_DEMAND",
     low: poiLow,
@@ -450,17 +515,20 @@ function calculateSMCForCandles(tf: TimeframeKey, candles: Candle[]): TimeframeD
                        tf === "1H" ? "1H Alignment: CONFIRMED" :
                        tf === "15M" ? "Status: PRICE IN POI ZONE" :
                        tf === "5M" ? "Gate: PASSED" :
-                       "Action: BUY GOLD NOW";
+                       `Action: BUY GOLD NOW @ $${latestPrice.toFixed(2)}`;
 
   return {
     timeframe: tf,
     candles,
     atr: calculatedAtr,
+    latestPrice,
     bias,
     internalStructure: "BULLISH",
     externalStructure: "BULLISH",
     structureText,
     structureCondition,
+    bosPrice,
+    chochPrice,
     latestSwingHigh,
     latestSwingLow,
     orderBlocks,
@@ -1029,8 +1097,13 @@ EXECUTION METRICS:
                     🟣 {ds.structureCondition}
                   </span>
                 </div>
-                <div className="text-white font-bold text-[11px] leading-snug truncate">
-                  {ds.structureText}
+                <div className="text-white font-bold text-[10.5px] leading-snug flex items-center justify-between">
+                  <span>BOS: <strong className="text-purple-300">${ds.bosPrice.toFixed(2)}</strong></span>
+                  <span className="text-[9px] text-[#8F96A1]">({formatDistance(ds.bosPrice, ds.latestPrice)})</span>
+                </div>
+                <div className="text-white font-semibold text-[10px] flex items-center justify-between">
+                  <span>CHOCH: <strong className="text-purple-400">${ds.chochPrice.toFixed(2)}</strong></span>
+                  <span className="text-[9px] text-[#8F96A1]">({formatDistance(ds.chochPrice, ds.latestPrice)})</span>
                 </div>
                 <div className="flex items-center justify-between text-[9.5px] text-[#A2A9B5] pt-0.5">
                   <span>High: <strong className="text-white">${ds.latestSwingHigh.toFixed(2)}</strong></span>
@@ -1046,21 +1119,21 @@ EXECUTION METRICS:
                     className={`px-1 py-0.2 rounded text-[9px] font-bold ${
                       ds.primaryOrderBlock.status === "FRESH"
                         ? "bg-emerald-950/70 text-emerald-400 border border-emerald-800/40"
-                        : ds.primaryOrderBlock.status === "MITIGATED" ||
-                          ds.primaryOrderBlock.status === "PARTIALLY_MITIGATED"
-                        ? "bg-amber-950/70 text-amber-400 border border-amber-800/40"
+                        : ds.primaryOrderBlock.status === "PRICE INSIDE"
+                        ? "bg-amber-950/80 text-amber-300 border border-amber-500/50 animate-pulse"
+                        : ds.primaryOrderBlock.status === "PRICE APPROACHING"
+                        ? "bg-sky-950/70 text-sky-400 border border-sky-800/40"
                         : "bg-rose-950/70 text-rose-400 border border-rose-800/40"
                     }`}
                   >
-                    {ds.primaryOrderBlock.status === "FRESH"
-                      ? "🟢 Fresh"
-                      : ds.primaryOrderBlock.status === "MITIGATED"
-                      ? "🟡 Mitigated"
-                      : "🟡 Partial"}
+                    {ds.primaryOrderBlock.statusText}
                   </span>
                 </div>
-                <div className="text-emerald-400 font-bold text-[11px]">
-                  ${ds.primaryOrderBlock.low.toFixed(2)} – ${ds.primaryOrderBlock.high.toFixed(2)}
+                <div className="text-emerald-400 font-bold text-[11px] flex items-center justify-between">
+                  <span>${ds.primaryOrderBlock.low.toFixed(2)} – ${ds.primaryOrderBlock.high.toFixed(2)}</span>
+                </div>
+                <div className="text-[9px] text-[#8F96A1]">
+                  Distance: <strong className="text-white">{formatRangeDistance(ds.primaryOrderBlock.low, ds.primaryOrderBlock.high, ds.latestPrice)}</strong>
                 </div>
               </div>
 
@@ -1069,11 +1142,14 @@ EXECUTION METRICS:
                 <div className="text-[9.5px] text-[#8F96A1] font-semibold flex items-center justify-between">
                   <span>FAIR VALUE GAP (FVG)</span>
                   <span className="px-1 py-0.2 rounded bg-sky-950/70 text-sky-400 border border-sky-800/40 text-[9px]">
-                    🔵 {ds.primaryFVG.status === "FRESH" ? "Fresh" : "Active"}
+                    🔵 {ds.primaryFVG.statusText}
                   </span>
                 </div>
-                <div className="text-sky-300 font-bold text-[11px]">
-                  ${ds.primaryFVG.bottom.toFixed(2)} – ${ds.primaryFVG.top.toFixed(2)}
+                <div className="text-sky-300 font-bold text-[11px] flex items-center justify-between">
+                  <span>${ds.primaryFVG.bottom.toFixed(2)} – ${ds.primaryFVG.top.toFixed(2)}</span>
+                </div>
+                <div className="text-[9px] text-[#8F96A1]">
+                  Distance: <strong className="text-white">{formatRangeDistance(ds.primaryFVG.bottom, ds.primaryFVG.top, ds.latestPrice)}</strong>
                 </div>
               </div>
 
@@ -1086,8 +1162,10 @@ EXECUTION METRICS:
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[9.5px]">
-                  <span>BSL: <strong className="text-[#F1CC6B]">${ds.liquidityInfo.bsl.toFixed(2)}</strong></span>
-                  <span>SSL: <strong className="text-rose-400">${ds.liquidityInfo.ssl.toFixed(2)}</strong></span>
+                  <span>BSL: <strong className="text-[#F1CC6B]">${ds.liquidityInfo.bsl.toFixed(2)}</strong> <span className="text-[#8F96A1]">({formatDistance(ds.liquidityInfo.bsl, ds.latestPrice)})</span></span>
+                </div>
+                <div className="flex items-center justify-between text-[9.5px]">
+                  <span>SSL: <strong className="text-rose-400">${ds.liquidityInfo.ssl.toFixed(2)}</strong> <span className="text-[#8F96A1]">({formatDistance(ds.liquidityInfo.ssl, ds.latestPrice)})</span></span>
                 </div>
               </div>
 
@@ -1099,6 +1177,8 @@ EXECUTION METRICS:
                     className={`px-1 py-0.2 rounded text-[9px] font-bold ${
                       ds.poi.statusText === "PRICE IN POI"
                         ? "bg-emerald-950/80 text-emerald-400 border border-emerald-500/50 animate-pulse"
+                        : ds.poi.statusText === "PRICE APPROACHING"
+                        ? "bg-sky-950/70 text-sky-400 border border-sky-800/40"
                         : "bg-amber-950/70 text-amber-400 border border-amber-800/40"
                     }`}
                   >
@@ -1107,6 +1187,9 @@ EXECUTION METRICS:
                 </div>
                 <div className="text-[#F1CC6B] font-extrabold text-[11px]">
                   ${ds.poi.low.toFixed(2)} – ${ds.poi.high.toFixed(2)}
+                </div>
+                <div className="text-[9px] text-[#8F96A1]">
+                  Distance: <strong className="text-white">{formatRangeDistance(ds.poi.low, ds.poi.high, ds.latestPrice)}</strong>
                 </div>
               </div>
 
@@ -1145,8 +1228,8 @@ EXECUTION METRICS:
                   is1M ? "text-[#F1CC6B] animate-pulse" : "text-[#74D8A0]"
                 }`}
               >
-                <span>{ds.actionStatus}</span>
-                <span className="text-[9px] text-[#8F96A1]">{ds.poi.grade} Grade</span>
+                <span className="truncate">{ds.actionStatus}</span>
+                <span className="text-[9px] text-[#8F96A1] shrink-0">{ds.poi.grade} Grade</span>
               </div>
             </div>
           );
