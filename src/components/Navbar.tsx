@@ -122,6 +122,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
+          {/* TOP #1 TRADE EXECUTION MAP SHORTCUT BUTTON */}
+          <button
+            id="header-nav-[#1-execution-map-btn]"
+            onClick={() => setActiveTab("tradeexecutionmap")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "tradeexecutionmap"
+                ? "bg-[#F1CC6B] text-[#111111] border border-[#F1CC6B] shadow-[0_0_12px_rgba(241,204,107,0.3)]"
+                : "bg-[rgba(241,204,107,0.08)] text-[#F1CC6B] border border-[rgba(241,204,107,0.4)] hover:bg-[rgba(241,204,107,0.18)]"
+            }`}
+            title="Launch Top #1 Trade Execution Map"
+          >
+            <span>🎯</span>
+            <span className="hidden md:inline">EXECUTION MAP</span>
+          </button>
+
           {/* TOP #1 APEX BANK ZONE TAB SHORTCUT BUTTON */}
           <button
             id="header-nav-apexzone-btn"

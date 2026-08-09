@@ -41,6 +41,9 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const [activeTf, setActiveTf] = useState<"H1" | "M30" | "M15" | "M5">("M15");
   const [telegramSent, setTelegramSent] = useState(false);
 
+  const [accountBalance, setAccountBalance] = useState<number>(10000);
+  const [riskPercent, setRiskPercent] = useState<number>(1.0);
+
   // Dynamic calculations relative to live gold price
   const basePrice = currentPrice > 0 ? currentPrice : 2845.50;
   
@@ -53,6 +56,11 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const takeProfit1 = (basePrice + 8.50).toFixed(2);
   const takeProfit2 = (basePrice + 21.00).toFixed(2);
   const confidenceScore = 98.6;
+
+  // Risk Math
+  const slPips = Math.abs(parseFloat(bestEntry) - parseFloat(stopLoss)) * 10;
+  const riskAmount = (accountBalance * riskPercent) / 100;
+  const recommendedLot = slPips > 0 ? (riskAmount / (slPips * 10)).toFixed(2) : "0.10";
 
   const aiReason =
     "H1 Bullish Market Structure Shift (MSS) above $2,840.00 • M30 & M15 Institutional Demand Order Block sweep with rejection wick • M5 Change of Character (CHoCH) entry confirmation • News Filter: Clear 3-Hour USD Safety Buffer (No high-impact FOMC/CPI/NFP release pending).";
@@ -323,6 +331,71 @@ AI Brain Reason: ${aiReason}`;
           <p className="text-xs text-[#C5CAD3] leading-relaxed font-sans">
             {aiReason}
           </p>
+        </div>
+
+        {/* INTEGRATED RISK & LOT SIZE CALCULATOR STRIP */}
+        <div className="bg-[#0D1015] border border-[rgba(241,204,107,0.25)] rounded-xl p-3.5 space-y-3 font-mono text-xs">
+          <div className="flex items-center justify-between text-[11px] font-bold text-[#F1CC6B]">
+            <span className="flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-[#F1CC6B]" />
+              <span>KEYSTONE POSITION & RISK SIZING CALCULATOR</span>
+            </span>
+            <span className="text-[#8F96A1]">SL Distance: <strong className="text-white">{(slPips / 10).toFixed(1)} Pips</strong></span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Account Balance Select */}
+            <div className="bg-[#141820] border border-[#2B313A] rounded-lg p-2 flex flex-col justify-between">
+              <span className="text-[10px] text-[#8F96A1]">ACCOUNT BALANCE</span>
+              <div className="flex items-center gap-1 mt-1">
+                {[5000, 10000, 50000].map((bal) => (
+                  <button
+                    key={bal}
+                    onClick={() => setAccountBalance(bal)}
+                    className={`flex-1 py-1 rounded text-[10px] font-bold transition-all ${
+                      accountBalance === bal
+                        ? "bg-[#F1CC6B] text-[#0B0E11]"
+                        : "bg-[#1E242F] text-[#9EA6B3] hover:text-white"
+                    }`}
+                  >
+                    ${bal >= 1000 ? `${bal / 1000}K` : bal}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Risk % Select */}
+            <div className="bg-[#141820] border border-[#2B313A] rounded-lg p-2 flex flex-col justify-between">
+              <span className="text-[10px] text-[#8F96A1]">RISK PERCENTAGE</span>
+              <div className="flex items-center gap-1 mt-1">
+                {[0.5, 1.0, 2.0].map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRiskPercent(r)}
+                    className={`flex-1 py-1 rounded text-[10px] font-bold transition-all ${
+                      riskPercent === r
+                        ? "bg-[#74D8A0] text-[#0B0E11]"
+                        : "bg-[#1E242F] text-[#9EA6B3] hover:text-white"
+                    }`}
+                  >
+                    {r}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Calculated Lot & Risk */}
+            <div className="bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] rounded-lg p-2 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] text-[#8F96A1]">RECOMMENDED LOT</div>
+                <div className="text-base font-bold text-[#F1CC6B]">{recommendedLot} Std Lot</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-[#8F96A1]">MAX RISK</div>
+                <div className="text-xs font-bold text-rose-400">${riskAmount.toFixed(0)}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* BOTTOM ACTION BUTTONS */}

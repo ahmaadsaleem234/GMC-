@@ -28,6 +28,7 @@ import { GmcCap1HAIBrainView } from "./components/GmcCap1HAIBrainView";
 import { GmcGoldZoneCardView } from "./components/GmcGoldZoneCardView";
 import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
 import { LevelKeystoneView } from "./components/LevelKeystoneView";
+import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { GmcLandingPage } from "./components/GmcLandingPage";
 import { EnterpriseAccessModal } from "./components/EnterpriseAccessModal";
@@ -544,6 +545,31 @@ export function App() {
               setIsTelegramModalOpen(true);
             }}
           />
+        )}
+
+        {activeTab === "tradeexecutionmap" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["tradeexecutionmap"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("tradeexecutionmap", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice * 0.995,
+                  takeProfit: currentPrice * 1.012,
+                  lotSize: 0.1,
+                  signalSource: "🎯 TRADE EXECUTION MAP — XAUUSD Multi-Timeframe Smart Map",
+                })
+              }
+            />
+            <TradeExecutionMapView
+              currentPrice={currentPrice}
+              assetKey={activeAssetKey}
+              prices={prices}
+              onOpenTradeCopilot={handleOpenRiskCopilot}
+            />
+          </div>
         )}
 
         {activeTab === "levelkeystone" && (

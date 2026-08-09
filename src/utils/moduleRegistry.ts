@@ -32,6 +32,16 @@ export interface ModuleRegistryItem {
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   {
+    id: "tradeexecutionmap",
+    label: "🎯 Trade Execution Map — XAUUSD Multi-Timeframe Smart Mapping",
+    icon: Crown,
+    category: "AI Intelligence",
+    desc: "4H Macro Context → 1H Structure → 15M Primary POI → 5M Refinement → 1M Precision Execution Trigger",
+    emoji: "🎯",
+    tag: "TOP 1 EXECUTION MAP",
+    tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
+  },
+  {
     id: "levelkeystone",
     label: "👑 LEVEL KEYSTONE — XAUUSD Premium AI Brain Setups",
     icon: Crown,

@@ -52,7 +52,21 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   ];
 
   const topTools = [
-    // 👑 TOP 1 LEVEL KEYSTONE PREMIUM GOLD SETUP MODULE
+    // 🎯 TOP 1 TRADE EXECUTION MAP — XAUUSD MULTI-TIMEFRAME SMART MAPPING
+    {
+      id: "tradeexecutionmap",
+      title: "🎯 Trade Execution Map — Multi-Timeframe Smart Mapping & 1M Execution",
+      emoji: "🎯",
+      tag: "TOP 1 EXECUTION MAP",
+      statusLabel: "FLAGSHIP",
+      desc: "4H Macro Context → 1H Structure → 15M Primary POI → 5M Refinement → 1M Precision Execution Trigger.",
+      useCase: "Multi-timeframe hierarchy smart mapping (4H→1H→15M→5M→1M) for XAUUSD.",
+      btnText: "Open Execution Map",
+      tabTarget: "tradeexecutionmap",
+      highlight: true,
+      category: "SIGNALS",
+    },
+    // 👑 TOP LEVEL KEYSTONE PREMIUM GOLD SETUP MODULE
     {
       id: "levelkeystone",
       title: "👑 LEVEL KEYSTONE — XAUUSD Premium AI Brain Setups",
