@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Navbar, NAV_ITEMS } from "./components/Navbar";
 import { BlackSharkDashboard } from "./components/BlackSharkDashboard";
 import { InteractiveChart } from "./components/InteractiveChart";
@@ -180,9 +180,6 @@ export function App() {
   // Institutional D3 Heatmap Overlay State
   const [isHeatmapOverlayOpen, setIsHeatmapOverlayOpen] = useState<boolean>(false);
 
-  // WhatsApp Channel Timed Popup State (Once per visitor/session after 5-6 seconds)
-  const [isWhatsAppChannelModalOpen, setIsWhatsAppChannelModalOpen] = useState<boolean>(false);
-
   // 1. Restore Persistent Session automatically on page load / revisit (14-Day "Remember Me")
   useEffect(() => {
     const validSession = getValidSession();
@@ -243,18 +240,82 @@ export function App() {
     };
   }, [isLoggedIn]);
 
+  // WhatsApp Channel Timed Popup State (Max 2 popups per session: 1st at 5s, 2nd 1min after dismissal)
+  const [isWhatsAppChannelModalOpen, setIsWhatsAppChannelModalOpen] = useState<boolean>(false);
+  const waTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    const hasSeenPopup = sessionStorage.getItem("gmc_whatsapp_channel_popup_seen");
-    if (!hasSeenPopup) {
-      const timer = setTimeout(() => {
-        setIsWhatsAppChannelModalOpen(true);
-      }, 5500); // Wait 5.5 seconds after opening website
-      return () => clearTimeout(timer);
+    // Check if user already converted or reached max 2 popups in this session
+    const isConverted = sessionStorage.getItem("gmc_wa_popup_converted") === "true";
+    const count = parseInt(sessionStorage.getItem("gmc_wa_popup_count") || "0", 10);
+
+    if (isConverted || count >= 2) {
+      return;
     }
+
+    if (count === 0) {
+      // 1. First popup: exactly 5 seconds (5000ms) after entering website
+      waTimerRef.current = setTimeout(() => {
+        if (sessionStorage.getItem("gmc_wa_popup_converted") !== "true") {
+          sessionStorage.setItem("gmc_wa_popup_count", "1");
+          setIsWhatsAppChannelModalOpen(true);
+        }
+      }, 5000);
+    } else if (count === 1) {
+      // 2. Second popup: check time passed since first popup was dismissed
+      const dismissedAtStr = sessionStorage.getItem("gmc_wa_popup_dismissed_at");
+      if (dismissedAtStr) {
+        const dismissedAt = parseInt(dismissedAtStr, 10);
+        const timePassed = Date.now() - dismissedAt;
+        const remainingDelay = Math.max(0, 60000 - timePassed); // 1 minute (60000ms)
+
+        waTimerRef.current = setTimeout(() => {
+          if (sessionStorage.getItem("gmc_wa_popup_converted") !== "true") {
+            sessionStorage.setItem("gmc_wa_popup_count", "2");
+            setIsWhatsAppChannelModalOpen(true);
+          }
+        }, remainingDelay);
+      }
+    }
+
+    return () => {
+      if (waTimerRef.current) {
+        clearTimeout(waTimerRef.current);
+      }
+    };
   }, []);
 
   const handleCloseWhatsAppChannelModal = () => {
-    sessionStorage.setItem("gmc_whatsapp_channel_popup_seen", "true");
+    setIsWhatsAppChannelModalOpen(false);
+
+    if (sessionStorage.getItem("gmc_wa_popup_converted") === "true") return;
+
+    const count = parseInt(sessionStorage.getItem("gmc_wa_popup_count") || "1", 10);
+
+    if (count === 1) {
+      // First popup was dismissed! Record dismissal time and start 1-minute timer for second popup
+      const now = Date.now();
+      sessionStorage.setItem("gmc_wa_popup_dismissed_at", now.toString());
+
+      if (waTimerRef.current) clearTimeout(waTimerRef.current);
+
+      waTimerRef.current = setTimeout(() => {
+        const isConverted = sessionStorage.getItem("gmc_wa_popup_converted") === "true";
+        if (!isConverted) {
+          sessionStorage.setItem("gmc_wa_popup_count", "2");
+          setIsWhatsAppChannelModalOpen(true);
+        }
+      }, 60000); // Exactly 1 minute later
+    } else {
+      // Second popup was dismissed (count === 2)
+      sessionStorage.setItem("gmc_wa_popup_count", "2");
+    }
+  };
+
+  const handleJoinWhatsApp = () => {
+    sessionStorage.setItem("gmc_wa_popup_converted", "true");
+    sessionStorage.setItem("gmc_wa_popup_count", "2");
+    if (waTimerRef.current) clearTimeout(waTimerRef.current);
     setIsWhatsAppChannelModalOpen(false);
   };
 
@@ -382,10 +443,11 @@ export function App() {
         {/* Floating VIP WhatsApp Channel Link */}
         <WhatsAppButton />
 
-        {/* Timed WhatsApp Channel VIP Promo Popup (5-6s delayed trigger) */}
+        {/* Timed WhatsApp Channel VIP Promo Popup */}
         <WhatsAppChannelModal
           isOpen={isWhatsAppChannelModalOpen}
           onClose={handleCloseWhatsAppChannelModal}
+          onJoin={handleJoinWhatsApp}
         />
       </div>
     );
@@ -1127,10 +1189,11 @@ export function App() {
         loggedInUser={loggedInUser}
       />
 
-      {/* Timed WhatsApp Channel VIP Promo Popup (5-6s delayed trigger) */}
+      {/* Timed WhatsApp Channel VIP Promo Popup */}
       <WhatsAppChannelModal
         isOpen={isWhatsAppChannelModalOpen}
         onClose={handleCloseWhatsAppChannelModal}
+        onJoin={handleJoinWhatsApp}
       />
     </div>
   );
