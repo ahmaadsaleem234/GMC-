@@ -91,6 +91,37 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  const handleTriggerLiveSignal = async (direction: "BUY" | "SELL") => {
+    setTestStatus({ loading: true, msg: `Fetching live XAUUSD spot data & generating ${direction} signal...` });
+    try {
+      const res = await fetch("/api/telegram/trigger-signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction }),
+      });
+      const data = await res.json();
+      if (data.ok && data.sent) {
+        setTestStatus({
+          loading: false,
+          msg: `✅ LIVE ${direction} SIGNAL GENERATED & DISPATCHED TO TELEGRAM SUCCESSFULLY! (Entry: $${data.activeTrade?.entry})`,
+          success: true,
+        });
+      } else {
+        setTestStatus({
+          loading: false,
+          msg: data.error || "❌ Failed to dispatch live signal. Please verify Bot Token & Chat ID.",
+          success: false,
+        });
+      }
+    } catch (e: any) {
+      setTestStatus({
+        loading: false,
+        msg: `❌ Error triggering signal: ${e.message}`,
+        success: false,
+      });
+    }
+  };
+
   const handleSendTestSignal = async (type: "ENTRY" | "TP_HIT" | "SL_HIT" | "BALANCE" = "ENTRY") => {
     const cleanToken = cleanTelegramInput(config.botToken);
     const cleanChat = cleanTelegramInput(config.chatId);
@@ -324,6 +355,37 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
               />
               <span className="text-[11px] font-bold text-slate-300">Broadcast SL / TP Hits</span>
             </label>
+          </div>
+
+          {/* Instant Live Market Signal Trigger Buttons */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-950/40 via-teal-950/40 to-slate-900 border border-emerald-500/40 rounded-2xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> INSTANT LIVE MARKET SIGNAL TRIGGER
+              </span>
+              <span className="text-[9px] font-mono text-slate-400">SPOT XAUUSD FEED</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleTriggerLiveSignal("BUY")}
+                disabled={testStatus.loading}
+                className="py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+              >
+                <Radio className="w-3.5 h-3.5 animate-pulse" />
+                <span>🚀 DISPATCH LIVE BUY SIGNAL</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTriggerLiveSignal("SELL")}
+                disabled={testStatus.loading}
+                className="py-2.5 px-3 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-rose-500/20 transition-all cursor-pointer"
+              >
+                <Radio className="w-3.5 h-3.5 animate-pulse" />
+                <span>📉 DISPATCH LIVE SELL SIGNAL</span>
+              </button>
+            </div>
           </div>
 
           {/* Admin Demo Broadcast Test Controls */}
