@@ -32,7 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { LivePrice } from "../types";
-import { SUPPORTED_ASSETS } from "../useLiveData";
+import { SUPPORTED_ASSETS, useCandleData } from "../useLiveData";
 import { fetchAndUpdateDailyBankLevels } from "../utils/gmcBankLevels";
 import { useLockedTradeSetup } from "../utils/useLockedTradeSetup";
 import { LockedSetupBanner } from "./LockedSetupBanner";
@@ -105,9 +105,12 @@ export const GmcGoldZoneCardView: React.FC<GmcGoldZoneCardViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Live 1H Candle Data for Bank Levels calculation
+  const { candles: h1Candles } = useCandleData(selectedAssetKey, "1h");
+
   const bankLevels = useMemo(() => {
-    return fetchAndUpdateDailyBankLevels(livePrice, selectedAssetKey);
-  }, [livePrice, selectedAssetKey, h1TickCounter]);
+    return fetchAndUpdateDailyBankLevels(livePrice, selectedAssetKey, h1Candles);
+  }, [livePrice, selectedAssetKey, h1Candles, h1TickCounter]);
 
   // Format 1H close countdown string (MM:SS)
   const h1CountdownFormatted = useMemo(() => {

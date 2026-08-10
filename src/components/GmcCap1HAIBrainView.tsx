@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { TradeLogEntry } from "../types";
 import { TabDemoAccount } from "../useDemoAccounts";
+import { useCandleData } from "../useLiveData";
 import { useLockedTradeSetup } from "../utils/useLockedTradeSetup";
 import { LockedSetupBanner } from "./LockedSetupBanner";
 
@@ -245,32 +246,31 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     };
   }, [selectedAsset]);
 
-  // Dynamic 1H Candlestick dataset derived from liveMarketPrice
+  // Live 1H Candlestick feed from useCandleData
+  const { candles: h1Candles, appendTick } = useCandleData(selectedAsset, "1h");
+
+  // Keep live candle updating in real-time with incoming live price ticks
+  useEffect(() => {
+    if (liveMarketPrice > 0) {
+      appendTick(liveMarketPrice);
+    }
+  }, [liveMarketPrice, appendTick]);
+
+  // Active 1H Candlestick dataset (latest 25 H1 bars)
   const candles = useMemo(() => {
-    const barsCount = 20;
-    const result = [];
-    const baseScale = liveMarketPrice * 0.0035; // Volatility scale per bar
+    if (h1Candles && h1Candles.length > 0) {
+      return h1Candles.slice(-25);
+    }
+    return [];
+  }, [h1Candles]);
 
-    let prevClose = liveMarketPrice * 0.975; // Start 20 bars ago at lower price
-
-    for (let i = 0; i < barsCount; i++) {
-      const isLast = i === barsCount - 1;
-      const stepChange = (Math.sin(i * 0.7) * 0.8 + 0.4) * baseScale;
-      const open = prevClose;
-      let close = isLast ? liveMarketPrice : open + stepChange;
-      const high = Math.max(open, close) + Math.abs(Math.cos(i)) * baseScale * 0.8;
-      const low = Math.min(open, close) - Math.abs(Math.sin(i)) * baseScale * 0.8;
-      const volume = Math.round(3200 + Math.abs(Math.sin(i * 1.5)) * 4800);
-
-      result.push({ open, high, low, close, volume });
-      prevClose = close;
+  // REAL DYNAMIC ATR (14) MATHEMATICAL ENGINE (Calculated from H1 Candles)
+  const atrData = useMemo(() => {
+    if (!candles || candles.length === 0) {
+      const fallbackAtr = liveMarketPrice * 0.0035;
+      return { latestATR: fallbackAtr, svgPath: "M 20 24 L 880 24", atrs: [fallbackAtr] };
     }
 
-    return result;
-  }, [liveMarketPrice, selectedAsset]);
-
-  // REAL DYNAMIC ATR (14) MATHEMATICAL ENGINE
-  const atrData = useMemo(() => {
     const trs: number[] = [];
     for (let i = 0; i < candles.length; i++) {
       const c = candles[i];
@@ -282,7 +282,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       }
     }
 
-    const period = 14;
+    const period = Math.min(14, trs.length);
     let currentATR = 0;
     const atrs: number[] = [];
     for (let i = 0; i < trs.length; i++) {
@@ -295,14 +295,14 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       }
     }
 
-    const latestATR = atrs[atrs.length - 1] || liveMarketPrice * 0.004;
+    const latestATR = atrs[atrs.length - 1] || liveMarketPrice * 0.0035;
     const minAtr = Math.min(...atrs);
     const maxAtr = Math.max(...atrs);
     const range = Math.max(0.0001, maxAtr - minAtr);
 
     const svgPath = atrs
       .map((val, i) => {
-        const x = 20 + i * (860 / (atrs.length - 1));
+        const x = 20 + i * (860 / Math.max(1, atrs.length - 1));
         const y = 48 - ((val - minAtr) / range) * 36;
         return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
       })
@@ -311,15 +311,31 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     return { latestATR, svgPath, atrs };
   }, [candles, liveMarketPrice]);
 
-  // REAL DYNAMIC EMA 50, EMA 100, EMA 200 CLUSTER ENGINE
+  // REAL DYNAMIC EMA 50, EMA 100, EMA 200 CLUSTER ENGINE (Calculated from H1 Candle Closes)
   const emaData = useMemo(() => {
+    if (!candles || candles.length === 0) {
+      return {
+        latestE50: liveMarketPrice * 0.998,
+        latestE100: liveMarketPrice * 0.992,
+        latestE200: liveMarketPrice * 0.985,
+        isAboveCluster: true,
+        alignmentState: "BULLISH_ALIGNMENT",
+        subPath50: "M 20 24 L 880 24",
+        subPath100: "M 20 30 L 880 30",
+        subPath200: "M 20 36 L 880 36",
+        ema50List: [liveMarketPrice * 0.998],
+        ema100List: [liveMarketPrice * 0.992],
+        ema200List: [liveMarketPrice * 0.985],
+      };
+    }
+
     const ema50List: number[] = [];
     const ema100List: number[] = [];
     const ema200List: number[] = [];
 
-    let e50 = candles[0].close * 0.99;
-    let e100 = candles[0].close * 0.982;
-    let e200 = candles[0].close * 0.975;
+    let e50 = candles[0].close;
+    let e100 = candles[0].close;
+    let e200 = candles[0].close;
 
     const k50 = 2 / (50 + 1);
     const k100 = 2 / (100 + 1);
@@ -339,7 +355,14 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const latestE50 = ema50List[ema50List.length - 1];
     const latestE100 = ema100List[ema100List.length - 1];
     const latestE200 = ema200List[ema200List.length - 1];
+
     const isAboveCluster = liveMarketPrice >= latestE50;
+    let alignmentState = "MIXED_CONSOLIDATION";
+    if (latestE50 > latestE100 && latestE100 > latestE200) {
+      alignmentState = "BULLISH_ALIGNMENT";
+    } else if (latestE50 < latestE100 && latestE100 < latestE200) {
+      alignmentState = "BEARISH_ALIGNMENT";
+    }
 
     const allEmas = [...ema50List, ...ema100List, ...ema200List];
     const minEma = Math.min(...allEmas);
@@ -349,7 +372,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const makeSubPath = (list: number[]) =>
       list
         .map((val, i) => {
-          const x = 20 + i * (860 / (list.length - 1));
+          const x = 20 + i * (860 / Math.max(1, list.length - 1));
           const y = 48 - ((val - minEma) / range) * 36;
           return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
         })
@@ -360,50 +383,85 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       latestE100,
       latestE200,
       isAboveCluster,
+      alignmentState,
       subPath50: makeSubPath(ema50List),
       subPath100: makeSubPath(ema100List),
       subPath200: makeSubPath(ema200List),
+      ema50List,
+      ema100List,
+      ema200List,
     };
   }, [candles, liveMarketPrice]);
 
-  // VOLUME / PARTICIPATION METRICS
+  // VOLUME / PARTICIPATION METRICS (Calculated directly from H1 Live Data)
   const volumeData = useMemo(() => {
-    const maxVol = Math.max(...candles.map((c) => c.volume), 1);
-    const recentAvg = candles.slice(-5).reduce((a, b) => a + b.volume, 0) / 5;
-    const prevAvg = candles.slice(0, 10).reduce((a, b) => a + b.volume, 0) / 10;
-    const ratio = recentAvg / (prevAvg || 1);
+    if (!candles || candles.length === 0) {
+      return {
+        stateText: "NORMAL",
+        expansionRatio: "1.00",
+        maxVol: 1000,
+        recentAvg: 500,
+        currentVol: 500,
+      };
+    }
+
+    const maxVol = Math.max(...candles.map((c) => c.volume || 1), 1);
+    const recentSlice = candles.slice(-5);
+    const priorSlice = candles.slice(-15, -5);
+    const recentAvg = recentSlice.reduce((a, b) => a + (b.volume || 0), 0) / Math.max(1, recentSlice.length);
+    const priorAvg = priorSlice.length > 0
+      ? priorSlice.reduce((a, b) => a + (b.volume || 0), 0) / priorSlice.length
+      : recentAvg;
+
+    const ratio = priorAvg > 0 ? recentAvg / priorAvg : 1.0;
+    const currentVol = candles[candles.length - 1]?.volume || 0;
+
+    const stateText = ratio >= 1.25 || currentVol > 1.2 * priorAvg ? "EXPANSION" : "NORMAL";
 
     return {
-      stateText: ratio > 1.2 ? "HIGH PARTICIPATION" : "NORMAL",
+      stateText,
       expansionRatio: ratio.toFixed(2),
       maxVol,
+      recentAvg: Math.round(recentAvg),
+      currentVol,
     };
   }, [candles]);
 
-  // DYNAMIC INSTITUTIONAL DEMAND & SUPPLY ZONES (Based on Live Price & ATR)
+  // STABLE REAL-TIME INSTITUTIONAL DEMAND & SUPPLY ZONES (Anchored on H1 Structure)
   const zones = useMemo(() => {
     const atr = atrData.latestATR;
 
-    // BTL Zone = Center pivot point
-    const btlZone = liveMarketPrice - 0.4 * atr;
+    // Use H1 candle swing high/low structure for stable, reliable zone anchors
+    const closedCandles = candles.length > 1 ? candles.slice(0, candles.length - 1) : candles;
+    const h1High = closedCandles.length > 0 ? Math.max(...closedCandles.map((c) => c.high)) : liveMarketPrice + atr * 2;
+    const h1Low = closedCandles.length > 0 ? Math.min(...closedCandles.map((c) => c.low)) : liveMarketPrice - atr * 2;
+    const lastClose = closedCandles.length > 0 ? closedCandles[closedCandles.length - 1].close : liveMarketPrice;
+
+    // BTL Zone = Bank Pivot Equilibrium Point
+    const btlZone = parseFloat(((h1High + h1Low + lastClose) / 3).toFixed(decimals));
 
     // Sell Zones (Supply)
-    const tier1SellLow = liveMarketPrice + 0.6 * atr;
-    const tier1SellHigh = liveMarketPrice + 1.4 * atr;
+    const tier1SellLow = parseFloat(Math.max(liveMarketPrice + 0.3 * atr, h1High - 0.2 * atr).toFixed(decimals));
+    const tier1SellHigh = parseFloat((tier1SellLow + 0.8 * atr).toFixed(decimals));
 
     // Buy Zones (Demand)
-    const tier1BuyHigh = liveMarketPrice - 0.5 * atr;
-    const tier1BuyLow = liveMarketPrice - 1.2 * atr;
+    const tier1BuyHigh = parseFloat(Math.min(liveMarketPrice - 0.3 * atr, btlZone - 0.3 * atr).toFixed(decimals));
+    const tier1BuyLow = parseFloat((tier1BuyHigh - 0.7 * atr).toFixed(decimals));
 
-    const tier2BuyHigh = liveMarketPrice - 1.8 * atr;
-    const tier2BuyLow = liveMarketPrice - 2.6 * atr;
+    const tier2BuyHigh = parseFloat((tier1BuyLow - 0.4 * atr).toFixed(decimals));
+    const tier2BuyLow = parseFloat((tier2BuyHigh - 0.8 * atr).toFixed(decimals));
 
-    const tier3BuyHigh = liveMarketPrice - 3.2 * atr;
-    const tier3BuyLow = liveMarketPrice - 4.2 * atr;
+    const tier3BuyHigh = parseFloat((tier2BuyLow - 0.5 * atr).toFixed(decimals));
+    const tier3BuyLow = parseFloat((tier3BuyHigh - 1.0 * atr).toFixed(decimals));
 
     // Invalidation Levels
-    const sellInvalidation = tier1SellHigh + 0.3 * atr;
-    const buyInvalidation = tier3BuyLow - 0.3 * atr;
+    const sellInvalidation = parseFloat((tier1SellHigh + 0.5 * atr).toFixed(decimals));
+    const buyInvalidation = parseFloat((tier3BuyLow - 0.5 * atr).toFixed(decimals));
+
+    // Confirmed Flipped Status (Requires actual live market price movement past level)
+    const isTier1BuyFlipped = liveMarketPrice > tier1BuyHigh + 0.5 * atr;
+    const isTier2BuyFlipped = liveMarketPrice > tier2BuyHigh + 0.8 * atr;
+    const isTier1SellFlipped = liveMarketPrice < tier1SellLow - 0.5 * atr;
 
     // Take Profit Targets
     const sellTP1 = tier1BuyHigh;
@@ -412,9 +470,9 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const sellTP4 = tier3BuyHigh;
 
     const buyTP1 = tier1SellLow;
-    const buyTP2 = tier1SellHigh + 0.5 * atr;
-    const buyTP3 = tier1SellHigh + 1.5 * atr;
-    const buyTP4 = tier1SellHigh + 2.5 * atr;
+    const buyTP2 = tier1SellHigh;
+    const buyTP3 = parseFloat((tier1SellHigh + 0.8 * atr).toFixed(decimals));
+    const buyTP4 = parseFloat((tier1SellHigh + 1.8 * atr).toFixed(decimals));
 
     return {
       btlZone,
@@ -428,6 +486,9 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       tier3BuyHigh,
       sellInvalidation,
       buyInvalidation,
+      isTier1BuyFlipped,
+      isTier2BuyFlipped,
+      isTier1SellFlipped,
       sellTP1,
       sellTP2,
       sellTP3,
@@ -437,7 +498,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       buyTP3,
       buyTP4,
     };
-  }, [liveMarketPrice, atrData.latestATR]);
+  }, [candles, liveMarketPrice, atrData.latestATR, decimals]);
 
   // Chart Coordinate Mapper (Scales dynamically for any asset)
   const chartBounds = useMemo(() => {
@@ -972,6 +1033,20 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               );
             })}
 
+            {/* SELL INVALIDATION LINE */}
+            <line
+              x1="10"
+              y1={priceToY(zones.sellInvalidation)}
+              x2="800"
+              y2={priceToY(zones.sellInvalidation)}
+              stroke="#EF4444"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            <text x="20" y={priceToY(zones.sellInvalidation) - 4} fill="#EF4444" fontSize="9" fontWeight="bold">
+              SELL INVALIDATION ({zones.sellInvalidation.toFixed(decimals)})
+            </text>
+
             {/* TIER 1 PRIMARY SELL (SUPPLY ZONE) */}
             <rect
               x="10"
@@ -993,6 +1068,13 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               letterSpacing="0.5"
             >
               TIER 1 PRIMARY SELL ({zones.tier1SellLow.toFixed(decimals)} – {zones.tier1SellHigh.toFixed(decimals)})
+              {zones.isTier1SellFlipped ? " [⇄ FLIPPED]" : ""}
+            </text>
+
+            {/* BTL ZONE LINE (Thick Gold Horizontal Line) */}
+            <line x1="10" y1={priceToY(zones.btlZone)} x2="800" y2={priceToY(zones.btlZone)} stroke="#EAB308" strokeWidth="2.5" />
+            <text x="20" y={priceToY(zones.btlZone) - 5} fill="#FEF08A" fontSize="11" fontWeight="900" letterSpacing="0.5">
+              BTL ZONE {zones.btlZone.toFixed(decimals)}
             </text>
 
             {/* TIER 1 PRIMARY BUY (DEMAND ZONE) */}
@@ -1016,22 +1098,29 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               letterSpacing="0.5"
             >
               TIER 1 PRIMARY BUY ({zones.tier1BuyLow.toFixed(decimals)} – {zones.tier1BuyHigh.toFixed(decimals)})
+              {zones.isTier1BuyFlipped ? " [⇄ FLIPPED SUPPORT]" : ""}
             </text>
 
-            {/* BTL ZONE LINE (Thick Gold Horizontal Line) */}
-            <line x1="10" y1={priceToY(zones.btlZone)} x2="800" y2={priceToY(zones.btlZone)} stroke="#EAB308" strokeWidth="3" />
-            <text x="20" y={priceToY(zones.btlZone) - 5} fill="#FEF08A" fontSize="11" fontWeight="900" letterSpacing="0.5">
-              BTL ZONE {zones.btlZone.toFixed(decimals)}
-            </text>
+            {/* TIER 2 DEMAND ZONE */}
+            <rect
+              x="10"
+              y={Math.min(priceToY(zones.tier2BuyLow), priceToY(zones.tier2BuyHigh))}
+              width="790"
+              height={Math.max(8, Math.abs(priceToY(zones.tier2BuyLow) - priceToY(zones.tier2BuyHigh)))}
+              fill="#10B981"
+              fillOpacity="0.14"
+              stroke="#10B981"
+              strokeWidth="0.8"
+            />
 
-            {/* TIER 2 & TIER 3 DEMAND ZONES */}
+            {/* TIER 3 DEMAND ZONE */}
             <rect
               x="10"
               y={Math.min(priceToY(zones.tier3BuyLow), priceToY(zones.tier3BuyHigh))}
               width="790"
               height={Math.max(8, Math.abs(priceToY(zones.tier3BuyLow) - priceToY(zones.tier3BuyHigh)))}
               fill="#10B981"
-              fillOpacity="0.12"
+              fillOpacity="0.10"
               stroke="#10B981"
               strokeWidth="0.8"
               strokeDasharray="3 3"
@@ -1046,9 +1135,23 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               EXTREME DEMAND T3 ({zones.tier3BuyLow.toFixed(decimals)} – {zones.tier3BuyHigh.toFixed(decimals)})
             </text>
 
+            {/* BUY INVALIDATION LINE */}
+            <line
+              x1="10"
+              y1={priceToY(zones.buyInvalidation)}
+              x2="800"
+              y2={priceToY(zones.buyInvalidation)}
+              stroke="#10B981"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            <text x="20" y={priceToY(zones.buyInvalidation) + 12} fill="#10B981" fontSize="9" fontWeight="bold">
+              BUY INVALIDATION ({zones.buyInvalidation.toFixed(decimals)})
+            </text>
+
             {/* Dynamic 1H Candlesticks */}
             {candles.map((cd, idx) => {
-              const x = 30 + idx * 39;
+              const x = 30 + idx * 31;
               const yHigh = priceToY(cd.high);
               const yLow = priceToY(cd.low);
               const yOpen = priceToY(cd.open);
@@ -1124,10 +1227,10 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
         {/* VOLUME / PARTICIPATION Subchart */}
         <div className="border border-slate-800 bg-[#080B12] p-3 rounded-lg space-y-2">
           <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold">
-            <span className="text-amber-400">VOLUME  /  PARTICIPATION</span>
+            <span className="text-amber-400">VOLUME / PARTICIPATION (H1 LIVE)</span>
             <span className="text-slate-300">
-              State <span className="text-emerald-400">{volumeData.stateText}</span>  ·  {" "}
-              <span className="text-amber-400">EXPANSION {volumeData.expansionRatio}x avg</span>
+              State <span className="text-emerald-400 font-black">{volumeData.stateText}</span>  ·  {" "}
+              <span className="text-amber-400 font-black">EXPANSION {volumeData.expansionRatio}x avg</span>
             </span>
           </div>
 
@@ -1138,8 +1241,9 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               return (
                 <div
                   key={idx}
-                  className={`flex-1 rounded-t ${isBull ? "bg-emerald-500/80" : "bg-rose-500/80"}`}
+                  className={`flex-1 rounded-t transition-all ${isBull ? "bg-emerald-500/80 hover:bg-emerald-400" : "bg-rose-500/80 hover:bg-rose-400"}`}
                   style={{ height: `${heightPct}%` }}
+                  title={`Vol: ${cd.volume}`}
                 />
               );
             })}
@@ -1158,7 +1262,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               <path
                 d={atrData.svgPath}
                 fill="none"
-                stroke="#FFFFFF"
+                stroke="#10B981"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1172,7 +1276,11 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
           <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold">
             <span className="text-amber-400">TREND  ·  EMA CLUSTER</span>
             <span className="text-emerald-400 font-bold">
-              {emaData.isAboveCluster ? "Price above EMA cluster (Bullish Alignment)" : "Price below EMA cluster"}
+              {emaData.alignmentState === "BULLISH_ALIGNMENT"
+                ? "Bullish Alignment (EMA 50 > 100 > 200)"
+                : emaData.alignmentState === "BEARISH_ALIGNMENT"
+                ? "Bearish Alignment (EMA 50 < 100 < 200)"
+                : "Consolidation Cluster"}
             </span>
           </div>
 
@@ -1233,8 +1341,11 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
       {/* 9. INSTITUTIONAL ZONE MAP (SUPPLY & DEMAND ZONES) */}
       <div className="border border-slate-800 bg-[#080B12] rounded-xl p-4 space-y-3.5">
         <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-slate-800 pb-2">
-          <span>INSTITUTIONAL ZONE MAP ({selectedAsset})</span>
-          <span className="text-[10px] text-slate-500">LIVE CALCULATED</span>
+          <span>INSTITUTIONAL ZONE MAP ({selectedAsset} H1 LIVE)</span>
+          <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            LIVE MARKET DATA CALCULATED
+          </span>
         </div>
 
         {/* ▲ SELL ZONES (SUPPLY) */}
@@ -1244,12 +1355,19 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
           </div>
 
           <div className="border border-rose-500/60 bg-[#0D080A] p-3 rounded-lg space-y-1">
-            <div className="text-xs font-black text-rose-400 uppercase">TIER 1 PRIMARY SELL</div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-rose-400 uppercase">TIER 1 PRIMARY SELL</span>
+              {zones.isTier1SellFlipped && (
+                <span className="bg-amber-500 text-black text-[9px] px-1.5 py-0.5 rounded font-black">
+                  ⇄ FLIPPED
+                </span>
+              )}
+            </div>
             <div className="text-xl font-black text-white font-mono">
               {zones.tier1SellLow.toFixed(decimals)} – {zones.tier1SellHigh.toFixed(decimals)}
             </div>
             <div className="text-[10px] text-slate-400">
-              Daily Pivot R3 · Premium | D1 supply · Institutional Liquidity Pool
+              H1 Structure Supply · Premium Institutional Liquidity Pool
             </div>
             <div className="text-[10px] text-amber-300 font-bold">
               Best Reaction Area {zones.tier1SellLow.toFixed(decimals)}–{zones.tier1SellHigh.toFixed(decimals)}
@@ -1266,15 +1384,17 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
           <div className="border border-emerald-500/60 bg-[#060D0A] p-3 rounded-lg space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-emerald-400 uppercase">TIER 1 PRIMARY BUY</span>
-              <span className="bg-amber-500 text-black text-[9px] px-1.5 py-0.5 rounded font-black">
-                ⇄ FLIPPED
-              </span>
+              {zones.isTier1BuyFlipped && (
+                <span className="bg-amber-500 text-black text-[9px] px-1.5 py-0.5 rounded font-black">
+                  ⇄ FLIPPED SUPPORT
+                </span>
+              )}
             </div>
             <div className="text-xl font-black text-white font-mono">
               {zones.tier1BuyLow.toFixed(decimals)} – {zones.tier1BuyHigh.toFixed(decimals)}
             </div>
             <div className="text-[10px] text-slate-400">
-              Daily Pivot R2 · Premium | D1 Demand · Flipped Support
+              H1 Primary Demand · Institutional Order Block
             </div>
             <div className="text-[10px] text-emerald-300 font-bold">
               Best Reaction Area {zones.tier1BuyLow.toFixed(decimals)}–{zones.tier1BuyHigh.toFixed(decimals)}
@@ -1284,15 +1404,17 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
           <div className="border border-slate-800 bg-[#08090E] p-3 rounded-lg space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-emerald-400 uppercase">TIER 2 STRONG BUY</span>
-              <span className="bg-amber-500 text-black text-[9px] px-1.5 py-0.5 rounded font-black">
-                ⇄ FLIPPED
-              </span>
+              {zones.isTier2BuyFlipped && (
+                <span className="bg-amber-500 text-black text-[9px] px-1.5 py-0.5 rounded font-black">
+                  ⇄ FLIPPED
+                </span>
+              )}
             </div>
             <div className="text-xl font-black text-white font-mono">
               {zones.tier2BuyLow.toFixed(decimals)} – {zones.tier2BuyHigh.toFixed(decimals)}
             </div>
             <div className="text-[10px] text-slate-400">
-              Daily Pivot R1 · Premium | H4 Demand
+              H4 Liquidity Support | Strong Demand Zone
             </div>
           </div>
 
@@ -1302,7 +1424,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               {zones.tier3BuyLow.toFixed(decimals)} – {zones.tier3BuyHigh.toFixed(decimals)}
             </div>
             <div className="text-[10px] text-slate-400">
-              Daily Pivot S1 · Discount | H1 Major Order Block
+              Macro Discount Floor | Extreme Institutional Buy Level
             </div>
           </div>
         </div>

@@ -85,7 +85,8 @@ export interface DailyBankLevelsResult {
  */
 export function fetchAndUpdateDailyBankLevels(
   livePrice: number,
-  assetKey: string = "XAUUSD"
+  assetKey: string = "XAUUSD",
+  h1Candles?: { open: number; high: number; low: number; close: number; volume?: number }[]
 ): DailyBankLevelsResult {
   const asset = SUPPORTED_ASSETS.find((a) => a.key === assetKey) || SUPPORTED_ASSETS[0];
   const isForex = assetKey.includes("EUR") || assetKey.includes("GBP");
@@ -97,15 +98,49 @@ export function fetchAndUpdateDailyBankLevels(
     basePrice = 4239.27;
   }
 
-  // Calculate ATR and volatility basis
-  const atrMultiplier = assetKey === "XAUUSD" ? 0.0035 : isForex ? 0.0025 : 0.004;
-  const atrValue = parseFloat((basePrice * atrMultiplier).toFixed(decimals));
-  const current15mRange = parseFloat((basePrice * (atrMultiplier * 0.71)).toFixed(decimals));
+  // Calculate ATR and volatility basis from H1 candles if provided
+  let atrValue = parseFloat((basePrice * (assetKey === "XAUUSD" ? 0.0035 : isForex ? 0.0025 : 0.004)).toFixed(decimals));
+  
+  if (h1Candles && h1Candles.length > 1) {
+    const trs: number[] = [];
+    for (let i = 0; i < h1Candles.length; i++) {
+      const c = h1Candles[i];
+      if (i === 0) trs.push(c.high - c.low);
+      else {
+        const prevClose = h1Candles[i - 1].close;
+        trs.push(Math.max(c.high - c.low, Math.abs(c.high - prevClose), Math.abs(c.low - prevClose)));
+      }
+    }
+    const period = Math.min(14, trs.length);
+    let smoothedATR = 0;
+    for (let i = 0; i < trs.length; i++) {
+      if (i < period) smoothedATR += trs[i];
+      else smoothedATR = (smoothedATR * (period - 1) + trs[i]) / period;
+    }
+    const calcAtr = trs.length >= period ? smoothedATR / period : smoothedATR / Math.max(1, trs.length);
+    if (calcAtr > 0) {
+      atrValue = parseFloat(calcAtr.toFixed(decimals));
+    }
+  }
+
+  const current15mRange = parseFloat((atrValue * 0.71).toFixed(decimals));
   const atrRatio = parseFloat((current15mRange / Math.max(0.01, atrValue)).toFixed(2));
 
-  // Range Calculations (Standardized institutional Daily Range)
-  const rangeLow = parseFloat((basePrice * 0.9589).toFixed(decimals));
-  const rangeHigh = parseFloat((basePrice * 1.0027).toFixed(decimals));
+  // Determine H1 structure points
+  let h1High = basePrice + atrValue * 2.5;
+  let h1Low = basePrice - atrValue * 2.5;
+  let h1Close = basePrice;
+
+  if (h1Candles && h1Candles.length > 0) {
+    const closed = h1Candles.length > 1 ? h1Candles.slice(0, h1Candles.length - 1) : h1Candles;
+    h1High = Math.max(...closed.map((c) => c.high));
+    h1Low = Math.min(...closed.map((c) => c.low));
+    h1Close = closed[closed.length - 1].close;
+  }
+
+  // Range Calculations
+  const rangeLow = parseFloat(Math.min(h1Low, basePrice - atrValue * 2.5).toFixed(decimals));
+  const rangeHigh = parseFloat(Math.max(h1High, basePrice + atrValue * 2.5).toFixed(decimals));
   const rangeMid = parseFloat(((rangeLow + rangeHigh) / 2).toFixed(decimals));
 
   const rangePctVal = Math.min(
@@ -115,9 +150,9 @@ export function fetchAndUpdateDailyBankLevels(
   const rangePct = parseFloat(rangePctVal.toFixed(1));
 
   // Daily Bank Pivots
-  const prevDayHigh = parseFloat((basePrice * 1.0085).toFixed(decimals));
-  const prevDayLow = parseFloat((basePrice * 0.9890).toFixed(decimals));
-  const prevClose = parseFloat((basePrice * 0.9990).toFixed(decimals));
+  const prevDayHigh = parseFloat((rangeHigh).toFixed(decimals));
+  const prevDayLow = parseFloat((rangeLow).toFixed(decimals));
+  const prevClose = parseFloat((h1Close).toFixed(decimals));
 
   const dailyPivot = parseFloat(((prevDayHigh + prevDayLow + prevClose) / 3).toFixed(decimals));
   const r1 = parseFloat((2 * dailyPivot - prevDayLow).toFixed(decimals));
@@ -127,30 +162,30 @@ export function fetchAndUpdateDailyBankLevels(
   const r3 = parseFloat((r1 + (prevDayHigh - prevDayLow)).toFixed(decimals));
   const s3 = parseFloat((s1 - (prevDayHigh - prevDayLow)).toFixed(decimals));
 
-  const asianHigh = parseFloat((basePrice * 1.0018).toFixed(decimals));
-  const asianLow = parseFloat((basePrice * 0.9875).toFixed(decimals));
-  const nyHigh = parseFloat((basePrice * 1.0110).toFixed(decimals));
-  const nyLow = parseFloat((basePrice * 0.9840).toFixed(decimals));
+  const asianHigh = parseFloat((dailyPivot + atrValue * 0.8).toFixed(decimals));
+  const asianLow = parseFloat((dailyPivot - atrValue * 0.8).toFixed(decimals));
+  const nyHigh = parseFloat((r1 + atrValue * 0.5).toFixed(decimals));
+  const nyLow = parseFloat((s1 - atrValue * 0.5).toFixed(decimals));
 
-  // Tier 1 Primary Dip Buy Zone (Institutional Demand / S/R Flip)
-  const tier1Low = parseFloat((basePrice * 0.9860).toFixed(decimals));
-  const tier1High = parseFloat((basePrice * 0.9907).toFixed(decimals));
-  const tier1SL = parseFloat((basePrice * 0.9813).toFixed(decimals));
+  // Tier 1 Primary Dip Buy Zone (Demand)
+  const tier1High = parseFloat(Math.min(basePrice - 0.3 * atrValue, dailyPivot - 0.2 * atrValue).toFixed(decimals));
+  const tier1Low = parseFloat((tier1High - 0.7 * atrValue).toFixed(decimals));
+  const tier1SL = parseFloat((tier1Low - 0.4 * atrValue).toFixed(decimals));
 
   // Tier 2 Extreme Dip Buy Zone
-  const tier2Low = parseFloat((basePrice * 0.9742).toFixed(decimals));
-  const tier2High = parseFloat((basePrice * 0.9789).toFixed(decimals));
-  const tier2SL = parseFloat((basePrice * 0.9695).toFixed(decimals));
+  const tier2High = parseFloat((tier1Low - 0.4 * atrValue).toFixed(decimals));
+  const tier2Low = parseFloat((tier2High - 0.8 * atrValue).toFixed(decimals));
+  const tier2SL = parseFloat((tier2Low - 0.4 * atrValue).toFixed(decimals));
 
   // Sell Scalp Zone (Institutional Supply)
-  const sellScalpLow = parseFloat((basePrice * 1.0096).toFixed(decimals));
-  const sellScalpHigh = parseFloat((basePrice * 1.0143).toFixed(decimals));
-  const sellScalpSL = parseFloat((basePrice * 1.0190).toFixed(decimals));
+  const sellScalpLow = parseFloat(Math.max(basePrice + 0.3 * atrValue, dailyPivot + 0.5 * atrValue).toFixed(decimals));
+  const sellScalpHigh = parseFloat((sellScalpLow + 0.8 * atrValue).toFixed(decimals));
+  const sellScalpSL = parseFloat((sellScalpHigh + 0.4 * atrValue).toFixed(decimals));
 
   // Targets
-  const tp1 = parseFloat((basePrice * 0.9978).toFixed(decimals));
-  const tp2 = parseFloat((basePrice * 1.0096).toFixed(decimals));
-  const tp3 = parseFloat((basePrice * 1.0214).toFixed(decimals));
+  const tp1 = tier1High;
+  const tp2 = tier2High;
+  const tp3 = dailyPivot;
 
   // Primary Institutional Supply Zone (Bearish OB above price)
   const supplyLow = sellScalpLow;
