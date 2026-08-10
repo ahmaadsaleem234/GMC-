@@ -1301,10 +1301,10 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
     const SPREAD = 0.25; // Standard Gold $0.25 Forex Spread
     const now = Date.now();
 
-    // 1. Try Gold-API (Direct FOREX.com / OANDA Spot Forex Feed)
+    // 1. Try Gold-API (Direct Forex / Institutional Spot XAUUSD Feed)
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 3500);
       const res = await fetch("https://api.gold-api.com/price/XAU", {
         headers: { "User-Agent": "Mozilla/5.0" },
         signal: controller.signal,
@@ -1312,14 +1312,14 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
       clearTimeout(timeout);
       if (res.ok) {
         const data = await res.json();
-        if (data?.price && data.price > 2000 && data.price < 6000) {
+        if (data?.price && data.price > 1800 && data.price < 6000) {
           const rawPrice = Number(data.price.toFixed(2));
           lastKnownValidTick = {
             price: rawPrice,
             bid: rawPrice,
             ask: Number((rawPrice + SPREAD).toFixed(2)),
             timestamp: now,
-            source: "Gold-API Spot (XAUUSD)",
+            source: "Gold-API Institutional Spot (XAU/USD)",
             status: "Live",
           };
           return lastKnownValidTick;
@@ -1327,10 +1327,37 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
       }
     } catch (e) {}
 
-    // 2. Try FxRatesAPI Spot XAU
+    // 2. Try Yahoo Finance Spot Gold (XAUUSD=X)
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1m&range=1d", {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const marketPrice = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (marketPrice && marketPrice > 1800 && marketPrice < 6000) {
+          const rawPrice = Number(marketPrice.toFixed(2));
+          lastKnownValidTick = {
+            price: rawPrice,
+            bid: rawPrice,
+            ask: Number((rawPrice + SPREAD).toFixed(2)),
+            timestamp: now,
+            source: "Yahoo Finance Spot Gold (XAUUSD=X)",
+            status: "Live",
+          };
+          return lastKnownValidTick;
+        }
+      }
+    } catch (e) {}
+
+    // 4. Try FxRatesAPI Spot XAU
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
       const res = await fetch("https://api.fxratesapi.com/latest?currencies=XAU", {
         signal: controller.signal,
       });
@@ -1339,7 +1366,7 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
         const data = await res.json();
         if (data?.success && data?.rates?.XAU) {
           const raw = 1 / data.rates.XAU;
-          if (!isNaN(raw) && raw > 2000 && raw < 6000) {
+          if (!isNaN(raw) && raw > 1800 && raw < 6000) {
             const rawPrice = Number(raw.toFixed(2));
             lastKnownValidTick = {
               price: rawPrice,
