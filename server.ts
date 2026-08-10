@@ -915,6 +915,18 @@ async function startServer() {
   let isBroadcasterLoopRunning = false;
 
   // Telemetry & Status Variables for 24/7 Engine
+  interface ServerAnalysisCycleLog {
+    cycleId: string;
+    timestampUtc: string;
+    livePrice: number;
+    marketDataStatus: string;
+    confidence: number;
+    setupResult: string;
+    telegramDeliveryStatus: string;
+    reason: string;
+  }
+  let serverAnalysisLogs: ServerAnalysisCycleLog[] = [];
+
   let serverCurrentDecision: "BUY" | "SELL" | "WAIT — NO VALID SETUP" | "WAIT — MARKET CLOSED" = "WAIT — NO VALID SETUP";
   let serverTelegramDeliveryStatus: "Sent" | "Failed" | "Retrying" | "Idle" = "Idle";
   let serverLastAnalysisTime: number = 0;
@@ -1242,8 +1254,8 @@ async function startServer() {
         return;
       }
 
-      // Scan interval: 1 minute scan frequency
-      const SCAN_INTERVAL_MS = 60 * 1000;
+      // 30-Minute Institutional SMC Market Analysis Interval
+      const SCAN_INTERVAL_MS = 30 * 60 * 1000;
       const timeSinceLastRecheck = now - serverLastRecheckTime;
       const COOLDOWN_MS = 2 * 60 * 1000; // 2 minute cooldown after closed trade
 
@@ -1251,6 +1263,8 @@ async function startServer() {
         serverLastRecheckTime = now;
         serverLastAnalysisTime = now;
         serverNextAnalysisTime = now + SCAN_INTERVAL_MS;
+
+        const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
         // Perform SMC Market Structure & Liquidity Influx Analysis around live price
         const seed = Math.floor(now / 60000) % 100;
@@ -1301,8 +1315,6 @@ async function startServer() {
           serverLastSignalTime = now;
           serverLastDispatchedSignal = { direction, entry, timestamp: now };
 
-          const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
-
           const risk = Math.abs(entry - sl);
           const reward = Math.abs(tp1 - entry);
           const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
@@ -1352,14 +1364,46 @@ async function startServer() {
             console.warn("[SERVER 24/7 BROADCASTER]: Chart generation failed:", chartErr);
           }
 
+          let dispatched = false;
           if (mt5Config.telegramSignalsEnabled) {
-            await sendServerTelegramMessage(signalText, undefined, chartBuffer);
+            dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer);
           }
 
           serverLastPulseTime = now;
+
+          serverAnalysisLogs.unshift({
+            cycleId: `cycle-${now}`,
+            timestampUtc: nowUtc,
+            livePrice: currentPrice,
+            marketDataStatus: serverMarketDataStatus,
+            confidence,
+            setupResult: `A+ SIGNAL DISPATCHED (${direction} @ $${entry})`,
+            telegramDeliveryStatus: dispatched ? "Dispatched Successfully" : "Telegram Disabled/Failed",
+            reason: reasonForEntry,
+          });
         } else {
           serverCurrentDecision = "WAIT — NO VALID SETUP";
-          console.log(`[HARAMI AI 24/7 BROADCASTER]: RECORDED "WAIT — NO VALID SETUP" (Confidence: ${confidence}%). Next scan in 1 minute.`);
+          const skipReason = isDuplicate 
+            ? "Duplicate Signal Prevented (Same Zone within 1 hour)"
+            : `Confidence (${confidence}%) below 94.0% A+ Threshold`;
+
+          console.log(`[HARAMI AI 24/7 BROADCASTER]: 30-Min Analysis Completed: "WAIT — NO VALID SETUP" (${skipReason}). Next scan in 30 minutes.`);
+
+          serverAnalysisLogs.unshift({
+            cycleId: `cycle-${now}`,
+            timestampUtc: nowUtc,
+            livePrice: currentPrice,
+            marketDataStatus: serverMarketDataStatus,
+            confidence,
+            setupResult: "WAIT — NO VALID SETUP",
+            telegramDeliveryStatus: "N/A — No Signal Generated",
+            reason: skipReason,
+          });
+        }
+
+        // Limit stored logs to last 50 cycles
+        if (serverAnalysisLogs.length > 50) {
+          serverAnalysisLogs = serverAnalysisLogs.slice(0, 50);
         }
       }
     }
@@ -1637,6 +1681,7 @@ async function startServer() {
       activeTrade: serverActiveTrade,
       accountMetrics: mt5AccountMetrics,
       history: serverTradeHistory,
+      analysisLogs: serverAnalysisLogs.slice(0, 20),
       config: mt5Config,
       chatId: serverTargetChatId,
     });
