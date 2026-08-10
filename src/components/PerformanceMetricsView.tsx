@@ -13,6 +13,7 @@ import {
   Calendar,
   Layers,
   CheckCircle2,
+  Globe,
 } from "lucide-react";
 import {
   ResponsiveContainer,

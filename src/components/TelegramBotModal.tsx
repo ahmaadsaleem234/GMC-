@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Send, CheckCircle2, X, Bell, ShieldCheck, AlertCircle, Copy, ExternalLink, Sparkles, MessageSquare, Zap, Radio } from "lucide-react";
 import { getTelegramConfig, saveTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram";
 import { formatHaramiSignalMessage } from "../utils/haramiSignalFormatter";
+import { TelegramBotUsersSection } from "./TelegramBotUsersSection";
 
 interface TelegramBotModalProps {
   isOpen: boolean;
@@ -24,12 +25,29 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
   });
 
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [liveAnalysisLogs, setLiveAnalysisLogs] = useState<any[]>([]);
+  const [serverEngineInfo, setServerEngineInfo] = useState<any>(null);
+  const [activeModalTab, setActiveModalTab] = useState<"config" | "users" | "logs">("config");
 
   useEffect(() => {
     if (isOpen) {
       setConfig(getTelegramConfig());
       setTestStatus({ loading: false, msg: "" });
       setSaveSuccess(false);
+
+      const fetchStatus = async () => {
+        try {
+          const res = await fetch("/api/telegram/status");
+          const data = await res.json();
+          if (data.ok) {
+            setLiveAnalysisLogs(data.analysisLogs || []);
+            setServerEngineInfo(data);
+          }
+        } catch (err) {}
+      };
+      fetchStatus();
+      const interval = setInterval(fetchStatus, 4000);
+      return () => clearInterval(interval);
     }
   }, [isOpen]);
 
@@ -246,7 +264,52 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
           </div>
         </div>
 
-        {/* Description Banner */}
+        {/* Modal Tab Navigation Bar */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800 no-scrollbar font-mono text-xs">
+          <button
+            onClick={() => setActiveModalTab("config")}
+            className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap cursor-pointer ${
+              activeModalTab === "config"
+                ? "bg-sky-500/20 text-sky-300 border-sky-500/60 shadow-lg shadow-sky-500/10"
+                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+            }`}
+          >
+            <Send className="w-3.5 h-3.5 text-sky-400" />
+            <span>Bot Config &amp; Broadcast</span>
+          </button>
+
+          <button
+            onClick={() => setActiveModalTab("users")}
+            className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap cursor-pointer ${
+              activeModalTab === "users"
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-lg shadow-emerald-500/10"
+                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>👥 Telegram Bot Users &amp; Approval</span>
+          </button>
+
+          <button
+            onClick={() => setActiveModalTab("logs")}
+            className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap cursor-pointer ${
+              activeModalTab === "logs"
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-lg shadow-amber-500/10"
+                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <span>📜 24/7 Engine Analysis Logs</span>
+          </button>
+        </div>
+
+        {/* TAB 1: BOT USERS MANAGEMENT */}
+        {activeModalTab === "users" && <TelegramBotUsersSection />}
+
+        {/* TAB 2 & 3: CONFIG & LOGS */}
+        {activeModalTab !== "users" && (
+          <>
+            {/* Description Banner */}
         <div className="p-4 bg-sky-950/30 border border-sky-500/30 rounded-2xl space-y-2 font-sans text-slate-300">
           <p className="leading-relaxed">
             Integrate your Telegram Channel or Group to receive real-time signals from <strong>Harami AI</strong> directly on your phone!
@@ -484,6 +547,72 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
           )}
         </form>
 
+        {/* 24/7 Live Backend Analysis Logs Section */}
+        <div className="bg-[#05070E] border border-sky-500/30 rounded-2xl p-4 space-y-3 font-mono">
+          <div className="flex items-center justify-between border-b border-sky-500/20 pb-2.5">
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span className="font-extrabold text-white text-xs uppercase tracking-wide">
+                24/7 BACKEND MARKET ANALYSIS LOGS
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded font-bold uppercase">
+                ENGINE: {serverEngineInfo?.engineStatus || "RUNNING"}
+              </span>
+              <span className="px-2 py-0.5 bg-sky-500/10 border border-sky-500/30 text-sky-400 rounded font-bold uppercase">
+                1-MIN FREQUENCY
+              </span>
+            </div>
+          </div>
+
+          {liveAnalysisLogs.length === 0 ? (
+            <div className="p-3 bg-slate-900/60 rounded-xl text-slate-400 text-center text-[11px]">
+              ⏳ Waiting for next 1-minute backend market scan cycle...
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+              {liveAnalysisLogs.map((log: any, idx: number) => (
+                <div
+                  key={log.cycleId || idx}
+                  className="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1 text-[11px]"
+                >
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400 font-bold">{log.timestampUtc}</span>
+                    <span className="text-amber-400 font-bold">XAUUSD Spot: ${log.livePrice?.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`font-black text-xs ${
+                        log.setupResult?.includes("DISPATCHED")
+                          ? "text-emerald-400"
+                          : "text-slate-300"
+                      }`}
+                    >
+                      {log.setupResult}
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-400">
+                      Confidence: {log.confidence}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-slate-800/60">
+                    <span className="truncate max-w-[220px] text-slate-400">{log.reason}</span>
+                    <span
+                      className={`font-bold ${
+                        log.telegramDeliveryStatus?.includes("Successfully")
+                          ? "text-emerald-400"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {log.telegramDeliveryStatus}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Step-by-Step Telegram Setup Guide */}
         <div className="bg-[#05070E] border border-slate-800 rounded-2xl p-4 space-y-3 font-sans text-xs">
           <h3 className="font-mono font-black text-amber-400 uppercase text-xs flex items-center gap-2 border-b border-slate-800 pb-2">
@@ -508,7 +637,9 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
             </li>
           </ol>
         </div>
-      </div>
-    </div>
+      </>
+    )}
+  </div>
+</div>
   );
 };

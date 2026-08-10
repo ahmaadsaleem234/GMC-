@@ -712,10 +712,69 @@ async function startServer() {
     }
   }
 
+  // -------------------------------------------------------------
+  // TELEGRAM BOT CONFIG & MULTI-USER REGISTRY
+  // -------------------------------------------------------------
+  const CONFIG_FILE = path.join(process.cwd(), ".telegram_config.json");
+  let serverTargetChatId = "5218548758";
+
+  const TELEGRAM_USERS_FILE = path.join(process.cwd(), ".telegram_users.json");
+
+  interface TelegramBotUser {
+    userId: string;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
+    chatId: string;
+    status: "approved" | "pending" | "rejected" | "blocked";
+    joinedAt: string;
+    lastActive: string;
+    totalSignalsReceived: number;
+  }
+
+  let telegramUsersStore: Record<string, TelegramBotUser> = {};
+
+  function loadTelegramUsers() {
+    try {
+      if (fs.existsSync(TELEGRAM_USERS_FILE)) {
+        telegramUsersStore = JSON.parse(fs.readFileSync(TELEGRAM_USERS_FILE, "utf-8"));
+      }
+    } catch (e) {
+      telegramUsersStore = {};
+    }
+
+    // Always ensure primary master admin chat ID exists and is approved
+    const masterId = cleanServerTelegramInput(serverTargetChatId || "5218548758");
+    if (masterId && !telegramUsersStore[masterId]) {
+      telegramUsersStore[masterId] = {
+        userId: masterId,
+        username: "@admin_master",
+        firstName: "Master",
+        lastName: "Admin",
+        chatId: masterId,
+        status: "approved",
+        joinedAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+        totalSignalsReceived: 0,
+      };
+      saveTelegramUsers();
+    }
+  }
+
+  function saveTelegramUsers() {
+    try {
+      fs.writeFileSync(TELEGRAM_USERS_FILE, JSON.stringify(telegramUsersStore, null, 2), "utf-8");
+    } catch (e) {
+      console.error("[TELEGRAM USERS STORE ERROR]:", e);
+    }
+  }
+
+  // Load registered users on startup
+  loadTelegramUsers();
+
   async function startTelegramPollingLoop(token: string) {
-    console.log("[TELEGRAM POLLER]: Started background listener for Telegram commands (/start, /signal)...");
-    
-    // Polling loop
+    console.log("[TELEGRAM POLLER]: Started 24/7 background listener & user multi-access manager...");
+
     while (true) {
       try {
         const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=15`;
@@ -726,139 +785,143 @@ async function startServer() {
           for (const update of data.result) {
             lastUpdateId = Math.max(lastUpdateId, update.update_id);
             const msg = update.message;
-            if (msg && msg.text && msg.chat && msg.chat.id) {
-              const text = msg.text.trim().toLowerCase();
-              const chatId = msg.chat.id;
+            if (msg && msg.from && msg.chat && msg.chat.id) {
+              const text = (msg.text || "").trim();
+              const textLower = text.toLowerCase();
+              const userId = String(msg.from.id);
+              const chatId = String(msg.chat.id);
+              const username = msg.from.username ? `@${msg.from.username}` : "";
+              const firstName = msg.from.first_name || "Trader";
+              const lastName = msg.from.last_name || "";
+              const nowIso = new Date().toISOString();
+
+              // Auto-register or update user entry
+              let user = telegramUsersStore[userId];
+              if (!user) {
+                const isDefaultMaster = userId === serverTargetChatId || userId === "5218548758";
+                user = {
+                  userId,
+                  username,
+                  firstName,
+                  lastName,
+                  chatId,
+                  status: isDefaultMaster ? "approved" : "pending",
+                  joinedAt: nowIso,
+                  lastActive: nowIso,
+                  totalSignalsReceived: 0,
+                };
+                telegramUsersStore[userId] = user;
+                saveTelegramUsers();
+                console.log(`[TELEGRAM NEW USER REGISTERED]: ${firstName} (${userId}) - Status: ${user.status}`);
+              } else {
+                user.username = username || user.username;
+                user.firstName = firstName || user.firstName;
+                user.lastName = lastName || user.lastName;
+                user.chatId = chatId;
+                user.lastActive = nowIso;
+                saveTelegramUsers();
+              }
+
+              // Access Control Logic
+              if (user.status === "blocked") {
+                // Blocked user: ignore
+                continue;
+              }
 
               let replyText = "";
 
-              if (text.startsWith("/start")) {
+              if (user.status === "pending") {
                 replyText = `
+<b>⏳ ACCESS PENDING ADMIN APPROVAL</b>
+━━━━━━━━━━━━━━━━━━━
+Welcome <b>${firstName}</b>! Your Telegram User ID <code>${userId}</code> has been registered in the Harami AI Trading platform.
+
+<b>ACCOUNT STATUS:</b> <code>PENDING APPROVAL</code>
+
+<i>The Admin will review your access request in the Admin Panel shortly. Once approved, you will automatically start receiving 24/7 high-accuracy Gold signals directly in this chat!</i>
+                `.trim();
+              } else if (user.status === "rejected") {
+                replyText = `
+<b>❌ ACCESS RESTRICTED</b>
+━━━━━━━━━━━━━━━━━━━
+Hello <b>${firstName}</b>, your signal access request for User ID <code>${userId}</code> was restricted by the Admin.
+
+If you believe this is an error, please contact support on the website.
+                `.trim();
+              } else if (user.status === "approved") {
+                // Authorized approved user
+                if (textLower.startsWith("/start")) {
+                  replyText = `
 <b>🧠 HARAMI AI • SERIOUS SIGNALS, ZERO DRAMA</b>
 ━━━━━━━━━━━━━━━━━━━
+Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
+
 <b>🤖 BOT STATUS:</b> <code>SILENT MONITORING ACTIVE</code>
 <b>🎯 COVERED ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
 <b>⚡ SIGNAL MODE:</b> <code>HIGH ACCURACY • ZERO SPAM</code>
 <b>🎯 WIN RATE:</b> <code>98.4% SMC Accuracy</code>
-<b>🛡️ COOLDOWN:</b> <code>12 Min Post-Trade Shield</code>
+<b>🛡️ ACCESS STATUS:</b> <code>APPROVED BY ADMIN</code>
 
-<i>⚡ Harami AI monitors the market silently 24/7. Confirmed high-probability trade setups post automatically to this chat.</i>
-                `.trim();
-              } else if (text.startsWith("/signal")) {
-                if (serverActiveTrade) {
-                  const t = serverActiveTrade;
-                  const isBuy = t.direction === "BUY";
-                  const risk = Math.abs(t.entry - t.sl);
-                  const reward = Math.abs(t.tp1 - t.entry);
-                  const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
+<i>⚡ Harami AI monitors the market silently 24/7. Confirmed high-probability trade setups post automatically to this chat!</i>
+                  `.trim();
+                } else if (textLower.startsWith("/signal")) {
+                  if (serverActiveTrade) {
+                    const t = serverActiveTrade;
+                    const isBuy = t.direction === "BUY";
+                    const risk = Math.abs(t.entry - t.sl);
+                    const reward = Math.abs(t.tp1 - t.entry);
+                    const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
 
-                  replyText = formatHaramiSignalMessage({
-                    direction: t.direction,
-                    symbolShort: "XAUUSD",
-                    assetName: "GOLD",
-                    h4Context: isBuy ? "Bullish" : "Bearish",
-                    h1Bias: isBuy ? "BULLISH" : "BEARISH",
-                    m15Setup: isBuy ? "BULLISH" : "BEARISH",
-                    m5Entry: "CONFIRMED",
-                    entryLow: t.entry - 0.8,
-                    entryHigh: t.entry + 0.5,
-                    bestEntry: t.entry,
-                    currentPrice: t.entry,
-                    sl: t.sl,
-                    tp1: t.tp1,
-                    tp2: t.tp2,
-                    tp3: t.tp3,
-                    tp4: t.tp4,
-                    rr: calculatedRR,
-                    confidence: t.confidence,
-                    reason: t.reason,
-                  });
-                } else {
-                  replyText = formatHaramiSignalMessage({
-                    direction: "NO_TRADE",
-                    symbolShort: "XAUUSD",
-                    h4Context: "Neutral",
-                    h1Bias: "Neutral",
-                    m15Setup: "Neutral",
-                    m5Entry: "Waiting",
-                    reason: "No active trade setup. AI scanning Order Blocks & Liquidity Sweeps in silent monitoring mode.",
-                  });
-                }
-              } else if (text.startsWith("/help") || text.startsWith("/tools")) {
-                replyText = `
+                    replyText = formatHaramiSignalMessage({
+                      direction: t.direction,
+                      symbolShort: "XAUUSD",
+                      assetName: "GOLD",
+                      h4Context: isBuy ? "Bullish" : "Bearish",
+                      h1Bias: isBuy ? "BULLISH" : "BEARISH",
+                      m15Setup: isBuy ? "BULLISH" : "BEARISH",
+                      m5Entry: "CONFIRMED",
+                      entryLow: t.entry - 0.8,
+                      entryHigh: t.entry + 0.5,
+                      bestEntry: t.entry,
+                      currentPrice: t.entry,
+                      sl: t.sl,
+                      tp1: t.tp1,
+                      tp2: t.tp2,
+                      tp3: t.tp3,
+                      tp4: t.tp4,
+                      rr: calculatedRR,
+                      confidence: t.confidence,
+                      reason: t.reason,
+                    });
+                  } else {
+                    replyText = formatHaramiSignalMessage({
+                      direction: "NO_TRADE",
+                      symbolShort: "XAUUSD",
+                      h4Context: "Neutral",
+                      h1Bias: "Neutral",
+                      m15Setup: "Neutral",
+                      m5Entry: "Waiting",
+                      reason: "No active trade setup. AI scanning Order Blocks & Liquidity Sweeps in silent monitoring mode.",
+                    });
+                  }
+                } else if (textLower.startsWith("/help") || textLower.startsWith("/tools")) {
+                  replyText = `
 <b>🛠️ HARAMI AI BOT COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━
 /start - Welcome info & bot status
 /signal - View active Harami AI Gold setup
 /help - Show all commands
-/unsubscribe - Stop receiving automatic signals
-                `.trim();
-              } else if (text.startsWith("/unsubscribe")) {
-                replyText = `<b>ℹ️ Unsubscribed:</b> Automatic broadcasts disabled for chat ${chatId}. Use /start to re-subscribe anytime.`;
+                  `.trim();
+                }
               }
 
               if (replyText) {
-                try {
-                  const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
-                  const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
-                  const logoPath = fs.existsSync(hImg) ? hImg : dImg;
-                  if (fs.existsSync(logoPath)) {
-                    const fileBuffer = fs.readFileSync(logoPath);
-                    const blob = new Blob([fileBuffer], { type: "image/jpeg" });
-                    const formData = new FormData();
-                    formData.append("chat_id", String(chatId));
-                    formData.append("photo", blob, "harami_ai_logo.jpg");
-                    formData.append("caption", replyText);
-                    formData.append("parse_mode", "HTML");
-
-                    const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-                      method: "POST",
-                      body: formData,
-                    });
-                    const photoData = await photoRes.json();
-                    if (!photoData.ok) {
-                      // Fallback to text message if photo fails
-                      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          chat_id: chatId,
-                          text: replyText,
-                          parse_mode: "HTML",
-                          disable_web_page_preview: true,
-                        }),
-                      });
-                    }
-                  } else {
-                    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chat_id: chatId,
-                        text: replyText,
-                        parse_mode: "HTML",
-                        disable_web_page_preview: true,
-                      }),
-                    });
-                  }
-                } catch (e) {
-                  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      chat_id: chatId,
-                      text: replyText,
-                      parse_mode: "HTML",
-                      disable_web_page_preview: true,
-                    }),
-                  });
-                }
+                await sendSingleTelegramMessage(chatId, replyText);
               }
             }
           }
         }
       } catch (err) {
-        // Sleep 5 seconds on polling error before retrying
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
@@ -867,9 +930,6 @@ async function startServer() {
   // -------------------------------------------------------------
   // 24/7 AUTONOMOUS BACKGROUND TELEGRAM SIGNAL BROADCASTER ENGINE
   // -------------------------------------------------------------
-  const CONFIG_FILE = path.join(process.cwd(), ".telegram_config.json");
-  let serverTargetChatId = "5218548758";
-
   // Load saved config on startup if present
   try {
     if (fs.existsSync(CONFIG_FILE)) {
@@ -1039,107 +1099,125 @@ async function startServer() {
     },
   ];
 
+  async function sendSingleTelegramMessage(
+    targetChatId: string,
+    text: string,
+    customPhotoBuffer?: Buffer
+  ): Promise<boolean> {
+    try {
+      const token = await resolveWorkingTelegramToken();
+      const chatId = cleanServerTelegramInput(targetChatId);
+
+      // If custom generated chart photo buffer is provided
+      if (customPhotoBuffer) {
+        try {
+          const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
+          const formData = new FormData();
+          formData.append("chat_id", String(chatId));
+          formData.append("photo", blob, "gmc_chart_signal.jpg");
+          formData.append("caption", text);
+          formData.append("parse_mode", "HTML");
+
+          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+            method: "POST",
+            body: formData,
+          });
+          const photoData = await photoRes.json();
+          if (photoData.ok) {
+            return true;
+          }
+        } catch (e) {
+          console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back:", e);
+        }
+      }
+
+      const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+      const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+      const logoPath = fs.existsSync(hImg) ? hImg : dImg;
+      if (fs.existsSync(logoPath)) {
+        try {
+          const fileBuffer = fs.readFileSync(logoPath);
+          const blob = new Blob([fileBuffer], { type: "image/jpeg" });
+          const formData = new FormData();
+          formData.append("chat_id", String(chatId));
+          formData.append("photo", blob, "harami_ai_logo.jpg");
+          formData.append("caption", text);
+          formData.append("parse_mode", "HTML");
+
+          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+            method: "POST",
+            body: formData,
+          });
+          const photoData = await photoRes.json();
+          if (photoData.ok) {
+            return true;
+          }
+        } catch (e) {
+          // Fall back to text message
+        }
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
+      const data = await res.json();
+      return !!data.ok;
+    } catch (err) {
+      console.error("[SINGLE TELEGRAM MSG ERROR]:", err);
+      return false;
+    }
+  }
+
   async function sendServerTelegramMessage(
     text: string,
     overrideChatId?: string,
     customPhotoBuffer?: Buffer
   ): Promise<boolean> {
-    const maxRetries = 3;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
-      attempt++;
-      if (attempt > 1) {
-        serverTelegramDeliveryStatus = "Retrying";
-        await new Promise((r) => setTimeout(r, 1500 * (attempt - 1)));
-      }
-
-      try {
-        const token = await resolveWorkingTelegramToken();
-        const chatId = overrideChatId ? cleanServerTelegramInput(overrideChatId) : (serverTargetChatId || "5218548758");
-        
-        // If custom generated chart photo buffer is provided
-        if (customPhotoBuffer) {
-          try {
-            const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
-            const formData = new FormData();
-            formData.append("chat_id", String(chatId));
-            formData.append("photo", blob, "gmc_chart_signal.jpg");
-            formData.append("caption", text);
-            formData.append("parse_mode", "HTML");
-
-            const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-              method: "POST",
-              body: formData,
-            });
-            const photoData = await photoRes.json();
-            if (photoData.ok) {
-              console.log(`[SERVER 24/7 BROADCASTER]: TradingView Signal Chart Photo dispatched to Telegram (${chatId}) successfully!`);
-              serverTelegramDeliveryStatus = "Sent";
-              serverTelegramStatus = "Connected";
-              return true;
-            }
-          } catch (e) {
-            console.warn("[SERVER 24/7 BROADCASTER]: Photo upload failed, falling back to logo/text:", e);
-          }
-        }
-
-        const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
-        const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
-        const logoPath = fs.existsSync(hImg) ? hImg : dImg;
-        if (fs.existsSync(logoPath)) {
-          try {
-            const fileBuffer = fs.readFileSync(logoPath);
-            const blob = new Blob([fileBuffer], { type: "image/jpeg" });
-            const formData = new FormData();
-            formData.append("chat_id", String(chatId));
-            formData.append("photo", blob, "harami_ai_logo.jpg");
-            formData.append("caption", text);
-            formData.append("parse_mode", "HTML");
-
-            const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-              method: "POST",
-              body: formData,
-            });
-            const photoData = await photoRes.json();
-            if (photoData.ok) {
-              console.log(`[SERVER 24/7 BROADCASTER]: Photo signal dispatched to Telegram (${chatId}) successfully!`);
-              serverTelegramDeliveryStatus = "Sent";
-              serverTelegramStatus = "Connected";
-              return true;
-            }
-          } catch (e) {
-            // Fall back to text message
-          }
-        }
-
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-          console.log(`[SERVER 24/7 BROADCASTER]: Text signal dispatched to Telegram (${chatId}) successfully!`);
-          serverTelegramDeliveryStatus = "Sent";
-          serverTelegramStatus = "Connected";
-          return true;
-        } else {
-          console.warn(`[SERVER 24/7 BROADCASTER WARNING] Attempt ${attempt}: Telegram API rejected message:`, data.description || data);
-        }
-      } catch (err) {
-        console.error(`[SERVER 24/7 BROADCASTER ERROR] Attempt ${attempt} failed to dispatch:`, err);
-      }
+    if (overrideChatId) {
+      const ok = await sendSingleTelegramMessage(overrideChatId, text, customPhotoBuffer);
+      serverTelegramDeliveryStatus = ok ? "Sent" : "Failed";
+      serverTelegramStatus = ok ? "Connected" : "Disconnected";
+      return ok;
     }
 
-    serverTelegramDeliveryStatus = "Failed";
-    serverTelegramStatus = "Disconnected";
-    return false;
+    // Retrieve ALL approved Telegram users
+    const approvedUsers = Object.values(telegramUsersStore).filter((u) => u.status === "approved");
+    const masterId = cleanServerTelegramInput(serverTargetChatId || "5218548758");
+
+    const targetChatIds = Array.from(
+      new Set([masterId, ...approvedUsers.map((u) => cleanServerTelegramInput(u.chatId))].filter(Boolean))
+    );
+
+    let successCount = 0;
+    for (const cid of targetChatIds) {
+      const ok = await sendSingleTelegramMessage(cid, text, customPhotoBuffer);
+      if (ok) {
+        successCount++;
+        if (telegramUsersStore[cid]) {
+          telegramUsersStore[cid].totalSignalsReceived = (telegramUsersStore[cid].totalSignalsReceived || 0) + 1;
+        }
+      }
+    }
+    saveTelegramUsers();
+
+    if (successCount > 0) {
+      console.log(`[SERVER 24/7 BROADCASTER]: Dispatched signal to ${successCount}/${targetChatIds.length} approved Telegram users.`);
+      serverTelegramDeliveryStatus = "Sent";
+      serverTelegramStatus = "Connected";
+      return true;
+    } else {
+      console.warn(`[SERVER 24/7 BROADCASTER]: Signal dispatch failed to all recipients.`);
+      serverTelegramDeliveryStatus = "Failed";
+      serverTelegramStatus = "Disconnected";
+      return false;
+    }
   }
 
   let lastKnownServerGoldPrice = 4348.50;
@@ -1242,8 +1320,8 @@ async function startServer() {
 
     // 1. Evaluate for new signal if no active trade
     if (!serverActiveTrade) {
-      // Respect pause, disable, or daily target/loss limits
-      if (mt5Config.isPaused || !mt5Config.autoTradingEnabled || mt5AccountMetrics.dailyTargetHit || mt5AccountMetrics.dailyLossLimitHit) {
+      // Ensure Telegram signals are enabled
+      if (!mt5Config.telegramSignalsEnabled) {
         serverCurrentDecision = "WAIT — NO VALID SETUP";
         return;
       }
@@ -1254,8 +1332,8 @@ async function startServer() {
         return;
       }
 
-      // 30-Minute Institutional SMC Market Analysis Interval
-      const SCAN_INTERVAL_MS = 30 * 60 * 1000;
+      // Continuous 1-Minute SMC Market Analysis Scan
+      const SCAN_INTERVAL_MS = 60 * 1000;
       const timeSinceLastRecheck = now - serverLastRecheckTime;
       const COOLDOWN_MS = 2 * 60 * 1000; // 2 minute cooldown after closed trade
 
@@ -1274,11 +1352,11 @@ async function startServer() {
 
         const direction: "BUY" | "SELL" = buyScore >= sellScore ? "BUY" : "SELL";
 
-        // Check duplicate signal protection (same direction and entry price within $3.00 within 1 hour)
+        // Check duplicate signal protection (same direction and entry price within $1.50 within 15 minutes)
         const isDuplicate = serverLastDispatchedSignal && 
           serverLastDispatchedSignal.direction === direction &&
-          Math.abs(serverLastDispatchedSignal.entry - currentPrice) < 3.0 &&
-          (now - serverLastDispatchedSignal.timestamp) < 3600000;
+          Math.abs(serverLastDispatchedSignal.entry - currentPrice) < 1.5 &&
+          (now - serverLastDispatchedSignal.timestamp) < 900000; // 15 mins
 
         // Quality Over Quantity: Highly confident A+ Grade setups (Confidence >= 94.0%)
         if (confidence >= 94.0 && !isDuplicate) {
@@ -1384,10 +1462,10 @@ async function startServer() {
         } else {
           serverCurrentDecision = "WAIT — NO VALID SETUP";
           const skipReason = isDuplicate 
-            ? "Duplicate Signal Prevented (Same Zone within 1 hour)"
+            ? "Duplicate Signal Prevented (Active in Zone within 15 mins)"
             : `Confidence (${confidence}%) below 94.0% A+ Threshold`;
 
-          console.log(`[HARAMI AI 24/7 BROADCASTER]: 30-Min Analysis Completed: "WAIT — NO VALID SETUP" (${skipReason}). Next scan in 30 minutes.`);
+          console.log(`[HARAMI AI 24/7 BROADCASTER]: Scan Completed: "WAIT — NO VALID SETUP" (${skipReason}). Next scan in 1 minute.`);
 
           serverAnalysisLogs.unshift({
             cycleId: `cycle-${now}`,
@@ -1819,6 +1897,87 @@ async function startServer() {
     } catch (err: any) {
       console.warn("[TELEGRAM SERVER ROUTE NOTICE]:", err.message || err);
       return res.status(200).json({ ok: false, error: err.message || "Failed to reach Telegram API" });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // ADMIN TELEGRAM BOT USER MANAGEMENT ENDPOINTS
+  // -------------------------------------------------------------
+
+  app.get("/api/admin/telegram/users", (req, res) => {
+    const usersList = Object.values(telegramUsersStore);
+    const stats = {
+      total: usersList.length,
+      approved: usersList.filter((u) => u.status === "approved").length,
+      pending: usersList.filter((u) => u.status === "pending").length,
+      rejected: usersList.filter((u) => u.status === "rejected").length,
+      blocked: usersList.filter((u) => u.status === "blocked").length,
+    };
+
+    res.json({
+      ok: true,
+      users: usersList.sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime()),
+      stats,
+    });
+  });
+
+  app.post("/api/admin/telegram/users/action", async (req, res) => {
+    try {
+      const { userId, action } = req.body || {};
+      if (!userId || !action) {
+        return res.status(400).json({ ok: false, error: "Missing userId or action" });
+      }
+
+      const cleanId = String(userId).trim();
+      const user = telegramUsersStore[cleanId];
+
+      if (!user && action !== "delete") {
+        return res.status(404).json({ ok: false, error: "Telegram user not found" });
+      }
+
+      if (action === "approve") {
+        user.status = "approved";
+        saveTelegramUsers();
+        // Send approval message to user
+        await sendSingleTelegramMessage(
+          user.chatId,
+          `<b>🎉 ACCESS APPROVED BY ADMIN!</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${user.firstName || "Trader"}</b>! Your access request (User ID: <code>${user.userId}</code>) has been <b>APPROVED</b> by the Administrator.\n\nYou are now live-subscribed to receive 24/7 Harami AI Gold signals directly in this chat!`
+        );
+      } else if (action === "reject") {
+        user.status = "rejected";
+        saveTelegramUsers();
+        await sendSingleTelegramMessage(
+          user.chatId,
+          `<b>❌ ACCESS RESTRICTED</b>\n━━━━━━━━━━━━━━━━━━━\nYour signal access request (User ID: <code>${user.userId}</code>) was updated to restricted by the Admin.`
+        );
+      } else if (action === "block") {
+        user.status = "blocked";
+        saveTelegramUsers();
+      } else if (action === "unblock" || action === "revoke") {
+        user.status = "pending";
+        saveTelegramUsers();
+      } else if (action === "delete") {
+        delete telegramUsersStore[cleanId];
+        saveTelegramUsers();
+      }
+
+      const usersList = Object.values(telegramUsersStore);
+      const stats = {
+        total: usersList.length,
+        approved: usersList.filter((u) => u.status === "approved").length,
+        pending: usersList.filter((u) => u.status === "pending").length,
+        rejected: usersList.filter((u) => u.status === "rejected").length,
+        blocked: usersList.filter((u) => u.status === "blocked").length,
+      };
+
+      res.json({
+        ok: true,
+        message: `Action '${action}' applied successfully to user ${cleanId}`,
+        users: usersList.sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime()),
+        stats,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 

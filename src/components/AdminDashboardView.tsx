@@ -65,6 +65,7 @@ import {
 } from "../utils/userSessionTracker";
 
 import { MT5AutoTradingDashboard } from "./MT5AutoTradingDashboard";
+import { TelegramBotUsersSection } from "./TelegramBotUsersSection";
 
 interface AdminDashboardViewProps {
   isLoggedIn: boolean;
@@ -1330,6 +1331,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               )}
             </form>
           </div>
+
+          {/* TELEGRAM BOT USERS & ACCESS CONTROL MANAGER */}
+          <TelegramBotUsersSection />
         </div>
       )}
 
