@@ -23,6 +23,8 @@ import {
   Award,
 } from "lucide-react";
 import { sendTelegramMessage } from "../utils/telegram";
+import { useLockedTradeSetup } from "../utils/useLockedTradeSetup";
+import { LockedSetupBanner } from "./LockedSetupBanner";
 
 interface LevelKeystoneViewProps {
   currentPrice: number;
@@ -44,32 +46,41 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const [accountBalance, setAccountBalance] = useState<number>(10000);
   const [riskPercent, setRiskPercent] = useState<number>(1.0);
 
-  // Dynamic calculations relative to live gold price
-  const basePrice = currentPrice > 0 ? currentPrice : 2845.50;
-  
-  // High confidence Setup Data
-  const isBuy = true;
-  const entryZoneLow = (basePrice - 2.80).toFixed(2);
-  const entryZoneHigh = (basePrice - 0.50).toFixed(2);
-  const bestEntry = (basePrice - 1.20).toFixed(2);
-  const stopLoss = (basePrice - 7.50).toFixed(2);
-  const takeProfit1 = (basePrice + 8.50).toFixed(2);
-  const takeProfit2 = (basePrice + 21.00).toFixed(2);
-  const confidenceScore = 98.6;
+  // Lock Published Trade Setup - Levels are IMMUTABLE once published and never change as market moves!
+  const livePrice = currentPrice > 0 ? currentPrice : 4381.09;
+  const { setup: lockedSetup, resetSetup } = useLockedTradeSetup(
+    "level_keystone",
+    "👑 LEVEL KEYSTONE — GOLD SETUP",
+    assetKey,
+    "XAUUSD (Gold)",
+    livePrice,
+    "metals",
+    2
+  );
+
+  const isBuy = lockedSetup.direction === "BUY";
+  const bestEntry = lockedSetup.entryPrice.toFixed(2);
+  const entryZoneLow = (lockedSetup.entryPrice - (isBuy ? 0.80 : 0.50)).toFixed(2);
+  const entryZoneHigh = (lockedSetup.entryPrice + (isBuy ? 0.50 : 0.80)).toFixed(2);
+  const stopLoss = lockedSetup.stopLoss.toFixed(2);
+  const takeProfit1 = lockedSetup.takeProfit1.toFixed(2);
+  const takeProfit2 = lockedSetup.takeProfit2.toFixed(2);
+  const confidenceScore = lockedSetup.confluenceScore || 98.6;
 
   // Risk Math
   const slPips = Math.abs(parseFloat(bestEntry) - parseFloat(stopLoss)) * 10;
   const riskAmount = (accountBalance * riskPercent) / 100;
   const recommendedLot = slPips > 0 ? (riskAmount / (slPips * 10)).toFixed(2) : "0.10";
 
-  const aiReason =
+  const aiReason = lockedSetup.reason ||
     "H1 Bullish Market Structure Shift (MSS) above $2,840.00 • M30 & M15 Institutional Demand Order Block sweep with rejection wick • M5 Change of Character (CHoCH) entry confirmation • News Filter: Clear 3-Hour USD Safety Buffer (No high-impact FOMC/CPI/NFP release pending).";
 
   const handleRefresh = () => {
     setIsAnalyzing(true);
+    resetSetup();
     setTimeout(() => {
       setIsAnalyzing(false);
-    }, 1200);
+    }, 1000);
   };
 
   const handleCopySetup = () => {
@@ -232,6 +243,13 @@ AI Brain Reason: ${aiReason}`;
           </span>
         </div>
       </div>
+
+      {/* LOCKED SETUP STATUS BANNER */}
+      <LockedSetupBanner
+        setup={lockedSetup}
+        currentPrice={livePrice}
+        onResetSetup={resetSetup}
+      />
 
       {/* MAIN KEYSTONE SETUP DASHBOARD CARD */}
       <div className="bg-[#111419] border border-[rgba(241,204,107,0.4)] rounded-2xl p-5 sm:p-6 relative overflow-hidden shadow-[0_0_30px_rgba(241,204,107,0.08)] space-y-6">
@@ -402,7 +420,7 @@ AI Brain Reason: ${aiReason}`;
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
           <div className="flex items-center gap-2 text-xs font-mono text-[#8F96A1]">
             <Radio className="w-3.5 h-3.5 text-[#F1CC6B] animate-pulse" />
-            <span>Live Price: <strong className="text-white">${basePrice.toFixed(2)}</strong></span>
+            <span>Live Price: <strong className="text-white">${livePrice.toFixed(2)}</strong></span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
