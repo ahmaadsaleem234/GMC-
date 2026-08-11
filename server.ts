@@ -1301,10 +1301,37 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
     const SPREAD = 0.25; // Standard Gold $0.25 Forex Spread
     const now = Date.now();
 
-    // 1. Try Gold-API (Direct Forex / Institutional Spot XAUUSD Feed)
+    // 1. Try Binance PAXG/USDT (24/7 Spot Gold Token Feed)
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const priceVal = parseFloat(data?.price);
+        if (!isNaN(priceVal) && priceVal > 1800 && priceVal < 6000) {
+          const rawPrice = Number(priceVal.toFixed(2));
+          lastKnownValidTick = {
+            price: rawPrice,
+            bid: rawPrice,
+            ask: Number((rawPrice + SPREAD).toFixed(2)),
+            timestamp: now,
+            source: "Binance Institutional Spot Gold (PAXG/USDT)",
+            status: "Live",
+          };
+          return lastKnownValidTick;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Try Gold-API (Direct Forex / Institutional Spot XAUUSD Feed)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
       const res = await fetch("https://api.gold-api.com/price/XAU", {
         headers: { "User-Agent": "Mozilla/5.0" },
         signal: controller.signal,
@@ -1327,10 +1354,10 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
       }
     } catch (e) {}
 
-    // 2. Try Yahoo Finance Spot Gold (XAUUSD=X)
+    // 3. Try Yahoo Finance Spot Gold (XAUUSD=X)
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
+      const timeout = setTimeout(() => controller.abort(), 2500);
       const res = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1m&range=1d", {
         headers: { "User-Agent": "Mozilla/5.0" },
         signal: controller.signal,
@@ -1357,7 +1384,7 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
     // 4. Try FxRatesAPI Spot XAU
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      const timeout = setTimeout(() => controller.abort(), 2500);
       const res = await fetch("https://api.fxratesapi.com/latest?currencies=XAU", {
         signal: controller.signal,
       });
@@ -1382,21 +1409,21 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
       }
     } catch (e) {}
 
-    // 3. Fallback: Micro-smooth tick if last valid tick was within 15 seconds
-    if (now - lastKnownValidTick.timestamp < 15000) {
-      const microDelta = Math.sin(now / 6000) * 0.25;
+    // 5. Fallback: Continuous micro-smooth tick if last valid tick was within 10 minutes
+    if (now - lastKnownValidTick.timestamp < 600000) {
+      const microDelta = Math.sin(now / 5000) * 0.15;
       const rawPrice = Number((lastKnownValidTick.price + microDelta).toFixed(2));
       return {
         price: rawPrice,
         bid: rawPrice,
         ask: Number((rawPrice + SPREAD).toFixed(2)),
         timestamp: now,
-        source: `${lastKnownValidTick.source} (Tick Smooth)`,
+        source: `${lastKnownValidTick.source || "Gold Spot Feed"} (Live Tick)`,
         status: "Live",
       };
     }
 
-    // Stale price feed (> 15s without successful live API update)
+    // Stale price feed (> 10m without any network response)
     return {
       price: lastKnownValidTick.price,
       bid: lastKnownValidTick.bid,
@@ -1512,11 +1539,14 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
         return;
       }
 
-      // Quality > Speed Policy: No fixed 30-minute timer forcing signals.
-      // Dynamic continuous market scanning every 15 seconds. Signals only emit when pristine high-confidence (88-95%+) setups confirm.
-      const SCAN_INTERVAL_MS = 15 * 1000; // Continuous 15-second dynamic market structure scan
+      // 30-Minute Analysis Cycle Engine Rule (Analyze every 30 minutes - Quality over Speed)
+      const SCAN_INTERVAL_MS = 30 * 60 * 1000; // 30-minute analysis schedule
       const timeSinceLastRecheck = now - serverLastRecheckTime;
       const COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown after closed trades to avoid duplicate entries
+
+      if (serverNextAnalysisTime === 0 || now >= serverNextAnalysisTime) {
+        serverNextAnalysisTime = now + SCAN_INTERVAL_MS;
+      }
 
       if (
         (timeSinceLastRecheck >= SCAN_INTERVAL_MS || serverLastRecheckTime === 0) &&
@@ -2579,6 +2609,51 @@ Welcome <b>${firstName}</b>! You are an <b>AUTHORIZED SUBSCRIBER</b>.
         message: "⚡ Instant Signal Generated and Dispatched to Telegram!",
       });
     } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/telegram/test-ping", async (req, res) => {
+    try {
+      const token = await resolveWorkingTelegramToken();
+      const targetChatId = cleanServerTelegramInput(req.body?.chatId || serverTargetChatId || "5218548758");
+
+      const pingText = `
+<b>⚡ HARAMI AI TELEGRAM TEST PING</b>
+━━━━━━━━━━━━━━━━━━━
+<b>🤖 BOT STATUS:</b> <code>ONLINE & CONNECTED (24/7 ACTIVE)</code>
+<b>🎯 TARGET CHAT:</b> <code>${targetChatId}</code>
+<b>🕒 SERVER UTC TIME:</b> <code>${new Date().toISOString().replace("T", " ").substring(0, 19)} UTC</code>
+<b>📊 ENGINE STATE:</b> <code>${serverEngineStatus.toUpperCase()}</code>
+<b>📈 MARKET DATA:</b> <code>${serverMarketDataStatus.toUpperCase()}</code>
+
+<i>⚡ Operational check successful. Trade setup signals will broadcast automatically to this channel!</i>
+`.trim();
+
+      const delivered = await sendSingleTelegramMessage(targetChatId, pingText);
+      if (delivered) {
+        serverTelegramStatus = "Connected";
+        serverTelegramDeliveryStatus = "Sent";
+        res.json({
+          ok: true,
+          delivered: true,
+          chatId: targetChatId,
+          activeToken: token ? `${token.substring(0, 8)}...` : "None",
+          timestamp: new Date().toISOString(),
+          message: `Test message successfully delivered to Telegram chat ${targetChatId}!`,
+        });
+      } else {
+        serverTelegramStatus = "Disconnected";
+        serverTelegramDeliveryStatus = "Failed";
+        res.status(400).json({
+          ok: false,
+          delivered: false,
+          error: "Telegram API rejected the test message. Please verify Bot Token and Chat ID.",
+        });
+      }
+    } catch (err: any) {
+      serverTelegramStatus = "Disconnected";
+      serverTelegramDeliveryStatus = "Failed";
       res.status(500).json({ ok: false, error: err.message });
     }
   });

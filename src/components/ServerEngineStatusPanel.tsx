@@ -34,6 +34,8 @@ export interface ServerEngineStatusData {
 export const ServerEngineStatusPanel: React.FC = () => {
   const [status, setStatus] = useState<ServerEngineStatusData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [testingTelegram, setTestingTelegram] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [lastFetched, setLastFetched] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +66,37 @@ export const ServerEngineStatusPanel: React.FC = () => {
     } finally {
       setLoading(false);
       setLastFetched(new Date());
+    }
+  };
+
+  const handleTestTelegram = async () => {
+    setTestingTelegram(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/telegram/test-ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTestResult({
+          ok: true,
+          message: `Telegram Test Delivered! Chat ID: ${data.chatId || "5218548758"}`,
+        });
+        fetchStatus();
+      } else {
+        setTestResult({
+          ok: false,
+          message: data.error || "Telegram ping failed. Check bot token/chat ID.",
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        ok: false,
+        message: err.message || "Failed to reach Telegram server",
+      });
+    } finally {
+      setTestingTelegram(false);
     }
   };
 
@@ -112,6 +145,14 @@ export const ServerEngineStatusPanel: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleTestTelegram}
+            disabled={testingTelegram}
+            className="px-2.5 py-1 bg-[#1A222D] hover:bg-[#25303F] text-[#74D8A0] rounded-lg border border-[#344458] text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Send className={`w-3 h-3 ${testingTelegram ? "animate-pulse text-[#74D8A0]" : ""}`} />
+            <span>{testingTelegram ? "Testing..." : "Test Telegram"}</span>
+          </button>
+          <button
             onClick={fetchStatus}
             className="px-2.5 py-1 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] rounded-lg border border-[#2C3239] text-[11px] font-medium flex items-center gap-1 transition-all cursor-pointer"
           >
@@ -123,6 +164,22 @@ export const ServerEngineStatusPanel: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {testResult && (
+        <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+          testResult.ok
+            ? "bg-[#0C1A14] border-[#1D4A33] text-[#74D8A0]"
+            : "bg-[#1A0C0E] border-[#4A1D23] text-[#EE777F]"
+        }`}>
+          <div className="flex items-center gap-2">
+            {testResult.ok ? <CheckCircle2 className="w-4 h-4 text-[#74D8A0]" /> : <AlertCircle className="w-4 h-4 text-[#EE777F]" />}
+            <span>{testResult.message}</span>
+          </div>
+          <button onClick={() => setTestResult(null)} className="text-[10px] underline opacity-70 hover:opacity-100 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* 9 Status Parameters Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2">
