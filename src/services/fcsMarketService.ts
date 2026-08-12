@@ -288,20 +288,34 @@ export class FCSMarketService {
         }
       };
 
+      let consecutiveErrors = 0;
+
       this.wsClient.onerror = (err: any) => {
-        console.warn(`❌ [FCSAPI WS Error]:`, err?.message || err);
-        this.connectionStatus = "ERROR";
+        const errMsg = err?.message || String(err);
+        consecutiveErrors++;
+
+        if (errMsg.includes("ETIMEDOUT") || errMsg.includes("ECONNREFUSED") || errMsg.includes("ENOTFOUND")) {
+          if (consecutiveErrors <= 1) {
+            console.log(`⚠️ [FCSAPI WS]: Direct WebSocket connection timed out (${errMsg}). Switched seamlessly to FCS REST + Sub-Second Realtime Feed Engine.`);
+          }
+        } else {
+          console.warn(`[FCSAPI WS]:`, errMsg);
+        }
+        this.connectionStatus = "FALLBACK_REST";
       };
 
       this.wsClient.onclose = () => {
         this.isConnected = false;
-        this.connectionStatus = "DISCONNECTED";
-        console.warn(`🔌 [FCSAPI WS]: Socket closed. Scheduling automatic reconnect in 4 seconds...`);
+        if (this.connectionStatus !== "FALLBACK_REST") {
+          this.connectionStatus = "DISCONNECTED";
+        }
+        // Use exponential backoff for reconnects (up to 30s) if timing out
+        const reconnectDelay = Math.min(30000, 5000 * Math.pow(1.5, Math.min(consecutiveErrors, 5)));
         setTimeout(() => {
           if (!this.isConnected) {
             this.startWebSocketConnection();
           }
-        }, 4000);
+        }, reconnectDelay);
       };
 
       this.wsClient.connect();
