@@ -73,7 +73,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
               </span>
             </div>
             <p className="text-xs text-[#9299A3] font-mono">
-              Twelve Data Spot Gold (XAU/USD) Realtime Feed
+              Alpha Vantage Spot Gold (XAU/USD) Realtime Feed
             </p>
           </div>
         </div>
@@ -82,7 +82,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
         <div className="flex items-center gap-2">
           <div className="px-3 py-1.5 rounded-xl bg-[#101318] border border-[#2C3239] text-[#74D8A0] font-mono text-xs font-semibold flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#74D8A0]" />
-            <span>TWELVE DATA SPOT FEED</span>
+            <span>ALPHA VANTAGE SPOT FEED</span>
           </div>
         </div>
       </div>

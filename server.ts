@@ -1349,7 +1349,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
     receivedAt: number;
     source: string;
     status: "Live" | "Delayed" | "Stale";
-    provider: "TWELVE_DATA" | "GOLD_API" | "FXRATES_API" | "FALLBACK";
+    provider: "ALPHA_VANTAGE" | "TWELVE_DATA" | "GOLD_API" | "FALLBACK";
     h1Trend: "BULLISH" | "BEARISH" | "NEUTRAL";
   }
 
@@ -1364,19 +1364,19 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
   // CENTRALIZED SERVER-SIDE GOLD MARKET DATA SERVICE (SINGLE SOURCE OF TRUTH)
   class GoldMarketDataService {
     private currentTick: LiveGoldTick = {
-      price: 4414.97,
+      price: 4401.94,
       bid: null,
       ask: null,
       spread: null,
-      high24h: 4441.22,
-      low24h: 4363.38,
-      change24h: 46.05,
-      changePercent24h: 1.05,
+      high24h: 4416.16,
+      low24h: 4366.44,
+      change24h: 30.39,
+      changePercent24h: 0.69,
       timestamp: Date.now(),
       receivedAt: Date.now(),
-      source: "Twelve Data Spot Gold (XAU/USD)",
+      source: "Alpha Vantage Spot Gold (XAU/USD)",
       status: "Live",
-      provider: "TWELVE_DATA",
+      provider: "ALPHA_VANTAGE",
       h1Trend: "BULLISH",
     };
 
@@ -1388,7 +1388,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
       // Start background polling
       this.pollQuote();
       this.pollCandles();
-      setInterval(() => this.pollQuote(), 10000); // Poll real-time spot price every 10s (6 req/min)
+      setInterval(() => this.pollQuote(), 10000); // Poll Alpha Vantage real-time spot price every 10s
       setInterval(() => this.pollCandles(), 300000); // Refresh H1 candles every 5 minutes
     }
 
@@ -1415,18 +1415,77 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
       if (this.isPolling) return this.getLatestData();
       this.isPolling = true;
 
-      const apiKey =
+      const alphaVantageKey =
+        process.env.ALPHA_VANTAGE_API_KEY ||
+        process.env.VITE_ALPHA_VANTAGE_API_KEY ||
+        "INOLV9X2JLHFDP95";
+
+      const twelveDataKey =
         process.env.TWELVE_DATA_API_KEY ||
         process.env.VITE_TWELVEDATA_API_KEY ||
         "13972c4c0a87409484e51229f074bf21";
 
       const now = Date.now();
 
-      // 1. Primary Provider: Twelve Data Realtime Price Spot (/price?symbol=XAU/USD)
+      // 1. Primary Provider: Alpha Vantage (GLOBAL_QUOTE symbol=XAUUSD)
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(
+          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=XAUUSD&apikey=${alphaVantageKey}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          const quote = data["Global Quote"];
+          if (quote && quote["05. price"]) {
+            const rawPrice = parseFloat(quote["05. price"]);
+            if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
+              const price = Number(rawPrice.toFixed(2));
+              const high24h = quote["03. high"] ? Number(parseFloat(quote["03. high"]).toFixed(2)) : price;
+              const low24h = quote["04. low"] ? Number(parseFloat(quote["04. low"]).toFixed(2)) : price;
+              const change24h = quote["09. change"] ? Number(parseFloat(quote["09. change"]).toFixed(2)) : 0;
+              const changePercent24h = quote["10. change percent"]
+                ? Number(parseFloat(quote["10. change percent"].replace("%", "")).toFixed(2))
+                : 0;
+
+              this.currentTick = {
+                price,
+                bid: null,
+                ask: null,
+                spread: null,
+                high24h,
+                low24h,
+                change24h,
+                changePercent24h,
+                timestamp: now,
+                receivedAt: now,
+                source: "Alpha Vantage Spot Gold (XAU/USD)",
+                status: "Live",
+                provider: "ALPHA_VANTAGE",
+                h1Trend: this.currentTick.h1Trend,
+              };
+
+              console.log(
+                `[XAU/USD DATA FEED] Provider: Alpha Vantage | Symbol: XAUUSD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Status: LIVE`
+              );
+
+              this.isPolling = false;
+              return this.getLatestData();
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback below
+      }
+
+      // 2. Secondary Provider Fallback: Twelve Data Realtime Price Spot (/price?symbol=XAU/USD)
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3500);
-        const res = await fetch(`https://api.twelvedata.com/price?symbol=XAU/USD&apikey=${apiKey}`, {
+        const res = await fetch(`https://api.twelvedata.com/price?symbol=XAU/USD&apikey=${twelveDataKey}`, {
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -1464,7 +1523,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
               };
 
               console.log(
-                `[XAU/USD DATA FEED] Provider: Twelve Data | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Age: ${Math.round((now - incomingTimestamp) / 1000)}s | Status: LIVE`
+                `[XAU/USD DATA FEED] Provider: Twelve Data Fallback | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Status: LIVE`
               );
 
               this.isPolling = false;
@@ -1476,7 +1535,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
         // Fallback below
       }
 
-      // 2. Fallback Provider: Gold-API (Direct Realtime Spot XAU/USD)
+      // 3. Tertiary Provider Fallback: Gold-API (Direct Realtime Spot XAU/USD)
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3500);
@@ -1512,7 +1571,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
               };
 
               console.log(
-                `[XAU/USD DATA FEED] Provider: Gold-API Fallback | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Age: ${Math.round((now - incomingTimestamp) / 1000)}s | Status: LIVE`
+                `[XAU/USD DATA FEED] Provider: Gold-API Fallback | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Status: LIVE`
               );
 
               this.isPolling = false;

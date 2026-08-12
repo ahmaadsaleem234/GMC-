@@ -13,7 +13,7 @@ export interface GoldQuote {
   updatedAt: number;
   receivedAt: number;
   provider: string;
-  sourceType: "Twelve Data Spot" | "Gold-API Spot" | "Spot Forex";
+  sourceType: "Alpha Vantage Spot" | "Twelve Data Spot" | "Gold-API Spot" | "Spot Forex";
   bid: number | null;
   ask: number | null;
   spreadPips: number | null;
@@ -35,14 +35,14 @@ export interface SetupValidationResult {
 
 // Global in-memory current Gold state
 let currentGoldQuote: GoldQuote = {
-  price: 4411.89,
-  changePct: 1.01,
-  high24h: 4441.22,
-  low24h: 4363.38,
+  price: 4401.94,
+  changePct: 0.69,
+  high24h: 4416.16,
+  low24h: 4366.44,
   updatedAt: Date.now(),
   receivedAt: Date.now(),
-  provider: "Twelve Data Spot Gold (XAU/USD)",
-  sourceType: "Twelve Data Spot",
+  provider: "Alpha Vantage Spot Gold (XAU/USD)",
+  sourceType: "Alpha Vantage Spot",
   bid: null,
   ask: null,
   spreadPips: null,
@@ -186,8 +186,8 @@ export async function fetchLiveGoldPrice(): Promise<GoldQuote> {
           low24h: typeof data.low24h === "number" ? data.low24h : currentGoldQuote.low24h,
           updatedAt: incomingTimestamp,
           receivedAt,
-          provider: data.source || data.provider || "Twelve Data Spot Gold (XAU/USD)",
-          sourceType: data.provider === "GOLD_API" ? "Gold-API Spot" : "Twelve Data Spot",
+          provider: data.source || data.provider || "Alpha Vantage Spot Gold (XAU/USD)",
+          sourceType: data.provider === "ALPHA_VANTAGE" ? "Alpha Vantage Spot" : data.provider === "GOLD_API" ? "Gold-API Spot" : "Twelve Data Spot",
           bid: data.bid ?? null,
           ask: data.ask ?? null,
           spreadPips: data.spread ?? null,
