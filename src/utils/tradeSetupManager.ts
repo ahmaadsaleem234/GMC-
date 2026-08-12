@@ -1,5 +1,6 @@
 // Unified State Management Engine for Active Locked Trade Setups Across GMC Modules
 import { playAlertChime } from "./audioAlert";
+import { evaluateKeystoneDualSetup } from "./gmcMasterAiBrainCore";
 
 export interface LockedTradeSetup {
   id: string;
@@ -7,7 +8,7 @@ export interface LockedTradeSetup {
   moduleName: string;
   assetKey: string;
   assetLabel: string;
-  direction: "BUY" | "SELL";
+  direction: "BUY" | "SELL" | "NO_TRADE";
   entryPrice: number;
   stopLoss: number;
   takeProfit1: number;
@@ -15,7 +16,56 @@ export interface LockedTradeSetup {
   takeProfit3: number;
   lotSize: number;
   confluenceScore: number;
-  status: "ACTIVE_LOCKED" | "TP_HIT" | "SL_HIT";
+  buyScore?: number;
+  sellScore?: number;
+  setupGrade?: "Grade A+" | "Grade A" | "Grade B" | "No Grade";
+  marketRegime?: "BULLISH_TRENDING" | "BEARISH_TRENDING" | "RANGING_CONSOLIDATION" | "HIGH_VOLATILITY_EXPANSION";
+  mtfMapping?: {
+    h4Trend: string;
+    h1Structure: string;
+    m15SetupZone: string;
+    m5m1Trigger: string;
+  };
+  scoreBreakdown?: {
+    buy: {
+      mtfStructurePts: number;
+      liquidityEnginePts: number;
+      obFvgPts: number;
+      executionTriggerPts: number;
+      sessionIntelligencePts: number;
+      historicalValidationPts: number;
+      totalPts: number;
+    };
+    sell: {
+      mtfStructurePts: number;
+      liquidityEnginePts: number;
+      obFvgPts: number;
+      executionTriggerPts: number;
+      sessionIntelligencePts: number;
+      historicalValidationPts: number;
+      totalPts: number;
+    };
+  };
+  newsProtectionMode?: {
+    isActive: boolean;
+    eventLabel: string;
+    safetyBufferMinutes: number;
+  };
+  historicalValidation?: {
+    winRatePercent: number;
+    sampleSize: number;
+    matchGrade: string;
+  };
+  tradeLifecycleState?: "WAITING" | "ARMED" | "ACTIVE" | "TP_HIT" | "SL_HIT" | "EXPIRED";
+  conflictDetected?: boolean;
+  conflictDetails?: string;
+  rrValue?: number;
+  h1Trend?: string;
+  m15ZoneLabel?: string;
+  m5TriggerLabel?: string;
+  entryZoneLow?: number;
+  entryZoneHigh?: number;
+  status: "ACTIVE_LOCKED" | "TP_HIT" | "SL_HIT" | "NO_TRADE";
   timeLocked: string;
   timestampLockedMs: number;
   pnlResultUSD?: number;
@@ -201,7 +251,66 @@ export function createNewLockedSetup(
   const isForex = category === "forex";
   const isCrypto = category === "crypto" || assetKey === "BTCUSD";
 
-  const direction: "BUY" | "SELL" = overrideDirection || (Math.random() > 0.35 ? "BUY" : "SELL");
+  // If level_keystone or XAUUSD without override, evaluate direction-neutrally using SMC Matrix
+  if ((moduleId === "level_keystone" || assetKey === "XAUUSD") && !overrideDirection) {
+    const dualEval = evaluateKeystoneDualSetup(currentPx, assetKey);
+
+    const direction = dualEval.winnerDirection;
+    const entryPrice = dualEval.bestEntry;
+    const stopLoss = overrideSl || dualEval.stopLoss;
+    const takeProfit1 = overrideTp1 || dualEval.takeProfit1;
+    const takeProfit2 = overrideTp2 || dualEval.takeProfit2;
+    const takeProfit3 = overrideTp3 || dualEval.takeProfit3;
+
+    const newKeystoneSetup: LockedTradeSetup = {
+      id: `setup-${moduleId}-${assetKey}-${Date.now()}`,
+      moduleId,
+      moduleName,
+      assetKey,
+      assetLabel,
+      direction,
+      entryPrice: Number(entryPrice.toFixed(decimals)),
+      stopLoss: Number(stopLoss.toFixed(decimals)),
+      takeProfit1: Number(takeProfit1.toFixed(decimals)),
+      takeProfit2: Number(takeProfit2.toFixed(decimals)),
+      takeProfit3: Number(takeProfit3.toFixed(decimals)),
+      lotSize: 0.1,
+      confluenceScore: dualEval.confidenceScore,
+      buyScore: dualEval.buyScore,
+      sellScore: dualEval.sellScore,
+      setupGrade: dualEval.setupGrade,
+      marketRegime: dualEval.marketRegime,
+      mtfMapping: dualEval.mtfMapping,
+      scoreBreakdown: dualEval.scoreBreakdown,
+      newsProtectionMode: dualEval.newsProtectionMode,
+      historicalValidation: dualEval.historicalValidation,
+      tradeLifecycleState: dualEval.tradeLifecycleState,
+      conflictDetected: dualEval.conflictDetected,
+      conflictDetails: dualEval.conflictDetails,
+      rrValue: dualEval.rrValue,
+      h1Trend: dualEval.h1Trend,
+      m15ZoneLabel: dualEval.m15ZoneLabel,
+      m5TriggerLabel: dualEval.m5TriggerLabel,
+      entryZoneLow: dualEval.entryZoneLow,
+      entryZoneHigh: dualEval.entryZoneHigh,
+      status: direction === "NO_TRADE" ? "NO_TRADE" : "ACTIVE_LOCKED",
+      timeLocked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      timestampLockedMs: Date.now(),
+      unrealizedPnlUSD: 0,
+      unrealizedPips: 0,
+      reason: overrideReason || dualEval.summaryReason,
+      gatesPassed: 6,
+      highestPriceReached: entryPrice,
+      lowestPriceReached: entryPrice
+    };
+
+    const key = storageKey || `${moduleId}_${assetKey}`;
+    setupRegistry[key] = newKeystoneSetup;
+    saveSetupRegistry(setupRegistry);
+    return newKeystoneSetup;
+  }
+
+  const direction: "BUY" | "SELL" = overrideDirection || (Math.random() > 0.50 ? "BUY" : "SELL");
 
   // Realistic distance calculation based on asset volatility
   let slDist = 4.50;

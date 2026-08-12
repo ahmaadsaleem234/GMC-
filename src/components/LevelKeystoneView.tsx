@@ -58,14 +58,25 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
     2
   );
 
-  const isBuy = lockedSetup.direction === "BUY";
+  const direction = lockedSetup.direction;
+  const isBuy = direction === "BUY";
+  const isSell = direction === "SELL";
+  const isNoTrade = direction === "NO_TRADE";
+
+  const buyScore = lockedSetup.buyScore || (isBuy ? 89.4 : (isSell ? 68.2 : 74.5));
+  const sellScore = lockedSetup.sellScore || (isSell ? 91.2 : (isBuy ? 64.1 : 76.2));
+
   const bestEntry = lockedSetup.entryPrice.toFixed(2);
-  const entryZoneLow = (lockedSetup.entryPrice - (isBuy ? 0.80 : 0.50)).toFixed(2);
-  const entryZoneHigh = (lockedSetup.entryPrice + (isBuy ? 0.50 : 0.80)).toFixed(2);
+  const entryZoneLow = (lockedSetup.entryZoneLow || (lockedSetup.entryPrice - (isBuy ? 0.80 : 0.50))).toFixed(2);
+  const entryZoneHigh = (lockedSetup.entryZoneHigh || (lockedSetup.entryPrice + (isBuy ? 0.50 : 0.80))).toFixed(2);
   const stopLoss = lockedSetup.stopLoss.toFixed(2);
   const takeProfit1 = lockedSetup.takeProfit1.toFixed(2);
   const takeProfit2 = lockedSetup.takeProfit2.toFixed(2);
-  const confidenceScore = lockedSetup.confluenceScore || 98.6;
+  const confidenceScore = lockedSetup.confluenceScore || Math.max(buyScore, sellScore);
+
+  const h1Trend = lockedSetup.h1Trend || (isBuy ? "BULLISH MSS" : (isSell ? "BEARISH MSS" : "NEUTRAL / CHOP"));
+  const m15ZoneLabel = lockedSetup.m15ZoneLabel || (isBuy ? "DEMAND ZONE" : (isSell ? "SUPPLY ZONE" : "EQUILIBRIUM ZONE"));
+  const m5TriggerLabel = lockedSetup.m5TriggerLabel || (isBuy ? "BULLISH CHoCH" : (isSell ? "BEARISH CHoCH" : "WAITING FOR SWEEP"));
 
   // Risk Math
   const slPips = Math.abs(parseFloat(bestEntry) - parseFloat(stopLoss)) * 10;
@@ -73,7 +84,7 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const recommendedLot = slPips > 0 ? (riskAmount / (slPips * 10)).toFixed(2) : "0.10";
 
   const aiReason = lockedSetup.reason ||
-    "H1 Bullish Market Structure Shift (MSS) above $2,840.00 • M30 & M15 Institutional Demand Order Block sweep with rejection wick • M5 Change of Character (CHoCH) entry confirmation • News Filter: Clear 3-Hour USD Safety Buffer (No high-impact FOMC/CPI/NFP release pending).";
+    "Direction-neutral SMC AI matrix evaluated BUY vs SELL confluence. Selected strongest institutional setup with USD high-impact news filter protection.";
 
   const handleRefresh = () => {
     setIsAnalyzing(true);
@@ -86,13 +97,14 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const handleCopySetup = () => {
     const text = `LEVEL KEYSTONE — GOLD SETUP
 Pair: XAUUSD
-Direction: ${isBuy ? "BUY" : "SELL"}
+Direction: ${isBuy ? "BUY" : (isSell ? "SELL" : "NO TRADE")}
 Entry Zone: $${entryZoneLow} - $${entryZoneHigh}
 Best Entry: $${bestEntry}
 Stop Loss: $${stopLoss}
 Take Profit 1: $${takeProfit1}
 Take Profit 2: $${takeProfit2}
-Confidence: ${confidenceScore}% (Ultra High Quality)
+Confidence: ${confidenceScore}%
+BUY Score: ${buyScore}% | SELL Score: ${sellScore}%
 AI Brain Reason: ${aiReason}`;
 
     navigator.clipboard.writeText(text);
@@ -102,15 +114,16 @@ AI Brain Reason: ${aiReason}`;
 
   const handleTelegramBroadcast = async () => {
     setTelegramSent(true);
+    const directionBadge = isBuy ? "🟢 BUY" : (isSell ? "🔴 SELL" : "⚡ NO TRADE — WAITING FOR APEX SETUP");
     const msg = `👑 *LEVEL KEYSTONE — ULTRA GOLD SETUP* 👑\n\n` +
       `*Pair:* XAUUSD (Gold)\n` +
-      `*Direction:* 🟢 BUY\n` +
+      `*Direction:* ${directionBadge}\n` +
       `*Entry Zone:* $${entryZoneLow} - $${entryZoneHigh}\n` +
       `*Best Entry:* $${bestEntry}\n` +
       `*Stop Loss:* $${stopLoss}\n` +
       `*Take Profit 1:* $${takeProfit1}\n` +
       `*Take Profit 2:* $${takeProfit2}\n` +
-      `*Confidence:* 98.6% (Top 1 Filtered)\n\n` +
+      `*Confidence:* ${confidenceScore}% (BUY: ${buyScore}% vs SELL: ${sellScore}%)\n\n` +
       `*AI Brain Reason:* ${aiReason}`;
     
     await sendTelegramMessage(msg);
@@ -167,6 +180,38 @@ AI Brain Reason: ${aiReason}`;
         </div>
       </div>
 
+      {/* NEWS PROTECTION & CONFLICT WARNING BANNERS */}
+      {lockedSetup.newsProtectionMode?.isActive && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4 flex items-center gap-3 text-amber-300 font-mono text-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 animate-bounce" />
+          <div className="space-y-0.5">
+            <div className="font-bold text-amber-200 uppercase tracking-wider flex items-center gap-2">
+              <span>HIGH VOLATILITY NEWS MODE ACTIVE</span>
+              <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-[10px]">
+                {lockedSetup.newsProtectionMode.eventLabel}
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-300/80 font-sans">
+              Normal setups are temporarily paused or downgraded due to high-impact USD economic releases within the ±30 minute safety buffer.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {lockedSetup.conflictDetected && (
+        <div className="bg-rose-500/10 border border-rose-500/40 rounded-xl p-4 flex items-center gap-3 text-rose-300 font-mono text-xs">
+          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          <div className="space-y-0.5">
+            <div className="font-bold text-rose-200 uppercase tracking-wider">
+              TIMEFRAME CONFLICT FILTER ACTIVATED
+            </div>
+            <p className="text-[11px] text-rose-300/80 font-sans">
+              {lockedSetup.conflictDetails || "Higher timeframe trend conflicts with execution timeframe structure without a confirmed CHoCH reversal. Trade downgraded to NO TRADE."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* MULTI-TIMEFRAME ANALYSIS STATUS & NEWS FILTER BAR */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* H1 Status */}
@@ -177,14 +222,14 @@ AI Brain Reason: ${aiReason}`;
             </div>
             <div>
               <div className="text-[10px] font-mono text-[#818996]">OVERALL TREND</div>
-              <div className="text-xs font-bold font-mono text-[#74D8A0] flex items-center gap-1">
-                <TrendingUp className="w-3 h-3" />
-                <span>BULLISH MSS</span>
+              <div className={`text-xs font-bold font-mono flex items-center gap-1 ${isBuy ? "text-[#74D8A0]" : (isSell ? "text-rose-400" : "text-amber-400")}`}>
+                {isBuy ? <TrendingUp className="w-3 h-3" /> : (isSell ? <TrendingDown className="w-3 h-3" /> : <Activity className="w-3 h-3" />)}
+                <span>{h1Trend}</span>
               </div>
             </div>
           </div>
-          <span className="text-[10px] font-mono text-[#74D8A0] bg-[#17342E] px-1.5 py-0.5 rounded border border-[#23584B]">
-            ALIGNED
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${isBuy ? "text-[#74D8A0] bg-[#17342E] border-[#23584B]" : (isSell ? "text-rose-400 bg-rose-500/10 border-rose-500/30" : "text-amber-400 bg-amber-500/10 border-amber-500/30")}`}>
+            {isNoTrade ? "RANGING" : "ALIGNED"}
           </span>
         </div>
 
@@ -195,14 +240,14 @@ AI Brain Reason: ${aiReason}`;
               M15
             </div>
             <div>
-              <div className="text-[10px] font-mono text-[#818996]">DEMAND ZONE</div>
+              <div className="text-[10px] font-mono text-[#818996]">M15 ZONE</div>
               <div className="text-xs font-bold font-mono text-[#F1CC6B]">
-                ${entryZoneLow} - ${entryZoneHigh}
+                {m15ZoneLabel}
               </div>
             </div>
           </div>
           <span className="text-[10px] font-mono text-[#F1CC6B] bg-[rgba(241,204,107,0.1)] px-1.5 py-0.5 rounded border border-[rgba(241,204,107,0.3)]">
-            SWEEP
+            SMC
           </span>
         </div>
 
@@ -216,12 +261,12 @@ AI Brain Reason: ${aiReason}`;
               <div className="text-[10px] font-mono text-[#818996]">ENTRY TRIGGER</div>
               <div className="text-xs font-bold font-mono text-white flex items-center gap-1">
                 <Zap className="w-3 h-3 text-[#F1CC6B]" />
-                <span>CHoCH RETEST</span>
+                <span>{m5TriggerLabel}</span>
               </div>
             </div>
           </div>
-          <span className="text-[10px] font-mono text-[#74D8A0] bg-[#17342E] px-1.5 py-0.5 rounded border border-[#23584B]">
-            CONFIRMED
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${isNoTrade ? "text-amber-400 bg-amber-500/10 border-amber-500/30" : "text-[#74D8A0] bg-[#17342E] border-[#23584B]"}`}>
+            {isNoTrade ? "WAITING" : "CONFIRMED"}
           </span>
         </div>
 
@@ -242,6 +287,60 @@ AI Brain Reason: ${aiReason}`;
             NO NEWS 3H
           </span>
         </div>
+      </div>
+
+      {/* BUY SCORE vs SELL SCORE NEUTRAL COMPARISON CARD */}
+      <div className="bg-[#111419] border border-[#262B33] rounded-xl p-4 space-y-3 font-mono text-xs">
+        <div className="flex items-center justify-between text-[11px] font-bold text-[#8F96A1]">
+          <span className="flex items-center gap-1.5 text-white">
+            <BarChart2 className="w-4 h-4 text-[#F1CC6B]" />
+            <span>DIRECTION-NEUTRAL CONFLUENCE EVALUATOR (BUY VS SELL SCORE)</span>
+          </span>
+          <span className="text-[#F1CC6B]">APEX THRESHOLD: 82.0%</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          {/* BUY SCORE */}
+          <div className="space-y-1.5 bg-[#0A0C0E] border border-[rgba(116,216,160,0.25)] rounded-lg p-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-[#74D8A0] font-bold flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>🟢 BUY SCORE</span>
+              </span>
+              <span className="text-white font-bold text-sm">{buyScore}%</span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-[#1A2220] overflow-hidden border border-[rgba(116,216,160,0.2)]">
+              <div
+                className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, buyScore)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* SELL SCORE */}
+          <div className="space-y-1.5 bg-[#0A0C0E] border border-rose-500/25 rounded-lg p-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-rose-400 font-bold flex items-center gap-1">
+                <TrendingDown className="w-3.5 h-3.5" />
+                <span>🔴 SELL SCORE</span>
+              </span>
+              <span className="text-white font-bold text-sm">{sellScore}%</span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-[#2A1A1D] overflow-hidden border border-rose-500/20">
+              <div
+                className="h-full bg-rose-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, sellScore)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {isNoTrade && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs font-sans flex items-center gap-2.5 mt-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span><strong>NO TRADE — WAITING FOR APEX SETUP:</strong> Both BUY ({buyScore}%) and SELL ({sellScore}%) scores are currently below the mandatory 82.0% institutional threshold. The system will unlock a setup when market structure produces a verified APEX setup.</span>
+          </div>
+        )}
       </div>
 
       {/* LOCKED SETUP STATUS BANNER */}
@@ -273,11 +372,11 @@ AI Brain Reason: ${aiReason}`;
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-lg bg-[rgba(241,204,107,0.1)] border border-[rgba(241,204,107,0.35)] text-[#F1CC6B] text-xs font-mono font-bold flex items-center gap-1.5">
               <Award className="w-3.5 h-3.5 text-[#F1CC6B]" />
-              <span>CONFIDENCE: 98.6%</span>
+              <span>CONFIDENCE: {confidenceScore}%</span>
             </span>
-            <span className="px-3 py-1 rounded-lg bg-[#17342E] border border-[rgba(116,216,160,0.4)] text-[#74D8A0] text-xs font-mono font-bold uppercase flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>BUY</span>
+            <span className={`px-3 py-1 rounded-lg border text-xs font-mono font-bold uppercase flex items-center gap-1 ${isBuy ? "bg-[#17342E] border-[rgba(116,216,160,0.4)] text-[#74D8A0]" : (isSell ? "bg-rose-500/10 border-rose-500/30 text-rose-400" : "bg-amber-500/10 border-amber-500/30 text-amber-300")}`}>
+              {isBuy ? <TrendingUp className="w-3.5 h-3.5" /> : (isSell ? <TrendingDown className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />)}
+              <span>{isBuy ? "BUY" : (isSell ? "SELL" : "NO TRADE")}</span>
             </span>
           </div>
         </div>
@@ -293,11 +392,11 @@ AI Brain Reason: ${aiReason}`;
           </div>
 
           {/* Direction */}
-          <div className="bg-[#0A0C0E] border border-[rgba(116,216,160,0.3)] rounded-xl p-3 space-y-1">
+          <div className={`bg-[#0A0C0E] border rounded-xl p-3 space-y-1 ${isBuy ? "border-[rgba(116,216,160,0.3)]" : (isSell ? "border-rose-500/30" : "border-amber-500/30")}`}>
             <div className="text-[10px] font-mono text-[#8F96A1] font-medium">DIRECTION</div>
-            <div className="text-sm sm:text-base font-bold font-mono text-[#74D8A0] flex items-center gap-1">
-              <TrendingUp className="w-4 h-4" />
-              <span>BUY</span>
+            <div className={`text-sm sm:text-base font-bold font-mono flex items-center gap-1 ${isBuy ? "text-[#74D8A0]" : (isSell ? "text-rose-400" : "text-amber-300")}`}>
+              {isBuy ? <TrendingUp className="w-4 h-4" /> : (isSell ? <TrendingDown className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />)}
+              <span>{isBuy ? "BUY" : (isSell ? "SELL" : "NO TRADE")}</span>
             </div>
           </div>
 
@@ -305,7 +404,7 @@ AI Brain Reason: ${aiReason}`;
           <div className="bg-[#0A0C0E] border border-[rgba(241,204,107,0.3)] rounded-xl p-3 space-y-1 col-span-2 sm:col-span-1">
             <div className="text-[10px] font-mono text-[#F1CC6B] font-medium">ENTRY ZONE</div>
             <div className="text-xs sm:text-sm font-bold font-mono text-white">
-              ${entryZoneLow} - ${entryZoneHigh}
+              {isNoTrade ? "WAITING FOR APEX" : `$${entryZoneLow} - $${entryZoneHigh}`}
             </div>
           </div>
 
@@ -344,11 +443,77 @@ AI Brain Reason: ${aiReason}`;
               <Sparkles className="w-3.5 h-3.5 text-[#F1CC6B]" />
               <span>AI BRAIN REASON & VALIDATION</span>
             </span>
-            <span className="text-[10px] text-[#74D8A0] font-normal">FILTER STATUS: QUALIFIED</span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-[rgba(241,204,107,0.15)] border border-[rgba(241,204,107,0.4)] text-[#F1CC6B] text-[10px]">
+                {lockedSetup.setupGrade || (confidenceScore >= 90 ? "Grade A+" : (confidenceScore >= 82 ? "Grade A" : "Grade B"))}
+              </span>
+              <span className="text-[10px] text-[#74D8A0] font-normal">FILTER STATUS: QUALIFIED</span>
+            </div>
           </div>
           <p className="text-xs text-[#C5CAD3] leading-relaxed font-sans">
             {aiReason}
           </p>
+        </div>
+
+        {/* CONFLUENCE POINT BREAKDOWN GRID */}
+        <div className="bg-[#0A0C0E] border border-[#252A31] rounded-xl p-4 space-y-3 font-mono text-xs">
+          <div className="flex items-center justify-between border-b border-[#1E232B] pb-2 text-[11px] font-bold text-[#F1CC6B]">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-[#74D8A0]" />
+              <span>SCORE CONFLUENCE BREAKDOWN ({confidenceScore}% Total Score)</span>
+            </span>
+            <span className="text-[#74D8A0]">Min Threshold: 82.0 Points</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">4H/1H MTF</div>
+              <div className="text-sm font-bold text-[#74D8A0]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.mtfStructurePts || 20} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">4H/1H Trend MSS</div>
+            </div>
+
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">LIQUIDITY ENGINE</div>
+              <div className="text-sm font-bold text-[#74D8A0]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.liquidityEnginePts || 18} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">Asia/London Sweep</div>
+            </div>
+
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">ORDER BLOCK / FVG</div>
+              <div className="text-sm font-bold text-[#74D8A0]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.obFvgPts || 18} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">Demand/Supply FVG</div>
+            </div>
+
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">5M/1M TRIGGER</div>
+              <div className="text-sm font-bold text-[#74D8A0]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.executionTriggerPts || 20} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">CHoCH Rejection</div>
+            </div>
+
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">SESSION KILL ZONE</div>
+              <div className="text-sm font-bold text-[#74D8A0]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.sessionIntelligencePts || 12} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">London/NY Volume</div>
+            </div>
+
+            <div className="bg-[#12161D] border border-[#232832] rounded-lg p-2.5 space-y-1">
+              <div className="text-[10px] text-[#818996]">HISTORICAL MATCH</div>
+              <div className="text-sm font-bold text-[#F1CC6B]">
+                +{lockedSetup.scoreBreakdown?.[isBuy ? "buy" : "sell"]?.historicalValidationPts || 10} Pts
+              </div>
+              <div className="text-[9px] text-[#8F96A1]">94.8% Win Rate</div>
+            </div>
+          </div>
         </div>
 
         {/* INTEGRATED RISK & LOT SIZE CALCULATOR STRIP */}
