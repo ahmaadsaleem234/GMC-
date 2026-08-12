@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { generateSignalChartBuffer, SignalChartParams } from "./src/services/signalChartService.js";
 import { generateDynamicReason, formatHaramiSignalMessage } from "./src/utils/haramiSignalFormatter.js";
+import { fcsMarketService } from "./src/services/fcsMarketService.js";
 
 // Black Shark Command V1 default live signal payload
 const BLACK_SHARK_DATA = {
@@ -1415,6 +1416,36 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
       if (this.isPolling) return this.getLatestData();
       this.isPolling = true;
 
+      const now = Date.now();
+
+      // 0. Primary Provider: FCSAPI Realtime Stream / REST Feed
+      try {
+        const fcsTick = fcsMarketService.getLiveTick("XAUUSD");
+        if (fcsTick && fcsTick.price > 1800 && fcsTick.price < 8000) {
+          this.currentTick = {
+            price: fcsTick.price,
+            bid: fcsTick.bid,
+            ask: fcsTick.ask,
+            spread: fcsTick.spread,
+            high24h: fcsTick.high24h || fcsTick.price,
+            low24h: fcsTick.low24h || fcsTick.price,
+            change24h: fcsTick.change24h || 0,
+            changePercent24h: fcsTick.changePercent24h || 0,
+            timestamp: fcsTick.timestamp,
+            receivedAt: fcsTick.receivedAt,
+            source: fcsTick.source || "FCSAPI Live Stream (XAU/USD)",
+            status: fcsTick.status,
+            provider: "GOLD_API",
+            h1Trend: this.currentTick.h1Trend,
+          };
+
+          this.isPolling = false;
+          return this.getLatestData();
+        }
+      } catch (err) {
+        // Fallback below
+      }
+
       const alphaVantageKey =
         process.env.ALPHA_VANTAGE_API_KEY ||
         process.env.VITE_ALPHA_VANTAGE_API_KEY ||
@@ -1424,8 +1455,6 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
         process.env.TWELVE_DATA_API_KEY ||
         process.env.VITE_TWELVEDATA_API_KEY ||
         "13972c4c0a87409484e51229f074bf21";
-
-      const now = Date.now();
 
       // 1. Primary Provider: Alpha Vantage (GLOBAL_QUOTE symbol=XAUUSD)
       try {
@@ -1588,6 +1617,32 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
     }
 
     public async pollCandles(): Promise<GoldCandle[]> {
+      try {
+        const fcsCandles = fcsMarketService.getCandles("XAUUSD", "1H");
+        if (fcsCandles && fcsCandles.length > 0) {
+          const formatted: GoldCandle[] = fcsCandles.map((c) => ({
+            datetime: c.datetime,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+          }));
+
+          this.cachedH1Candles = formatted;
+          this.lastCandleFetchMs = Date.now();
+
+          if (formatted.length >= 6) {
+            const latest = formatted[formatted.length - 1].close;
+            const past = formatted[formatted.length - 6].close;
+            this.currentTick.h1Trend = latest >= past ? "BULLISH" : "BEARISH";
+          }
+
+          return this.cachedH1Candles;
+        }
+      } catch (err) {
+        // Fallback
+      }
+
       const apiKey =
         process.env.TWELVE_DATA_API_KEY ||
         process.env.VITE_TWELVEDATA_API_KEY ||
@@ -2663,6 +2718,94 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
 
   // Start 24/7 background worker automatically on server launch
   start247ServerSignalEngine().catch((err) => console.error("Broadcaster error:", err));
+
+  // ==========================================
+  // FCS REALTIME MARKET & CANDLES API
+  // ==========================================
+  app.get("/api/fcs/latest", async (req, res) => {
+    try {
+      const symbolParam = (req.query.symbol as string) || "";
+      if (symbolParam) {
+        const tick = fcsMarketService.getLiveTick(symbolParam);
+        return res.json({ ok: true, tick });
+      }
+
+      // If no symbol param, trigger REST poll refresh and return latest map
+      const latestTicks = await fcsMarketService.fetchLatestPricesREST();
+      res.json({
+        ok: true,
+        ticks: latestTicks,
+        goldTick: fcsMarketService.getLiveTick("XAUUSD"),
+        btcTick: fcsMarketService.getLiveTick("BTCUSD"),
+        eurTick: fcsMarketService.getLiveTick("EURUSD"),
+        gbpTick: fcsMarketService.getLiveTick("GBPUSD"),
+        jpyTick: fcsMarketService.getLiveTick("USDJPY"),
+        us30Tick: fcsMarketService.getLiveTick("US30"),
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/fcs/candles", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string) || "XAUUSD";
+      const timeframe = (req.query.timeframe as string) || "1m";
+      const candles = fcsMarketService.getCandles(symbol, timeframe);
+      res.json({
+        ok: true,
+        symbol: fcsMarketService.normalizeSymbol(symbol),
+        timeframe: fcsMarketService.normalizeTimeframe(timeframe),
+        count: candles.length,
+        candles,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/fcs/status", (req, res) => {
+    res.json({
+      ok: true,
+      status: fcsMarketService.getStatus(),
+    });
+  });
+
+  // ==========================================
+  // REALTIME ULTRA-FAST SSE TICK STREAMING API
+  // ==========================================
+  app.get("/api/live/stream", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    // Send immediate initial tick state
+    const initialTicks = {
+      XAUUSD: fcsMarketService.getLiveTick("XAUUSD"),
+      BTCUSD: fcsMarketService.getLiveTick("BTCUSD"),
+      EURUSD: fcsMarketService.getLiveTick("EURUSD"),
+      GBPUSD: fcsMarketService.getLiveTick("GBPUSD"),
+      USDJPY: fcsMarketService.getLiveTick("USDJPY"),
+      US30: fcsMarketService.getLiveTick("US30"),
+    };
+
+    res.write(`data: ${JSON.stringify({ type: "INIT", ticks: initialTicks })}\n\n`);
+
+    // Stream tick updates in real-time instantly as they occur
+    const unsubscribe = fcsMarketService.onTick((tick) => {
+      try {
+        res.write(`data: ${JSON.stringify({ type: "TICK", tick })}\n\n`);
+      } catch (e) {
+        // Socket write error handled by req close
+      }
+    });
+
+    req.on("close", () => {
+      unsubscribe();
+    });
+  });
 
   app.get("/api/telegram/config", (req, res) => {
     res.json({

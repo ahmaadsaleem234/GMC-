@@ -847,6 +847,7 @@ export function App() {
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
             prices={prices}
             currentPrice={currentPrice}
+            latencyMs={latencyMs}
           />
         )}
 

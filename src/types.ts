@@ -24,12 +24,17 @@ export interface Candle {
 
 export interface LivePrice {
   price: number;
+  bid?: number | null;
+  ask?: number | null;
+  spread?: number | null;
   changePct: number;
   high24h: number;
   low24h: number;
   volume24h: number;
   live: boolean;
   updatedAt: number;
+  source?: string;
+  provider?: string;
 }
 
 export interface DojiZone {

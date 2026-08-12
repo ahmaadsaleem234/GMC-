@@ -21,6 +21,7 @@ interface BrainVaultGridProps {
   onOpenLoginModal: () => void;
   prices?: Record<string, LivePrice>;
   currentPrice?: number;
+  latencyMs?: number;
 }
 
 export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
@@ -29,7 +30,8 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   loggedInUser,
   onOpenLoginModal,
   prices = {},
-  currentPrice = 4348.50,
+  currentPrice = 4402.50,
+  latencyMs = 14,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("ALL");
@@ -806,7 +808,7 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
       </div>
 
       {/* LIVE GOLD MARKET CARD (ONLY MARKET WIDGET ABOVE INTELLIGENCE MODULES) */}
-      <LiveGoldMarketCard prices={prices} currentPrice={currentPrice} />
+      <LiveGoldMarketCard prices={prices} currentPrice={currentPrice} latencyMs={latencyMs} />
 
       {/* ⭐ INTELLIGENCE MODULES SECTION */}
       <div className="pt-4 space-y-6">
