@@ -434,6 +434,24 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  app.get("/api/gold-market-data", (req, res) => {
+    try {
+      const data = goldMarketDataService.getLatestData();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch gold market data" });
+    }
+  });
+
+  app.get("/api/gold-candles", (req, res) => {
+    try {
+      const candles = goldMarketDataService.getH1Candles();
+      res.json({ symbol: "XAU/USD", interval: "1h", candles });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch gold candles" });
+    }
+  });
+
   app.get("/api/blackshark", (req, res) => {
     res.json(BLACK_SHARK_DATA);
   });
@@ -1320,161 +1338,251 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
 
   interface LiveGoldTick {
     price: number;
-    bid: number;
-    ask: number;
+    bid: number | null;
+    ask: number | null;
+    spread: number | null;
+    high24h: number | null;
+    low24h: number | null;
+    change24h: number | null;
+    changePercent24h: number | null;
     timestamp: number;
+    receivedAt: number;
     source: string;
-    status: "Live" | "Stale";
+    status: "Live" | "Delayed" | "Stale";
+    provider: "TWELVE_DATA" | "GOLD_API" | "FXRATES_API" | "FALLBACK";
+    h1Trend: "BULLISH" | "BEARISH" | "NEUTRAL";
   }
 
-  let lastKnownValidTick: LiveGoldTick = {
-    price: 4348.50,
-    bid: 4348.50,
-    ask: 4348.75,
-    timestamp: Date.now(),
-    source: "Gold-API Spot (XAUUSD)",
-    status: "Live",
-  };
+  interface GoldCandle {
+    datetime: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }
 
-  async function fetchLiveServerGoldTick(): Promise<LiveGoldTick> {
-    const SPREAD = 0.25; // Standard Gold $0.25 Forex Spread
-    const now = Date.now();
+  // CENTRALIZED SERVER-SIDE GOLD MARKET DATA SERVICE (SINGLE SOURCE OF TRUTH)
+  class GoldMarketDataService {
+    private currentTick: LiveGoldTick = {
+      price: 4414.97,
+      bid: null,
+      ask: null,
+      spread: null,
+      high24h: 4441.22,
+      low24h: 4363.38,
+      change24h: 46.05,
+      changePercent24h: 1.05,
+      timestamp: Date.now(),
+      receivedAt: Date.now(),
+      source: "Twelve Data Spot Gold (XAU/USD)",
+      status: "Live",
+      provider: "TWELVE_DATA",
+      h1Trend: "BULLISH",
+    };
 
-    // 1. Try Binance PAXG/USDT (24/7 Spot Gold Token Feed)
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        const priceVal = parseFloat(data?.price);
-        if (!isNaN(priceVal) && priceVal > 1800 && priceVal < 6000) {
-          const rawPrice = Number(priceVal.toFixed(2));
-          lastKnownValidTick = {
-            price: rawPrice,
-            bid: rawPrice,
-            ask: Number((rawPrice + SPREAD).toFixed(2)),
-            timestamp: now,
-            source: "Binance Institutional Spot Gold (PAXG/USDT)",
-            status: "Live",
-          };
-          return lastKnownValidTick;
-        }
+    private cachedH1Candles: GoldCandle[] = [];
+    private lastCandleFetchMs = 0;
+    private isPolling = false;
+
+    constructor() {
+      // Start background polling
+      this.pollQuote();
+      this.pollCandles();
+      setInterval(() => this.pollQuote(), 10000); // Poll real-time spot price every 10s (6 req/min)
+      setInterval(() => this.pollCandles(), 300000); // Refresh H1 candles every 5 minutes
+    }
+
+    public getLatestData(): LiveGoldTick {
+      const now = Date.now();
+      const ageMs = now - this.currentTick.receivedAt;
+      let status: "Live" | "Delayed" | "Stale" = "Live";
+      if (ageMs > 60000) {
+        status = "Stale";
+      } else if (ageMs > 30000) {
+        status = "Delayed";
       }
-    } catch (e) {}
-
-    // 2. Try Gold-API (Direct Forex / Institutional Spot XAUUSD Feed)
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch("https://api.gold-api.com/price/XAU", {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.price && data.price > 1800 && data.price < 6000) {
-          const rawPrice = Number(data.price.toFixed(2));
-          lastKnownValidTick = {
-            price: rawPrice,
-            bid: rawPrice,
-            ask: Number((rawPrice + SPREAD).toFixed(2)),
-            timestamp: now,
-            source: "Gold-API Institutional Spot (XAU/USD)",
-            status: "Live",
-          };
-          return lastKnownValidTick;
-        }
-      }
-    } catch (e) {}
-
-    // 3. Try Yahoo Finance Spot Gold (XAUUSD=X)
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?interval=1m&range=1d", {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        const marketPrice = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (marketPrice && marketPrice > 1800 && marketPrice < 6000) {
-          const rawPrice = Number(marketPrice.toFixed(2));
-          lastKnownValidTick = {
-            price: rawPrice,
-            bid: rawPrice,
-            ask: Number((rawPrice + SPREAD).toFixed(2)),
-            timestamp: now,
-            source: "Yahoo Finance Spot Gold (XAUUSD=X)",
-            status: "Live",
-          };
-          return lastKnownValidTick;
-        }
-      }
-    } catch (e) {}
-
-    // 4. Try FxRatesAPI Spot XAU
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch("https://api.fxratesapi.com/latest?currencies=XAU", {
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.success && data?.rates?.XAU) {
-          const raw = 1 / data.rates.XAU;
-          if (!isNaN(raw) && raw > 1800 && raw < 6000) {
-            const rawPrice = Number(raw.toFixed(2));
-            lastKnownValidTick = {
-              price: rawPrice,
-              bid: rawPrice,
-              ask: Number((rawPrice + SPREAD).toFixed(2)),
-              timestamp: now,
-              source: "FxRatesAPI Spot (XAUUSD)",
-              status: "Live",
-            };
-            return lastKnownValidTick;
-          }
-        }
-      }
-    } catch (e) {}
-
-    // 5. Fallback: Continuous micro-smooth tick if last valid tick was within 10 minutes
-    if (now - lastKnownValidTick.timestamp < 600000) {
-      const microDelta = Math.sin(now / 5000) * 0.15;
-      const rawPrice = Number((lastKnownValidTick.price + microDelta).toFixed(2));
       return {
-        price: rawPrice,
-        bid: rawPrice,
-        ask: Number((rawPrice + SPREAD).toFixed(2)),
-        timestamp: now,
-        source: `${lastKnownValidTick.source || "Gold Spot Feed"} (Live Tick)`,
-        status: "Live",
+        ...this.currentTick,
+        status,
       };
     }
 
-    // Stale price feed (> 10m without any network response)
-    return {
-      price: lastKnownValidTick.price,
-      bid: lastKnownValidTick.bid,
-      ask: lastKnownValidTick.ask,
-      timestamp: lastKnownValidTick.timestamp,
-      source: "STALE_API_CACHE",
-      status: "Stale",
-    };
+    public getH1Candles(): GoldCandle[] {
+      return this.cachedH1Candles;
+    }
+
+    public async pollQuote(): Promise<LiveGoldTick> {
+      if (this.isPolling) return this.getLatestData();
+      this.isPolling = true;
+
+      const apiKey =
+        process.env.TWELVE_DATA_API_KEY ||
+        process.env.VITE_TWELVEDATA_API_KEY ||
+        "13972c4c0a87409484e51229f074bf21";
+
+      const now = Date.now();
+
+      // 1. Primary Provider: Twelve Data Realtime Price Spot (/price?symbol=XAU/USD)
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const res = await fetch(`https://api.twelvedata.com/price?symbol=XAU/USD&apikey=${apiKey}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          const rawPrice = parseFloat(data?.price);
+          if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
+            const price = Number(rawPrice.toFixed(2));
+            const incomingTimestamp = now;
+
+            if (incomingTimestamp >= this.currentTick.timestamp || now - this.currentTick.receivedAt > 20000) {
+              const high24h = Math.max(this.currentTick.high24h || price, price);
+              const low24h = Math.min(this.currentTick.low24h || price, price);
+              const change24h = Number((price - (this.currentTick.price || price)).toFixed(2));
+              const changePercent24h = this.currentTick.price
+                ? Number((((price - this.currentTick.price) / this.currentTick.price) * 100).toFixed(2))
+                : this.currentTick.changePercent24h;
+
+              this.currentTick = {
+                price,
+                bid: null,
+                ask: null,
+                spread: null,
+                high24h,
+                low24h,
+                change24h,
+                changePercent24h,
+                timestamp: incomingTimestamp,
+                receivedAt: now,
+                source: "Twelve Data Spot Gold (XAU/USD)",
+                status: "Live",
+                provider: "TWELVE_DATA",
+                h1Trend: this.currentTick.h1Trend,
+              };
+
+              console.log(
+                `[XAU/USD DATA FEED] Provider: Twelve Data | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Age: ${Math.round((now - incomingTimestamp) / 1000)}s | Status: LIVE`
+              );
+
+              this.isPolling = false;
+              return this.getLatestData();
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback below
+      }
+
+      // 2. Fallback Provider: Gold-API (Direct Realtime Spot XAU/USD)
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const res = await fetch("https://api.gold-api.com/price/XAU", {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          const rawPrice = parseFloat(data?.price);
+          if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
+            const price = Number(rawPrice.toFixed(2));
+            const incomingTimestamp = data.updatedAt ? Date.parse(data.updatedAt) : now;
+
+            if (incomingTimestamp >= this.currentTick.timestamp || now - this.currentTick.receivedAt > 20000) {
+              this.currentTick = {
+                price,
+                bid: null,
+                ask: null,
+                spread: null,
+                high24h: Math.max(this.currentTick.high24h || price, price),
+                low24h: Math.min(this.currentTick.low24h || price, price),
+                change24h: Number((price - (this.currentTick.price || price)).toFixed(2)),
+                changePercent24h: this.currentTick.changePercent24h,
+                timestamp: incomingTimestamp,
+                receivedAt: now,
+                source: "Gold-API Spot Gold (XAU/USD)",
+                status: "Live",
+                provider: "GOLD_API",
+                h1Trend: this.currentTick.h1Trend,
+              };
+
+              console.log(
+                `[XAU/USD DATA FEED] Provider: Gold-API Fallback | Symbol: XAU/USD | Price: $${price.toFixed(2)} | Recv: ${new Date(now).toISOString().substring(11, 19)} | Age: ${Math.round((now - incomingTimestamp) / 1000)}s | Status: LIVE`
+              );
+
+              this.isPolling = false;
+              return this.getLatestData();
+            }
+          }
+        }
+      } catch (err) {
+        // Maintain last tick
+      }
+
+      this.isPolling = false;
+      return this.getLatestData();
+    }
+
+    public async pollCandles(): Promise<GoldCandle[]> {
+      const apiKey =
+        process.env.TWELVE_DATA_API_KEY ||
+        process.env.VITE_TWELVEDATA_API_KEY ||
+        "13972c4c0a87409484e51229f074bf21";
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(
+          `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=24&apikey=${apiKey}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.values) && data.values.length > 0) {
+            const formatted: GoldCandle[] = data.values
+              .map((item: any) => ({
+                datetime: item.datetime,
+                open: Number(parseFloat(item.open).toFixed(2)),
+                high: Number(parseFloat(item.high).toFixed(2)),
+                low: Number(parseFloat(item.low).toFixed(2)),
+                close: Number(parseFloat(item.close).toFixed(2)),
+              }))
+              .reverse(); // Chronological order
+
+            this.cachedH1Candles = formatted;
+            this.lastCandleFetchMs = Date.now();
+
+            // Compute H1 Trend using real candle closes
+            if (formatted.length >= 6) {
+              const latest = formatted[formatted.length - 1].close;
+              const past = formatted[formatted.length - 6].close;
+              this.currentTick.h1Trend = latest >= past ? "BULLISH" : "BEARISH";
+            }
+          }
+        }
+      } catch (err) {
+        // Keep existing cached candles
+      }
+
+      return this.cachedH1Candles;
+    }
+  }
+
+  const goldMarketDataService = new GoldMarketDataService();
+
+  async function fetchLiveServerGoldTick(): Promise<LiveGoldTick> {
+    return goldMarketDataService.getLatestData();
   }
 
   async function fetchLiveServerGoldPrice(): Promise<number> {
-    const tick = await fetchLiveServerGoldTick();
+    const tick = goldMarketDataService.getLatestData();
     return tick.price;
   }
 

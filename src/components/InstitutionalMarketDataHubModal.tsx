@@ -114,7 +114,7 @@ export const InstitutionalMarketDataHubModal: React.FC<InstitutionalMarketDataHu
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 font-sans">
-                    London Bullion & COMEX Spot benchmark rates powered by TwelveData, Finnhub (OANDA:XAU_USD), and MetalPrice API. Zero crypto-spread gap.
+                    Realtime XAU/USD Spot benchmark rates powered directly by Twelve Data Spot API and Gold-API fallback. Single source of truth across all GMC modules.
                   </p>
                 </div>
                 <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold whitespace-nowrap">

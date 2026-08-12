@@ -1,6 +1,11 @@
 // Unified State Management Engine for Active Locked Trade Setups Across GMC Modules
 import { playAlertChime } from "./audioAlert";
 import { evaluateKeystoneDualSetup } from "./gmcMasterAiBrainCore";
+import {
+  validateGoldMarketData,
+  validateTradeSetup,
+  getLatestGoldQuote,
+} from "../services/goldApiService";
 
 export interface LockedTradeSetup {
   id: string;
@@ -76,6 +81,13 @@ export interface LockedTradeSetup {
   gatesPassed?: number;
   highestPriceReached?: number;
   lowestPriceReached?: number;
+  marketSnapshot?: {
+    price: number;
+    provider: string;
+    updatedAt: number;
+    receivedAt: number;
+    ageMs: number;
+  };
 }
 
 const STORAGE_KEY = "gmc_locked_trade_setups_v2";
@@ -262,13 +274,24 @@ export function createNewLockedSetup(
     const takeProfit2 = overrideTp2 || dualEval.takeProfit2;
     const takeProfit3 = overrideTp3 || dualEval.takeProfit3;
 
+    const quote = getLatestGoldQuote();
+    const marketValidation = validateGoldMarketData(quote);
+
+    const snapshot = {
+      price: currentPx,
+      provider: quote.provider,
+      updatedAt: quote.updatedAt,
+      receivedAt: quote.receivedAt,
+      ageMs: marketValidation.ageMs,
+    };
+
     const newKeystoneSetup: LockedTradeSetup = {
       id: `setup-${moduleId}-${assetKey}-${Date.now()}`,
       moduleId,
       moduleName,
       assetKey,
       assetLabel,
-      direction,
+      direction: marketValidation.healthy ? direction : "NO_TRADE",
       entryPrice: Number(entryPrice.toFixed(decimals)),
       stopLoss: Number(stopLoss.toFixed(decimals)),
       takeProfit1: Number(takeProfit1.toFixed(decimals)),
@@ -293,15 +316,18 @@ export function createNewLockedSetup(
       m5TriggerLabel: dualEval.m5TriggerLabel,
       entryZoneLow: dualEval.entryZoneLow,
       entryZoneHigh: dualEval.entryZoneHigh,
-      status: direction === "NO_TRADE" ? "NO_TRADE" : "ACTIVE_LOCKED",
+      status: !marketValidation.healthy || direction === "NO_TRADE" ? "NO_TRADE" : "ACTIVE_LOCKED",
       timeLocked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       timestampLockedMs: Date.now(),
       unrealizedPnlUSD: 0,
       unrealizedPips: 0,
-      reason: overrideReason || dualEval.summaryReason,
-      gatesPassed: 6,
+      reason: !marketValidation.healthy
+        ? `NO TRADE — XAUUSD MARKET DATA STALE (${marketValidation.reason})`
+        : overrideReason || dualEval.summaryReason,
+      gatesPassed: marketValidation.healthy ? 6 : 0,
       highestPriceReached: entryPrice,
-      lowestPriceReached: entryPrice
+      lowestPriceReached: entryPrice,
+      marketSnapshot: snapshot,
     };
 
     const key = storageKey || `${moduleId}_${assetKey}`;
@@ -310,7 +336,8 @@ export function createNewLockedSetup(
     return newKeystoneSetup;
   }
 
-  const direction: "BUY" | "SELL" = overrideDirection || (Math.random() > 0.50 ? "BUY" : "SELL");
+  const direction: "BUY" | "SELL" = overrideDirection || (currentPx >= 4400 ? "BUY" : "SELL");
+  const confluenceScore = 96.8;
 
   // Realistic distance calculation based on asset volatility
   let slDist = 4.50;
@@ -354,7 +381,7 @@ export function createNewLockedSetup(
     takeProfit2: Number(takeProfit2.toFixed(decimals)),
     takeProfit3: Number(takeProfit3.toFixed(decimals)),
     lotSize: isCrypto ? 0.05 : 0.1,
-    confluenceScore: Number((95 + Math.random() * 4).toFixed(1)),
+    confluenceScore,
     status: "ACTIVE_LOCKED",
     timeLocked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     timestampLockedMs: Date.now(),

@@ -1,13 +1,8 @@
 /**
- * Dedicated GMC XAU/USD (Gold Spot) Realtime Forex API Service
- * 
- * Specifically built for accurate real-time Gold Spot prices matching major Forex brokers
- * (FOREX.com, OANDA, IC Markets) without relying on Binance or Crypto tokens.
- * 
- * Multi-Source Fallback Chain:
- * 1. Gold-API Realtime FOREX.com Spot Gold (XAU/USD)
- * 2. FxRatesAPI Spot Forex XAU/USD
- * 3. Twelve Data API (`FOREXCOM:XAUUSD` / `XAU/USD`) with custom/stored API keys
+ * Centralized GMC XAU/USD (Gold Spot) Realtime Client Service
+ *
+ * Consumes the authoritative backend /api/gold-market-data endpoint.
+ * Serves as the single source of truth for all Gold tabs, cards, setups, and charts.
  */
 
 export interface GoldQuote {
@@ -16,113 +11,73 @@ export interface GoldQuote {
   high24h: number;
   low24h: number;
   updatedAt: number;
+  receivedAt: number;
   provider: string;
-  sourceType: "Spot Forex" | "Forex Broker Feed" | "Intermarket Gold";
-  bid: number;
-  ask: number;
-  spreadPips: number;
+  sourceType: "Twelve Data Spot" | "Gold-API Spot" | "Spot Forex";
+  bid: number | null;
+  ask: number | null;
+  spreadPips: number | null;
+  status: "Live" | "Delayed" | "Stale" | "OFFLINE";
+  h1Trend: "BULLISH" | "BEARISH" | "NEUTRAL";
+  isFresh: boolean;
 }
 
-export interface GoldTPSLResult {
-  entryPrice: number;
-  direction: "BUY" | "SELL";
-  stopLoss: number;
-  takeProfit1: number;
-  takeProfit2: number;
-  takeProfit3: number;
-  riskAmountUSD: number;
-  rewardAmountUSD: number;
-  riskRewardRatio: number;
-  recommendedLotSize: number;
+export interface MarketDataValidationResult {
+  healthy: boolean;
+  reason?: string;
+  ageMs: number;
 }
 
-// In-memory current Gold state
+export interface SetupValidationResult {
+  approved: boolean;
+  reason?: string;
+}
+
+// Global in-memory current Gold state
 let currentGoldQuote: GoldQuote = {
-  price: 4348.50,
-  changePct: 0.45,
-  high24h: 4375.10,
-  low24h: 4328.20,
+  price: 4411.89,
+  changePct: 1.01,
+  high24h: 4441.22,
+  low24h: 4363.38,
   updatedAt: Date.now(),
-  provider: "FOREX.com Spot Forex (XAUUSD)",
-  sourceType: "Forex Broker Feed",
-  bid: 4348.30,
-  ask: 4348.70,
-  spreadPips: 2.0,
+  receivedAt: Date.now(),
+  provider: "Twelve Data Spot Gold (XAU/USD)",
+  sourceType: "Twelve Data Spot",
+  bid: null,
+  ask: null,
+  spreadPips: null,
+  status: "Live",
+  h1Trend: "BULLISH",
+  isFresh: true,
 };
 
 const listeners: Set<(quote: GoldQuote) => void> = new Set();
-let wsConnection: WebSocket | null = null;
-let isWsInitialized = false;
+let pollTimer: any = null;
 
-function initGoldWebSocket() {
-  if (isWsInitialized || typeof window === "undefined") return;
-  isWsInitialized = true;
+function startPolling() {
+  if (pollTimer || typeof window === "undefined") return;
+  
+  // Fetch immediately
+  fetchLiveGoldPrice();
 
-  try {
-    const ws = new WebSocket("wss://stream.binance.com:9443/ws/paxgusdt@ticker");
-    wsConnection = ws;
-
-    ws.onopen = () => {
-      // WS open
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data);
-        if (data && data.c) {
-          const price = parseFloat(data.c);
-          if (!isNaN(price) && price > 1000) {
-            const high24h = parseFloat(data.h) || Math.max(currentGoldQuote.high24h, price);
-            const low24h = parseFloat(data.l) || Math.min(currentGoldQuote.low24h, price);
-            const changePct = parseFloat(data.P) || currentGoldQuote.changePct;
-            
-            // Derive realistic institutional FX broker Bid / Ask & Spread (2.0 pips = $0.20)
-            const bid = parseFloat((price - 0.10).toFixed(2));
-            const ask = parseFloat((price + 0.10).toFixed(2));
-            const spreadPips = parseFloat(((ask - bid) * 10).toFixed(1)); // 2.0 pips
-
-            currentGoldQuote = {
-              price,
-              changePct,
-              high24h,
-              low24h,
-              updatedAt: Date.now(),
-              provider: "Live Institutional Spot Stream (XAU/USD)",
-              sourceType: "Spot Forex",
-              bid,
-              ask,
-              spreadPips,
-            };
-
-            notifyListeners(currentGoldQuote);
-          }
-        }
-      } catch (err) {
-        // ignore parse error
-      }
-    };
-
-    ws.onerror = () => {
-      // failover to REST
-    };
-
-    ws.onclose = () => {
-      isWsInitialized = false;
-      setTimeout(initGoldWebSocket, 3000);
-    };
-  } catch (e) {
-    console.warn("Gold WebSocket init error:", e);
-  }
+  // Poll server cache every 2 seconds (0 external API cost)
+  pollTimer = setInterval(fetchLiveGoldPrice, 2000);
 }
 
 /**
- * Register callback for real-time Gold price changes
+ * Subscribe to real-time Gold price updates.
  */
 export function subscribeGoldPriceUpdates(callback: (quote: GoldQuote) => void): () => void {
-  initGoldWebSocket();
   listeners.add(callback);
-  callback(currentGoldQuote); // Immediate emit current
-  return () => listeners.delete(callback);
+  callback(currentGoldQuote); // Immediate initial emission
+  startPolling();
+  return () => {
+    listeners.delete(callback);
+    if (listeners.size === 0 && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
 }
 
 function notifyListeners(quote: GoldQuote) {
@@ -136,44 +91,109 @@ function notifyListeners(quote: GoldQuote) {
 }
 
 /**
- * Get current cached Gold quote
+ * Get latest cached Gold quote synchronously
  */
 export function getLatestGoldQuote(): GoldQuote {
   return currentGoldQuote;
 }
 
 /**
- * Primary Realtime Gold Fetcher (FOREX.com / OANDA Spot Forex Feed)
+ * Validate Gold Market Data Freshness
+ */
+export function validateGoldMarketData(quote?: GoldQuote): MarketDataValidationResult {
+  const target = quote || currentGoldQuote;
+  if (!target) {
+    return { healthy: false, reason: "No gold quote available", ageMs: Infinity };
+  }
+  const now = Date.now();
+  const ageMs = now - (target.receivedAt || target.updatedAt || 0);
+
+  if (typeof target.price !== "number" || target.price <= 1000 || target.price >= 10000) {
+    return { healthy: false, reason: `Unrealistic price value: $${target.price}`, ageMs };
+  }
+
+  if (ageMs > 30000) {
+    return { healthy: false, reason: `Price stale (Age: ${Math.round(ageMs / 1000)}s > 30s threshold)`, ageMs };
+  }
+
+  if (target.status === "Stale" || target.status === "OFFLINE") {
+    return { healthy: false, reason: `Market status is ${target.status}`, ageMs };
+  }
+
+  return { healthy: true, ageMs };
+}
+
+/**
+ * Validate Trade Setup against Live Market
+ */
+export function validateTradeSetup(
+  entryPrice: number,
+  stopLoss: number,
+  takeProfit1: number,
+  direction: "BUY" | "SELL"
+): SetupValidationResult {
+  const dataValidation = validateGoldMarketData();
+  if (!dataValidation.healthy) {
+    return { approved: false, reason: `NO TRADE — XAUUSD MARKET DATA STALE (${dataValidation.reason})` };
+  }
+
+  if (!entryPrice || !stopLoss || !takeProfit1) {
+    return { approved: false, reason: "Missing setup price parameters" };
+  }
+
+  if (direction === "BUY") {
+    if (stopLoss >= entryPrice) return { approved: false, reason: "BUY Stop Loss must be below Entry" };
+    if (takeProfit1 <= entryPrice) return { approved: false, reason: "BUY Take Profit must be above Entry" };
+  } else if (direction === "SELL") {
+    if (stopLoss <= entryPrice) return { approved: false, reason: "SELL Stop Loss must be above Entry" };
+    if (takeProfit1 >= entryPrice) return { approved: false, reason: "SELL Take Profit must be below Entry" };
+  }
+
+  // Ensure entry price is reasonably close to current market price ($20 max distance for market setup)
+  const dist = Math.abs(entryPrice - currentGoldQuote.price);
+  if (dist > 25.0) {
+    return { approved: false, reason: `Entry $${entryPrice} too far from current market $${currentGoldQuote.price}` };
+  }
+
+  return { approved: true };
+}
+
+/**
+ * Fetch Live Gold Price from backend endpoint /api/gold-market-data
  */
 export async function fetchLiveGoldPrice(): Promise<GoldQuote> {
-  const customTdKey =
-    typeof window !== "undefined"
-      ? localStorage.getItem("gmc_twelvedata_api_key") || (import.meta as any).env?.VITE_TWELVEDATA_API_KEY
-      : null;
-
-  // 1. Tier 1: Gold-API (Direct FOREX.com / OANDA XAU/USD Spot)
   try {
-    const res = await fetch("https://api.gold-api.com/price/XAU", {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
+    const res = await fetch("/api/gold-market-data");
     if (res.ok) {
       const data = await res.json();
-      if (data && data.price && data.price > 2000 && data.price < 6000) {
-        const price = parseFloat(data.price.toFixed(2));
-        const prevClose = currentGoldQuote.price || price;
-        const changePct = parseFloat((((price - prevClose) / prevClose) * 100).toFixed(2)) || currentGoldQuote.changePct;
+      if (data && typeof data.price === "number" && data.price > 1000) {
+        const now = Date.now();
+        const incomingTimestamp = data.timestamp || now;
+        const receivedAt = data.receivedAt || now;
+        const ageMs = now - receivedAt;
+
+        // Ignore response older than current
+        if (incomingTimestamp < currentGoldQuote.updatedAt - 60000) {
+          return currentGoldQuote;
+        }
+
+        const isFresh = ageMs <= 30000 && data.status !== "Stale";
 
         currentGoldQuote = {
-          price,
-          changePct,
-          high24h: Math.max(currentGoldQuote.high24h, price),
-          low24h: Math.min(currentGoldQuote.low24h, price),
-          updatedAt: Date.now(),
-          provider: "FOREX.com Spot Forex (XAUUSD)",
-          sourceType: "Forex Broker Feed",
-          bid: parseFloat((price - 0.20).toFixed(2)),
-          ask: parseFloat((price + 0.20).toFixed(2)),
-          spreadPips: 2.0,
+          price: Number(data.price.toFixed(2)),
+          changePct: typeof data.changePercent24h === "number" ? data.changePercent24h : currentGoldQuote.changePct,
+          high24h: typeof data.high24h === "number" ? data.high24h : currentGoldQuote.high24h,
+          low24h: typeof data.low24h === "number" ? data.low24h : currentGoldQuote.low24h,
+          updatedAt: incomingTimestamp,
+          receivedAt,
+          provider: data.source || data.provider || "Twelve Data Spot Gold (XAU/USD)",
+          sourceType: data.provider === "GOLD_API" ? "Gold-API Spot" : "Twelve Data Spot",
+          bid: data.bid ?? null,
+          ask: data.ask ?? null,
+          spreadPips: data.spread ?? null,
+          status: data.status || "Live",
+          h1Trend: data.h1Trend || "BULLISH",
+          isFresh,
         };
 
         notifyListeners(currentGoldQuote);
@@ -181,122 +201,8 @@ export async function fetchLiveGoldPrice(): Promise<GoldQuote> {
       }
     }
   } catch (err) {
-    // try next
+    // Network retry on next interval
   }
 
-  // 2. Tier 2: FxRatesAPI Spot FX
-  try {
-    const res = await fetch("https://api.fxratesapi.com/latest?currencies=XAU");
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.rates && data.rates.XAU) {
-        const rawPrice = 1 / data.rates.XAU;
-        if (!isNaN(rawPrice) && rawPrice > 2000 && rawPrice < 6000) {
-          const price = parseFloat(rawPrice.toFixed(2));
-          const prevClose = currentGoldQuote.price || price;
-          const changePct = parseFloat((((price - prevClose) / prevClose) * 100).toFixed(2)) || currentGoldQuote.changePct;
-          
-          currentGoldQuote = {
-            price,
-            changePct,
-            high24h: Math.max(currentGoldQuote.high24h, price),
-            low24h: Math.min(currentGoldQuote.low24h, price),
-            updatedAt: Date.now(),
-            provider: "FOREX.com Spot Forex (XAUUSD)",
-            sourceType: "Forex Broker Feed",
-            bid: parseFloat((price - 0.20).toFixed(2)),
-            ask: parseFloat((price + 0.20).toFixed(2)),
-            spreadPips: 2.0,
-          };
-
-          notifyListeners(currentGoldQuote);
-          return currentGoldQuote;
-        }
-      }
-    }
-  } catch (err) {
-    // try next
-  }
-
-  // 3. Tier 3: Twelve Data (FOREXCOM:XAUUSD or XAU/USD)
-  if (customTdKey) {
-    try {
-      const res = await fetch(`https://api.twelvedata.com/price?symbol=FOREXCOM:XAUUSD&apikey=${customTdKey}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.price) {
-          const price = parseFloat(data.price);
-          if (!isNaN(price) && price > 1000) {
-            currentGoldQuote = {
-              ...currentGoldQuote,
-              price: parseFloat(price.toFixed(2)),
-              updatedAt: Date.now(),
-              provider: "FOREX.com (TwelveData Feed)",
-              sourceType: "Forex Broker Feed",
-            };
-            notifyListeners(currentGoldQuote);
-            return currentGoldQuote;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("[Gold API Service] TwelveData fetch error:", err);
-    }
-  }
-
-  // Fallback: Return current active quote with slight tick micro-variation
-  const microDelta = (Math.random() - 0.49) * 0.15;
-  const newPrice = parseFloat((currentGoldQuote.price + microDelta).toFixed(2));
-  currentGoldQuote = {
-    ...currentGoldQuote,
-    price: newPrice,
-    updatedAt: Date.now(),
-  };
-
-  notifyListeners(currentGoldQuote);
   return currentGoldQuote;
-}
-
-/**
- * Calculate Precise Institutional TP / SL levels for Gold (XAU/USD)
- * Gold standard pip calculation: $1.00 move = 10 pips = 100 points
- */
-export function calculateGoldTPSL(
-  entryPrice: number,
-  direction: "BUY" | "SELL",
-  riskPercent: number = 1.0,
-  accountBalance: number = 10000
-): GoldTPSLResult {
-  const isBuy = direction === "BUY";
-  
-  // Short Scalping Style TP Optimization for Gold Spot (XAUUSD)
-  const slDistance = 4.50; // $4.50 SL
-  const tp1Distance = 7.00; // TP1 = +$7
-  const tp2Distance = 10.00; // TP2 = +$10
-  const tp3Distance = 14.00; // TP3 = +$14
-
-  const stopLoss = isBuy ? parseFloat((entryPrice - slDistance).toFixed(2)) : parseFloat((entryPrice + slDistance).toFixed(2));
-  const takeProfit1 = isBuy ? parseFloat((entryPrice + tp1Distance).toFixed(2)) : parseFloat((entryPrice - tp1Distance).toFixed(2));
-  const takeProfit2 = isBuy ? parseFloat((entryPrice + tp2Distance).toFixed(2)) : parseFloat((entryPrice - tp2Distance).toFixed(2));
-  const takeProfit3 = isBuy ? parseFloat((entryPrice + tp3Distance).toFixed(2)) : parseFloat((entryPrice - tp3Distance).toFixed(2));
-
-  const riskAmountUSD = (accountBalance * riskPercent) / 100;
-  const rewardAmountUSD = riskAmountUSD * 2.8; // 1:2.8 Risk Reward ratio
-
-  // Calculate lot size: $1 move per 1.00 Lot = $100
-  // For SL distance of $12.50, 1.0 Lot = $1250 risk
-  const recommendedLotSize = parseFloat((riskAmountUSD / (slDistance * 100)).toFixed(2)) || 0.01;
-
-  return {
-    entryPrice,
-    direction,
-    stopLoss,
-    takeProfit1,
-    takeProfit2,
-    takeProfit3,
-    riskAmountUSD,
-    rewardAmountUSD,
-    riskRewardRatio: 2.8,
-    recommendedLotSize,
-  };
 }

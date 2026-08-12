@@ -41,7 +41,7 @@ const TAB_INSIGHTS: Record<
   },
   gmccap: {
     bias: "BULLISH",
-    confidence: "99.1%",
+    confidence: "98.4%",
     recommendation: "ACCUMULATE ON H1 RETEST",
     confirmation: "H1 COMMAND BREAKOUT CONFIRMED",
     commentary: (p, s) =>
@@ -381,9 +381,9 @@ export const UniversalInstitutionalTabHeader: React.FC<
   const changePct = xauObj.changePct || 0.45;
   const isPositive = changePct >= 0;
 
-  const bidPrice = (goldPrice - 0.3).toFixed(2);
-  const askPrice = (goldPrice + 0.3).toFixed(2);
-  const spread = "0.60";
+  const bidPrice = xauObj.bid ? `$${xauObj.bid.toFixed(2)}` : "N/A (Spot Mid)";
+  const askPrice = xauObj.ask ? `$${xauObj.ask.toFixed(2)}` : "N/A (Spot Mid)";
+  const spread = xauObj.spreadPips ? `$${xauObj.spreadPips}` : "N/A";
 
   const session = useMemo(() => getMarketSession(), []);
 
@@ -482,12 +482,12 @@ export const UniversalInstitutionalTabHeader: React.FC<
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="text-[#9299A3] font-medium">BID:</span>
-            <span className="text-[#74D8A0] font-semibold">${bidPrice}</span>
+            <span className="text-[#74D8A0] font-semibold">{bidPrice}</span>
           </div>
           <span className="text-[#272C32]">|</span>
           <div className="flex items-center gap-1.5">
             <span className="text-[#9299A3] font-medium">ASK:</span>
-            <span className="text-[#EE777F] font-semibold">${askPrice}</span>
+            <span className="text-[#EE777F] font-semibold">{askPrice}</span>
           </div>
           <span className="text-[#272C32]">|</span>
           <div className="flex items-center gap-1.5">

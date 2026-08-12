@@ -282,6 +282,9 @@ export function useLiveData(activeAssetKey: string) {
       setPrices((prev) => {
         const next = { ...prev };
         for (const asset of SUPPORTED_ASSETS) {
+          // EXEMPT XAUUSD strictly: Gold prices MUST come from the centralized /api/gold-market-data service without random noise!
+          if (asset.key === "XAUUSD") continue;
+
           if (asset.category === "metal" || asset.category === "forex") {
             const currentObj = prev[asset.key] || {
               price: asset.basePrice,

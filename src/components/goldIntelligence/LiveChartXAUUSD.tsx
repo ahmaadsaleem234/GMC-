@@ -16,17 +16,55 @@ export const LiveChartXAUUSD: React.FC<LiveChartXAUUSDProps> = ({
   const [selectedTimeframe, setSelectedTimeframe] = useState<"M5" | "M15" | "H1" | "H4" | "D1">("M15");
   const [isCopied, setIsCopied] = useState(false);
 
-  // Generate 24 realistic price candles ending near currentPrice
+  const [realCandles, setRealCandles] = useState<Array<{ time: string; open: number; high: number; low: number; close: number; isUp: boolean }>>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    async function loadCandles() {
+      try {
+        const res = await fetch("/api/gold-candles");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.candles) && data.candles.length > 0 && active) {
+            const parsed = data.candles.map((c: any) => {
+              const o = Number(c.open);
+              const cl = Number(c.close);
+              const h = Number(c.high);
+              const l = Number(c.low);
+              const timeStr = c.datetime ? c.datetime.substring(11, 16) : "12:00";
+              return {
+                time: timeStr,
+                open: o,
+                high: Math.max(h, o, cl),
+                low: Math.min(l, o, cl),
+                close: cl,
+                isUp: cl >= o,
+              };
+            });
+            setRealCandles(parsed);
+          }
+        }
+      } catch (e) {
+        // Fallback to generated deterministic candles
+      }
+    }
+    loadCandles();
+    return () => { active = false; };
+  }, [currentPrice]);
+
+  // Generate 24 price candles ending at currentPrice if real candles loading
   const candles = React.useMemo(() => {
+    if (realCandles.length > 0) return realCandles;
+
     const list = [];
-    let base = currentPrice - 18;
+    let base = currentPrice - 12;
     for (let i = 0; i < 24; i++) {
       const open = base;
-      const volatility = 2.5 + Math.random() * 3.5;
-      const isUp = i % 3 !== 0 || i === 23;
-      const close = isUp ? open + volatility * 0.8 : open - volatility * 0.7;
-      const high = Math.max(open, close) + Math.random() * 2.0;
-      const low = Math.min(open, close) - Math.random() * 2.0;
+      const volatility = 1.8 + Math.sin(i * 0.5) * 1.2;
+      const isUp = i % 2 === 0;
+      const close = isUp ? open + volatility : open - volatility;
+      const high = Math.max(open, close) + 0.8;
+      const low = Math.min(open, close) - 0.8;
       base = close;
       list.push({ time: `14:${(i * 5).toString().padStart(2, "0")}`, open, high, low, close, isUp });
     }
@@ -35,7 +73,7 @@ export const LiveChartXAUUSD: React.FC<LiveChartXAUUSDProps> = ({
     list[23].high = Math.max(list[23].high, currentPrice + 0.5);
     list[23].isUp = list[23].close >= list[23].open;
     return list;
-  }, [currentPrice]);
+  }, [currentPrice, realCandles]);
 
   const minPrice = Math.min(...candles.map((c) => c.low), setup.stopLoss || currentPrice - 30) - 5;
   const maxPrice = Math.max(...candles.map((c) => c.high), setup.tp3 || currentPrice + 40) + 5;

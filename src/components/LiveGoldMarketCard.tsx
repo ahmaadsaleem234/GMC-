@@ -23,22 +23,22 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
   const changePct = xauObj.changePct || 0.45;
   const isPositive = changePct >= 0;
 
-  // Real-time Bid/Ask calculation with 60c institutional spread
-  const bidPrice = (goldPrice - 0.3).toFixed(2);
-  const askPrice = (goldPrice + 0.3).toFixed(2);
+  // Real-time Bid/Ask status from normalized market feed
+  const bidPrice = xauObj.bid ? `$${xauObj.bid.toFixed(2)}` : "N/A (Spot Mid)";
+  const askPrice = xauObj.ask ? `$${xauObj.ask.toFixed(2)}` : "N/A (Spot Mid)";
   const priceDiff = (goldPrice * (changePct / 100)).toFixed(2);
 
-  // Generate 20-point live trend chart SVG path based on price
+  // Generate 20-point trend sparkline path
   const chartPoints = useMemo(() => {
     const points: number[] = [];
-    let base = goldPrice * 0.995;
+    let base = goldPrice * (isPositive ? 0.996 : 1.004);
     for (let i = 0; i < 20; i++) {
-      const variation = Math.sin(i * 0.5) * (goldPrice * 0.002) + (i * (goldPrice * 0.0003));
+      const variation = (i / 19) * (goldPrice - base);
       points.push(base + variation);
     }
     points[points.length - 1] = goldPrice;
     return points;
-  }, [goldPrice]);
+  }, [goldPrice, isPositive]);
 
   const minVal = Math.min(...chartPoints);
   const maxVal = Math.max(...chartPoints);
@@ -73,7 +73,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
               </span>
             </div>
             <p className="text-xs text-[#9299A3] font-mono">
-              London Bullion & COMEX Intermarket Real-Time Feed
+              Twelve Data Spot Gold (XAU/USD) Realtime Feed
             </p>
           </div>
         </div>
@@ -82,7 +82,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
         <div className="flex items-center gap-2">
           <div className="px-3 py-1.5 rounded-xl bg-[#101318] border border-[#2C3239] text-[#74D8A0] font-mono text-xs font-semibold flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#74D8A0]" />
-            <span>LIVE INSTITUTIONAL SPOT</span>
+            <span>TWELVE DATA SPOT FEED</span>
           </div>
         </div>
       </div>
@@ -120,14 +120,14 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
           <div className="pt-2 flex items-center gap-4 text-xs font-mono">
             <div className="px-3 py-1.5 rounded-xl bg-[#0E1115] border border-[#242A31] flex items-center gap-2">
               <span className="text-[#9299A3] font-medium">BID:</span>
-              <span className="text-[#74D8A0] font-semibold">${bidPrice}</span>
+              <span className="text-[#74D8A0] font-semibold">{bidPrice}</span>
             </div>
             <div className="px-3 py-1.5 rounded-xl bg-[#0E1115] border border-[#242A31] flex items-center gap-2">
               <span className="text-[#9299A3] font-medium">ASK:</span>
-              <span className="text-[#EE777F] font-semibold">${askPrice}</span>
+              <span className="text-[#EE777F] font-semibold">{askPrice}</span>
             </div>
             <div className="text-[11px] text-[#9299A3]">
-              SPREAD: <strong className="text-[#F1CC6B]">0.60</strong>
+              FEED: <strong className="text-[#F1CC6B]">TWELVE DATA SPOT</strong>
             </div>
           </div>
         </div>
@@ -181,7 +181,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
           <div className="p-3 bg-[#0E1115] border border-[#242A31] rounded-xl space-y-1">
             <span className="text-[10px] font-mono font-medium text-[#9299A3] uppercase">INSTITUTIONAL BIAS</span>
             <div className="flex items-center justify-between text-xs font-mono font-semibold text-[#F1CC6B]">
-              <span>99.1% LIQUIDITY ACCUMULATION</span>
+              <span>INSTITUTIONAL SPOT ORDERFLOW</span>
               <ShieldCheck className="w-3.5 h-3.5 text-[#74D8A0]" />
             </div>
           </div>
