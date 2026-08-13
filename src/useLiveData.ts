@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Asset, Candle, LivePrice } from "./types";
 import { fetchLiveGoldPrice, subscribeGoldPriceUpdates } from "./services/goldApiService";
 
 export const SUPPORTED_ASSETS: Asset[] = [
   { key: "US30", label: "US30 Dow Jones Index", short: "US30", basePrice: 54025.0, seed: 99, decimals: 1, color: "#38bdf8", category: "forex" },
   { key: "NAS100", label: "NASDAQ 100 Index", short: "NAS100", basePrice: 29413.0, seed: 100, decimals: 1, color: "#00e08a", category: "forex" },
-  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4348.50, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
+  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4438.50, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
   { key: "XAGUSD", label: "Silver / USD Spot", short: "XAGUSD", basePrice: 61.95, seed: 115, decimals: 2, color: "#cbd5e1", category: "metal" },
   { key: "BTCUSDT", label: "Bitcoin / USDT", short: "BTCUSDT", basePrice: 64740.0, seed: 102, decimals: 2, color: "#f97316", category: "crypto" },
   { key: "ETHUSDT", label: "Ethereum / USDT", short: "ETHUSDT", basePrice: 1915.0, seed: 103, decimals: 2, color: "#6366f1", category: "crypto" },
@@ -29,8 +29,8 @@ function loadCachedPrices(): Record<string, LivePrice> {
     const raw = localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Validate cache sanity (if Gold stored < 3500 or US30 < 45000, clear stale cache)
-      if (parsed.XAUUSD?.price && parsed.XAUUSD.price < 3500) {
+      // Validate cache sanity (if Gold stored < 4410 or US30 < 45000, clear stale cache)
+      if (parsed.XAUUSD?.price && parsed.XAUUSD.price < 4410) {
         localStorage.removeItem(LOCAL_STORAGE_CACHE_KEY);
         return {};
       }
@@ -484,7 +484,7 @@ export function useCandleData(assetKey: string, timeframe: string) {
   }, [assetKey, timeframe]);
 
   // Live real-time tick appender
-  const appendTick = (latestPrice: number) => {
+  const appendTick = useCallback((latestPrice: number) => {
     setCandles((prev) => {
       if (!prev.length) return prev;
       const last = prev[prev.length - 1];
@@ -514,7 +514,7 @@ export function useCandleData(assetKey: string, timeframe: string) {
         return [...prev.slice(0, prev.length - 1), updatedLast];
       }
     });
-  };
+  }, [timeframe]);
 
   return { candles, loading, appendTick };
 }

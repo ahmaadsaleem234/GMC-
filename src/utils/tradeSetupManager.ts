@@ -6,6 +6,8 @@ import {
   validateTradeSetup,
   getLatestGoldQuote,
 } from "../services/goldApiService";
+import { connectedAiBrainEngine } from "./connectedAiBrainEngine";
+import { TradeLifecycleState, BrainMarketRegime, ProfitProtectionStatus } from "../types";
 
 export interface LockedTradeSetup {
   id: string;
@@ -19,12 +21,19 @@ export interface LockedTradeSetup {
   takeProfit1: number;
   takeProfit2: number;
   takeProfit3: number;
+  takeProfit4?: number;
+  protectedSl?: number;
+  isBreakeven?: boolean;
+  lockedProfitUSD?: number;
+  lockedProfitPips?: number;
+  nextProtectionTarget?: string;
+  protectionTier?: "NONE" | "BREAKEVEN" | "TP1_LOCKED" | "TP2_LOCKED" | "TP3_LOCKED";
   lotSize: number;
   confluenceScore: number;
   buyScore?: number;
   sellScore?: number;
   setupGrade?: "Grade A+" | "Grade A" | "Grade B" | "No Grade";
-  marketRegime?: "BULLISH_TRENDING" | "BEARISH_TRENDING" | "RANGING_CONSOLIDATION" | "HIGH_VOLATILITY_EXPANSION";
+  marketRegime?: BrainMarketRegime | string;
   mtfMapping?: {
     h4Trend: string;
     h1Structure: string;
@@ -61,7 +70,7 @@ export interface LockedTradeSetup {
     sampleSize: number;
     matchGrade: string;
   };
-  tradeLifecycleState?: "WAITING" | "ARMED" | "ACTIVE" | "TP_HIT" | "SL_HIT" | "EXPIRED";
+  tradeLifecycleState?: TradeLifecycleState;
   conflictDetected?: boolean;
   conflictDetails?: string;
   rrValue?: number;
@@ -168,7 +177,7 @@ export function getOrCreateLockedSetup(
 }
 
 /**
- * Check active setup against current live price. Updates PnL, TP, SL status.
+ * Check active setup against current live price. Updates PnL, TP, SL status, and Profit Lock levels.
  */
 export function checkAndUpdateLockedSetup(
   setup: LockedTradeSetup,
@@ -178,15 +187,41 @@ export function checkAndUpdateLockedSetup(
 ): LockedTradeSetup {
   if (setup.status !== "ACTIVE_LOCKED") return setup;
 
-  const isBTC = setup.assetKey === "BTCUSD" || setup.assetKey === "crypto";
-  const multiplier = isBTC ? 0.01 : 10; // USD pnl multiplier
-
   // Track price extremes during active trade
   if (!setup.highestPriceReached || currentPx > setup.highestPriceReached) {
     setup.highestPriceReached = currentPx;
   }
   if (!setup.lowestPriceReached || currentPx < setup.lowestPriceReached) {
     setup.lowestPriceReached = currentPx;
+  }
+
+  // Calculate Rule-Based Profit Protection Levels
+  if (setup.direction !== "NO_TRADE") {
+    const profitStatus = connectedAiBrainEngine.calculateProfitProtection(
+      setup.direction,
+      setup.entryPrice,
+      setup.stopLoss,
+      setup.takeProfit1,
+      setup.takeProfit2,
+      setup.takeProfit3,
+      currentPx,
+      setup.protectedSl
+    );
+
+    setup.protectedSl = profitStatus.protectedSl;
+    setup.isBreakeven = profitStatus.isBreakeven;
+    setup.lockedProfitUSD = profitStatus.lockedProfitUSD;
+    setup.lockedProfitPips = profitStatus.lockedProfitPips;
+    setup.nextProtectionTarget = profitStatus.nextProtectionTarget;
+    setup.protectionTier = profitStatus.levelTier;
+
+    if (profitStatus.levelTier === "BREAKEVEN") {
+      setup.tradeLifecycleState = "BREAKEVEN";
+    } else if (profitStatus.levelTier !== "NONE") {
+      setup.tradeLifecycleState = "PROFIT_PROTECTED";
+    } else {
+      setup.tradeLifecycleState = "ACTIVE";
+    }
   }
 
   let pnlDiff = 0;
@@ -198,18 +233,89 @@ export function checkAndUpdateLockedSetup(
     // Check Take Profit 1 Hit
     if (currentPx >= setup.takeProfit1) {
       setup.status = "TP_HIT";
+      setup.tradeLifecycleState = "TP_HIT";
       const tpDiff = setup.takeProfit1 - setup.entryPrice;
       setup.pnlPips = Math.round(tpDiff * 10);
       setup.pnlResultUSD = Number((tpDiff * setup.lotSize * 100).toFixed(2));
       playAlertChime();
+
+      // Log to Self-Learning AI Journal
+      connectedAiBrainEngine.recordClosedTrade({
+        setupId: setup.id,
+        dateTime: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC",
+        timestamp: Date.now(),
+        asset: setup.assetKey,
+        direction: setup.direction === "BUY" ? "BUY" : "SELL",
+        entryZone: `$${setup.entryPrice.toFixed(2)}`,
+        bestEntry: setup.entryPrice,
+        originalSl: setup.stopLoss,
+        protectedSlFinal: setup.protectedSl || setup.stopLoss,
+        tp1: setup.takeProfit1,
+        tp2: setup.takeProfit2,
+        tp3: setup.takeProfit3,
+        tp4: setup.takeProfit4 || setup.takeProfit3 + 12.0,
+        finalResult: "TP1_HIT",
+        pnlUSD: setup.pnlResultUSD,
+        pnlPips: setup.pnlPips,
+        riskReward: setup.rrValue || 2.8,
+        confidenceScore: setup.confluenceScore,
+        timeframe: "15M Mapping → 1M Execution",
+        marketStructure: setup.h1Trend || "1H Bullish Structure",
+        liquidityConditions: "Asian Session Low Sweep + Demand Zone",
+        obFvgInfo: setup.m15ZoneLabel || "15M Order Block",
+        bosChochMssInfo: setup.m5TriggerLabel || "1M MSS Confirmation",
+        newsConditions: setup.newsProtectionMode?.eventLabel || "Normal Market",
+        marketRegime: (setup.marketRegime as any) || "TRENDING_BULLISH",
+        entryReason: setup.reason || "High Confidence Multi-Timeframe Alignment",
+        exitReason: `Take Profit 1 target hit at $${setup.takeProfit1.toFixed(2)}`,
+        mfePips: Math.max(0, Math.round(((setup.highestPriceReached || currentPx) - setup.entryPrice) * 10)),
+        maePips: Math.max(0, Math.round((setup.entryPrice - (setup.lowestPriceReached || currentPx)) * 10)),
+        patternKey: "HTF_SWEEP_OB_FVG_MSS_M1",
+      });
     }
-    // Check Stop Loss Hit
-    else if (currentPx <= setup.stopLoss) {
-      setup.status = "SL_HIT";
-      const slDiff = setup.stopLoss - setup.entryPrice;
+    // Check Effective Stop Loss Hit (Protected SL or Original SL)
+    else if (currentPx <= (setup.protectedSl || setup.stopLoss)) {
+      const isProtectedSlHit = setup.protectedSl && setup.protectedSl > setup.stopLoss;
+      setup.status = isProtectedSlHit ? "TP_HIT" : "SL_HIT";
+      setup.tradeLifecycleState = isProtectedSlHit ? "CLOSED" : "SL_HIT";
+      const exitPx = setup.protectedSl || setup.stopLoss;
+      const slDiff = exitPx - setup.entryPrice;
       setup.pnlPips = Math.round(slDiff * 10);
       setup.pnlResultUSD = Number((slDiff * setup.lotSize * 100).toFixed(2));
       playAlertChime();
+
+      connectedAiBrainEngine.recordClosedTrade({
+        setupId: setup.id,
+        dateTime: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC",
+        timestamp: Date.now(),
+        asset: setup.assetKey,
+        direction: setup.direction === "BUY" ? "BUY" : "SELL",
+        entryZone: `$${setup.entryPrice.toFixed(2)}`,
+        bestEntry: setup.entryPrice,
+        originalSl: setup.stopLoss,
+        protectedSlFinal: setup.protectedSl || setup.stopLoss,
+        tp1: setup.takeProfit1,
+        tp2: setup.takeProfit2,
+        tp3: setup.takeProfit3,
+        tp4: setup.takeProfit4 || setup.takeProfit3 + 12.0,
+        finalResult: isProtectedSlHit ? "BREAKEVEN" : "SL_HIT",
+        pnlUSD: setup.pnlResultUSD,
+        pnlPips: setup.pnlPips,
+        riskReward: setup.rrValue || 2.8,
+        confidenceScore: setup.confluenceScore,
+        timeframe: "15M Mapping → 1M Execution",
+        marketStructure: setup.h1Trend || "1H Structure",
+        liquidityConditions: "Sweep Assessment",
+        obFvgInfo: setup.m15ZoneLabel || "15M Zone",
+        bosChochMssInfo: setup.m5TriggerLabel || "1M Trigger",
+        newsConditions: setup.newsProtectionMode?.eventLabel || "Normal Market",
+        marketRegime: (setup.marketRegime as any) || "HIGH_VOLATILITY_EXPANSION",
+        entryReason: setup.reason || "Multi-Confluence Execution",
+        exitReason: isProtectedSlHit ? "Protected Profit SL Exit" : `Stop Loss hit at $${setup.stopLoss.toFixed(2)}`,
+        mfePips: Math.max(0, Math.round(((setup.highestPriceReached || currentPx) - setup.entryPrice) * 10)),
+        maePips: Math.max(0, Math.round((setup.entryPrice - (setup.lowestPriceReached || currentPx)) * 10)),
+        patternKey: "HTF_SWEEP_OB_FVG_MSS_M1",
+      });
     }
   } else {
     // SELL direction
@@ -217,21 +323,91 @@ export function checkAndUpdateLockedSetup(
     setup.unrealizedPips = Math.round(pnlDiff * 10);
     setup.unrealizedPnlUSD = Number((pnlDiff * setup.lotSize * 100).toFixed(2));
 
-    // Check Take Profit 1 Hit (SELL hits TP when price goes below TP1)
+    // Check Take Profit 1 Hit
     if (currentPx <= setup.takeProfit1) {
       setup.status = "TP_HIT";
+      setup.tradeLifecycleState = "TP_HIT";
       const tpDiff = setup.entryPrice - setup.takeProfit1;
       setup.pnlPips = Math.round(tpDiff * 10);
       setup.pnlResultUSD = Number((tpDiff * setup.lotSize * 100).toFixed(2));
       playAlertChime();
+
+      connectedAiBrainEngine.recordClosedTrade({
+        setupId: setup.id,
+        dateTime: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC",
+        timestamp: Date.now(),
+        asset: setup.assetKey,
+        direction: "SELL",
+        entryZone: `$${setup.entryPrice.toFixed(2)}`,
+        bestEntry: setup.entryPrice,
+        originalSl: setup.stopLoss,
+        protectedSlFinal: setup.protectedSl || setup.stopLoss,
+        tp1: setup.takeProfit1,
+        tp2: setup.takeProfit2,
+        tp3: setup.takeProfit3,
+        tp4: setup.takeProfit4 || setup.takeProfit3 - 12.0,
+        finalResult: "TP1_HIT",
+        pnlUSD: setup.pnlResultUSD,
+        pnlPips: setup.pnlPips,
+        riskReward: setup.rrValue || 2.8,
+        confidenceScore: setup.confluenceScore,
+        timeframe: "15M Mapping → 1M Execution",
+        marketStructure: setup.h1Trend || "1H Bearish Structure",
+        liquidityConditions: "Buy-side Liquidity Sweep",
+        obFvgInfo: setup.m15ZoneLabel || "15M Supply Block",
+        bosChochMssInfo: setup.m5TriggerLabel || "1M MSS Confirmation",
+        newsConditions: setup.newsProtectionMode?.eventLabel || "Normal Market",
+        marketRegime: (setup.marketRegime as any) || "TRENDING_BEARISH",
+        entryReason: setup.reason || "High Confidence Multi-Timeframe Alignment",
+        exitReason: `Take Profit 1 target hit at $${setup.takeProfit1.toFixed(2)}`,
+        mfePips: Math.max(0, Math.round((setup.entryPrice - (setup.lowestPriceReached || currentPx)) * 10)),
+        maePips: Math.max(0, Math.round(((setup.highestPriceReached || currentPx) - setup.entryPrice) * 10)),
+        patternKey: "HTF_SWEEP_OB_FVG_MSS_M1",
+      });
     }
-    // Check Stop Loss Hit (SELL hits SL when price goes above SL)
-    else if (currentPx >= setup.stopLoss) {
-      setup.status = "SL_HIT";
-      const slDiff = setup.entryPrice - setup.stopLoss;
+    // Check Effective Stop Loss Hit
+    else if (currentPx >= (setup.protectedSl || setup.stopLoss)) {
+      const isProtectedSlHit = setup.protectedSl && setup.protectedSl < setup.stopLoss;
+      setup.status = isProtectedSlHit ? "TP_HIT" : "SL_HIT";
+      setup.tradeLifecycleState = isProtectedSlHit ? "CLOSED" : "SL_HIT";
+      const exitPx = setup.protectedSl || setup.stopLoss;
+      const slDiff = setup.entryPrice - exitPx;
       setup.pnlPips = Math.round(slDiff * 10);
       setup.pnlResultUSD = Number((slDiff * setup.lotSize * 100).toFixed(2));
       playAlertChime();
+
+      connectedAiBrainEngine.recordClosedTrade({
+        setupId: setup.id,
+        dateTime: new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC",
+        timestamp: Date.now(),
+        asset: setup.assetKey,
+        direction: "SELL",
+        entryZone: `$${setup.entryPrice.toFixed(2)}`,
+        bestEntry: setup.entryPrice,
+        originalSl: setup.stopLoss,
+        protectedSlFinal: setup.protectedSl || setup.stopLoss,
+        tp1: setup.takeProfit1,
+        tp2: setup.takeProfit2,
+        tp3: setup.takeProfit3,
+        tp4: setup.takeProfit4 || setup.takeProfit3 - 12.0,
+        finalResult: isProtectedSlHit ? "BREAKEVEN" : "SL_HIT",
+        pnlUSD: setup.pnlResultUSD,
+        pnlPips: setup.pnlPips,
+        riskReward: setup.rrValue || 2.8,
+        confidenceScore: setup.confluenceScore,
+        timeframe: "15M Mapping → 1M Execution",
+        marketStructure: setup.h1Trend || "1H Structure",
+        liquidityConditions: "Sweep Assessment",
+        obFvgInfo: setup.m15ZoneLabel || "15M Zone",
+        bosChochMssInfo: setup.m5TriggerLabel || "1M Trigger",
+        newsConditions: setup.newsProtectionMode?.eventLabel || "Normal Market",
+        marketRegime: (setup.marketRegime as any) || "HIGH_VOLATILITY_EXPANSION",
+        entryReason: setup.reason || "Multi-Confluence Execution",
+        exitReason: isProtectedSlHit ? "Protected Profit SL Exit" : `Stop Loss hit at $${setup.stopLoss.toFixed(2)}`,
+        mfePips: Math.max(0, Math.round((setup.entryPrice - (setup.lowestPriceReached || currentPx)) * 10)),
+        maePips: Math.max(0, Math.round(((setup.highestPriceReached || currentPx) - setup.entryPrice) * 10)),
+        patternKey: "HTF_SWEEP_OB_FVG_MSS_M1",
+      });
     }
   }
 
@@ -240,6 +416,7 @@ export function checkAndUpdateLockedSetup(
   saveSetupRegistry(setupRegistry);
   return setup;
 }
+
 
 /**
  * Generate a fresh locked trade setup at current market price.

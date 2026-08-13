@@ -66,6 +66,8 @@ import {
 
 import { MT5AutoTradingDashboard } from "./MT5AutoTradingDashboard";
 import { TelegramBotUsersSection } from "./TelegramBotUsersSection";
+import { AiBrainControlCenterView } from "./AiBrainControlCenterView";
+import { PriceFeedMonitor } from "./PriceFeedMonitor";
 
 interface AdminDashboardViewProps {
   isLoggedIn: boolean;
@@ -81,8 +83,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onForceLogoutUser,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "mt5" | "sessions" | "users" | "ipblock" | "telegram" | "audit" | "analytics"
-  >("mt5");
+    "ai_brain" | "overview" | "mt5" | "price_feed" | "sessions" | "users" | "ipblock" | "telegram" | "audit" | "analytics"
+  >("ai_brain");
 
   // Real-time state
   const [sessions, setSessions] = useState<UserSessionData[]>([]);
@@ -580,6 +582,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         {/* Tab Navigation Pill Bar */}
         <div className="flex items-center gap-2 overflow-x-auto pt-5 mt-4 border-t border-slate-800/80 no-scrollbar font-mono text-xs">
           <button
+            onClick={() => setActiveTab("ai_brain")}
+            className={`px-4 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all border whitespace-nowrap ${
+              activeTab === "ai_brain"
+                ? "bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20"
+                : "bg-slate-900/80 text-amber-400 border-amber-500/40 hover:text-white hover:bg-slate-800"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-400 fill-current animate-pulse" />
+            <span>🧠 AI BRAIN CONTROL CENTER</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("mt5")}
             className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap ${
               activeTab === "mt5"
@@ -664,6 +678,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab("price_feed")}
+            className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap ${
+              activeTab === "price_feed"
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-lg shadow-amber-500/10"
+                : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-white"
+            }`}
+          >
+            <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span>📊 Price Feed Monitor</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("analytics")}
             className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap ${
               activeTab === "analytics"
@@ -677,6 +703,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       </div>
 
+      {/* TAB -1: AI BRAIN CONTROL CENTER */}
+      {activeTab === "ai_brain" && (
+        <div className="animate-fade-in">
+          <AiBrainControlCenterView />
+        </div>
+      )}
+
       {/* TAB 0: MT5 AUTO-TRADING & AI CONTROL */}
       {activeTab === "mt5" && (
         <div className="animate-fade-in">
@@ -684,9 +717,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       )}
 
+      {/* TAB: PRICE FEED MONITOR */}
+      {activeTab === "price_feed" && (
+        <div className="animate-fade-in">
+          <PriceFeedMonitor />
+        </div>
+      )}
+
       {/* TAB 1: OVERVIEW & SYSTEM STATUS */}
       {activeTab === "overview" && (
         <div className="space-y-6 animate-fade-in">
+          {/* Price Feed Monitor Widget inside Overview */}
+          <PriceFeedMonitor />
           {/* Real Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 font-mono">
             <div className="bg-[#080B14] border border-slate-800 p-5 rounded-2xl space-y-2">

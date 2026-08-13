@@ -21,10 +21,17 @@ import {
   BarChart2,
   Activity,
   Award,
+  Brain,
+  Lock,
+  Compass,
+  Globe,
+  Gauge,
+  Cpu,
 } from "lucide-react";
 import { sendTelegramMessage } from "../utils/telegram";
 import { useLockedTradeSetup } from "../utils/useLockedTradeSetup";
 import { LockedSetupBanner } from "./LockedSetupBanner";
+import { connectedAiBrainEngine } from "../utils/connectedAiBrainEngine";
 
 interface LevelKeystoneViewProps {
   currentPrice: number;
@@ -58,6 +65,13 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
     2
   );
 
+  // Intelligence Engine Data Contexts
+  const currentSession = connectedAiBrainEngine.getCurrentSessionName();
+  const correlationContext = connectedAiBrainEngine.getCorrelationContext(assetKey, livePrice);
+  const anomalyStatus = connectedAiBrainEngine.detectAnomalies(Date.now(), 1.2, livePrice);
+  const modelVersions = connectedAiBrainEngine.getModelVersionRegistry();
+  const activeModelVersion = modelVersions[0] || { version: "v2.4.0-master", liveWinRatePct: 88.6 };
+
   const direction = lockedSetup.direction;
   const isBuy = direction === "BUY";
   const isSell = direction === "SELL";
@@ -72,14 +86,25 @@ export const LevelKeystoneView: React.FC<LevelKeystoneViewProps> = ({
   const stopLoss = lockedSetup.stopLoss.toFixed(2);
   const takeProfit1 = lockedSetup.takeProfit1.toFixed(2);
   const takeProfit2 = lockedSetup.takeProfit2.toFixed(2);
+  const takeProfit3 = lockedSetup.takeProfit3?.toFixed(2) || (lockedSetup.entryPrice + (isBuy ? 25 : -25)).toFixed(2);
+  const takeProfit4 = lockedSetup.takeProfit4?.toFixed(2) || (lockedSetup.entryPrice + (isBuy ? 40 : -40)).toFixed(2);
   const confidenceScore = lockedSetup.confluenceScore || Math.max(buyScore, sellScore);
 
   const h1Trend = lockedSetup.h1Trend || (isBuy ? "BULLISH MSS" : (isSell ? "BEARISH MSS" : "NEUTRAL / CHOP"));
   const m15ZoneLabel = lockedSetup.m15ZoneLabel || (isBuy ? "DEMAND ZONE" : (isSell ? "SUPPLY ZONE" : "EQUILIBRIUM ZONE"));
   const m5TriggerLabel = lockedSetup.m5TriggerLabel || (isBuy ? "BULLISH CHoCH" : (isSell ? "BEARISH CHoCH" : "WAITING FOR SWEEP"));
 
-  // Risk Math
+  // Dynamic Risk Grade
   const slPips = Math.abs(parseFloat(bestEntry) - parseFloat(stopLoss)) * 10;
+  const riskGrade = connectedAiBrainEngine.calculateRiskGrade(
+    direction === "NO_TRADE" ? "BUY" : direction,
+    parseFloat(bestEntry),
+    slPips,
+    lockedSetup.newsProtectionMode?.isActive || false,
+    (lockedSetup.marketRegime as string) || "TRENDING_BULLISH"
+  );
+
+  // Risk Math
   const riskAmount = (accountBalance * riskPercent) / 100;
   const recommendedLot = slPips > 0 ? (riskAmount / (slPips * 10)).toFixed(2) : "0.10";
 
@@ -157,6 +182,33 @@ AI Brain Reason: ${aiReason}`;
             <p className="text-xs text-[#9299A3] max-w-2xl leading-relaxed">
               Exclusively generates ultra-high-confidence XAUUSD setups. Analyzed via 4-timeframe AI Brain matrix (H1 → M30 → M15 → M5) with mandatory USD high-impact news filter protection.
             </p>
+
+            {/* CENTRAL INTELLIGENCE BADGES */}
+            <div className="pt-2 flex items-center gap-2 flex-wrap text-[10px] font-mono">
+              <span className="px-2.5 py-1 rounded-md bg-[#11161F] text-[#8EA0B5] border border-[#232D3B] flex items-center gap-1.5">
+                <Globe className="w-3 h-3 text-[#F1CC6B]" />
+                <span>SESSION: <strong className="text-white">{currentSession}</strong></span>
+              </span>
+
+              <span className="px-2.5 py-1 rounded-md bg-[#11161F] text-[#8EA0B5] border border-[#232D3B] flex items-center gap-1.5">
+                <Compass className="w-3 h-3 text-cyan-400" />
+                <span>MACRO: <strong className="text-cyan-300">{correlationContext.macroRating}</strong></span>
+              </span>
+
+              <span className={`px-2.5 py-1 rounded-md border flex items-center gap-1.5 font-bold uppercase ${
+                riskGrade === "LOW" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                riskGrade === "MEDIUM" ? "bg-amber-500/10 text-amber-300 border-amber-500/30" :
+                "bg-rose-500/10 text-rose-400 border-rose-500/30"
+              }`}>
+                <Gauge className="w-3 h-3" />
+                <span>RISK GRADE: {riskGrade}</span>
+              </span>
+
+              <span className="px-2.5 py-1 rounded-md bg-[#141B18] text-[#74D8A0] border border-[#1E3A2E] flex items-center gap-1.5">
+                <Cpu className="w-3 h-3 text-[#74D8A0]" />
+                <span>MODEL: <strong className="text-white">{activeModelVersion.version}</strong></span>
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">

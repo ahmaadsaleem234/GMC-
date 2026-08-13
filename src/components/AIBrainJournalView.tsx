@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { getModuleTitle } from "../utils/moduleRegistry";
 import {
   Brain,
@@ -20,10 +20,14 @@ import {
   BarChart3,
   Globe,
   Clock,
+  Sliders,
+  Calendar,
 } from "lucide-react";
 import { TabDemoAccount } from "../useDemoAccounts";
 import { SUPPORTED_ASSETS } from "../useLiveData";
 import { playAlertChime } from "../utils/audioAlert";
+import { connectedAiBrainEngine } from "../utils/connectedAiBrainEngine";
+import { ClosedTradeJournalRecord, PatternWeightRecord, WeeklyPerformanceReview } from "../types";
 
 interface SMCJournalTrade {
   id: string;
@@ -124,6 +128,23 @@ export function AIBrainJournalView({
   const [smcLogs, setSmcLogs] = useState<SMCJournalTrade[]>(INITIAL_SMC_JOURNAL);
   const [filterTag, setFilterTag] = useState<string>("ALL");
   const [filterSession, setFilterSession] = useState<string>("ALL");
+
+  // Real-Time Self-Learning Brain States
+  const [brainJournal, setBrainJournal] = useState<ClosedTradeJournalRecord[]>([]);
+  const [patternWeights, setPatternWeights] = useState<PatternWeightRecord[]>([]);
+  const [weeklyReview, setWeeklyReview] = useState<WeeklyPerformanceReview | null>(null);
+
+  useEffect(() => {
+    const updateFromEngine = () => {
+      setBrainJournal(connectedAiBrainEngine.getJournalRecords());
+      setPatternWeights(connectedAiBrainEngine.getPatternWeights());
+      setWeeklyReview(connectedAiBrainEngine.getWeeklyReview());
+    };
+
+    updateFromEngine();
+    const interval = setInterval(updateFromEngine, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // New SMC Trade Entry Form Modal state
   const [showAddModal, setShowAddModal] = useState(false);
