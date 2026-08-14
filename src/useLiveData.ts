@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Asset, Candle, LivePrice } from "./types";
-import { fetchLiveGoldPrice, subscribeGoldPriceUpdates } from "./services/goldApiService";
+import { fetchLiveGoldPrice, subscribeGoldPriceUpdates, forceRefreshGoldPrice, GoldQuote } from "./services/goldApiService";
 
 export const SUPPORTED_ASSETS: Asset[] = [
   { key: "US30", label: "US30 Dow Jones Index", short: "US30", basePrice: 54025.0, seed: 99, decimals: 1, color: "#38bdf8", category: "forex" },
   { key: "NAS100", label: "NASDAQ 100 Index", short: "NAS100", basePrice: 29413.0, seed: 100, decimals: 1, color: "#00e08a", category: "forex" },
-  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4438.50, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
+  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4377.83, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
   { key: "XAGUSD", label: "Silver / USD Spot", short: "XAGUSD", basePrice: 61.95, seed: 115, decimals: 2, color: "#cbd5e1", category: "metal" },
   { key: "BTCUSDT", label: "Bitcoin / USDT", short: "BTCUSDT", basePrice: 64740.0, seed: 102, decimals: 2, color: "#f97316", category: "crypto" },
   { key: "ETHUSDT", label: "Ethereum / USDT", short: "ETHUSDT", basePrice: 1915.0, seed: 103, decimals: 2, color: "#6366f1", category: "crypto" },
@@ -29,15 +29,16 @@ function loadCachedPrices(): Record<string, LivePrice> {
     const raw = localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Validate cache sanity (if Gold stored < 4410 or US30 < 45000, clear stale cache)
-      if (parsed.XAUUSD?.price && parsed.XAUUSD.price < 4410) {
+      const now = Date.now();
+      // Sanity check: do not restore stale cache older than 10 minutes
+      if (parsed.XAUUSD?.updatedAt && now - parsed.XAUUSD.updatedAt > 600000) {
         localStorage.removeItem(LOCAL_STORAGE_CACHE_KEY);
         return {};
       }
       return parsed;
     }
   } catch (e) {
-    console.warn("Failed reading local price cache:", e);
+    // Ignore cache error
   }
   return {};
 }
@@ -57,12 +58,22 @@ export function useLiveData(activeAssetKey: string) {
     for (const a of SUPPORTED_ASSETS) {
       initial[a.key] = cached[a.key] || {
         price: a.basePrice,
+        bid: Number((a.basePrice - 0.25).toFixed(a.decimals)),
+        ask: Number((a.basePrice + 0.25).toFixed(a.decimals)),
+        spread: a.key === "XAUUSD" ? 0.46 : 0.0004,
         changePct: 0.42,
         high24h: a.basePrice * 1.012,
         low24h: a.basePrice * 0.988,
         volume24h: 12450000,
         live: true,
         updatedAt: Date.now(),
+        receivedAt: Date.now(),
+        source: a.key === "XAUUSD" ? "Gold-API Realtime Spot (XAU/USD)" : "GMC Realtime Stream",
+        provider: a.key === "XAUUSD" ? "GOLD_API" : "GMC_CORE",
+        status: "Live",
+        feedStatus: "LIVE",
+        latency: 18,
+        latencyMs: 18,
       };
     }
     return initial;
@@ -72,254 +83,301 @@ export function useLiveData(activeAssetKey: string) {
   const [latencyMs, setLatencyMs] = useState<number>(18);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Real-time Binance WebSocket for Crypto & Forex Pairs (EXCLUDING Gold)
+  // 1. DEDICATED CENTRALIZED GOLD FEED SUBSCRIPTION (Single Source of Truth)
+  useEffect(() => {
+    const handleGoldQuote = (quote: GoldQuote) => {
+      const now = Date.now();
+      const tickAge = now - (quote.receivedAt || quote.updatedAt || now);
+      const isFresh = tickAge < 15000 && quote.status !== "Stale" && quote.status !== "OFFLINE";
+      const feedStatus = tickAge < 5000 ? "LIVE" : tickAge < 15000 ? "DELAYED" : "STALE";
+
+      setLatencyMs(quote.latencyMs || 24);
+
+      setPrices((prev) => {
+        const spread = quote.spreadPips ? quote.spreadPips / 100 : 0.46;
+        const bid = quote.bid ?? Number((quote.price - spread / 2).toFixed(2));
+        const ask = quote.ask ?? Number((quote.price + spread / 2).toFixed(2));
+
+        const updated = {
+          ...prev,
+          XAUUSD: {
+            price: quote.price,
+            bid,
+            ask,
+            spread,
+            changePct: quote.changePct,
+            high24h: quote.high24h,
+            low24h: quote.low24h,
+            volume24h: prev.XAUUSD?.volume24h || 185400,
+            live: isFresh,
+            updatedAt: quote.updatedAt || now,
+            receivedAt: quote.receivedAt || now,
+            source: quote.provider || "Gold-API Realtime Spot (XAU/USD)",
+            provider: quote.sourceType,
+            status: quote.status,
+            feedStatus: feedStatus as any,
+            latency: quote.latencyMs || 24,
+            latencyMs: quote.latencyMs || 24,
+            tickAgeMs: tickAge,
+            isStale: !isFresh,
+          },
+        };
+        saveCachedPrices(updated);
+        return updated;
+      });
+    };
+
+    const unsubscribe = subscribeGoldPriceUpdates(handleGoldQuote);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Real-time Binance WebSocket for Crypto & Forex Pairs (EXCLUDING Gold)
   useEffect(() => {
     let ws: WebSocket | null = null;
     let isSubscribed = true;
+    let reconnectTimeout: any = null;
 
-    try {
-      ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/solusdt@ticker/bnbusdt@ticker/xrpusdt@ticker/adausdt@ticker/dogeusdt@ticker/avaxusdt@ticker/linkusdt@ticker/dotusdt@ticker/eurusdt@ticker/gbpusdt@ticker");
-      wsRef.current = ws;
+    const connectWebSocket = () => {
+      try {
+        ws = new WebSocket(
+          "wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/solusdt@ticker/bnbusdt@ticker/xrpusdt@ticker/adausdt@ticker/dogeusdt@ticker/avaxusdt@ticker/linkusdt@ticker/dotusdt@ticker/eurusdt@ticker/gbpusdt@ticker"
+        );
+        wsRef.current = ws;
 
-      ws.onopen = () => {
-        if (isSubscribed) {
-          setIsConnected(true);
-          setLatencyMs(Math.floor(12 + Math.random() * 15));
-        }
-      };
-
-      ws.onmessage = (evt) => {
-        if (!isSubscribed) return;
-        try {
-          const data = JSON.parse(evt.data);
-          const symbol = data.s; // e.g., BTCUSDT, EURUSDT...
-          if (symbol && data.c) {
-            const price = parseFloat(data.c);
-            const changePct = parseFloat(data.P);
-            const high24h = parseFloat(data.h);
-            const low24h = parseFloat(data.l);
-            const volume24h = parseFloat(data.v);
-
-            let targetKey = symbol;
-            if (symbol === "EURUSDT") targetKey = "EURUSD";
-            else if (symbol === "GBPUSDT") targetKey = "GBPUSD";
-
-            if (SUPPORTED_ASSETS.some((a) => a.key === targetKey)) {
-              setPrices((prev) => {
-                const updated = {
-                  ...prev,
-                  [targetKey]: {
-                    price,
-                    changePct,
-                    high24h,
-                    low24h,
-                    volume24h,
-                    live: true,
-                    updatedAt: Date.now(),
-                  },
-                };
-
-                saveCachedPrices(updated);
-                return updated;
-              });
-            }
+        ws.onopen = () => {
+          if (isSubscribed) {
+            setIsConnected(true);
           }
-        } catch (err) {
-          // ignore parse error
+        };
+
+        ws.onmessage = (evt) => {
+          if (!isSubscribed) return;
+          try {
+            const data = JSON.parse(evt.data);
+            const symbol = data.s; // e.g., BTCUSDT, EURUSDT...
+            if (symbol && data.c) {
+              const price = parseFloat(data.c);
+              const changePct = parseFloat(data.P);
+              const high24h = parseFloat(data.h);
+              const low24h = parseFloat(data.l);
+              const volume24h = parseFloat(data.v);
+
+              let targetKey = symbol;
+              if (symbol === "EURUSDT") targetKey = "EURUSD";
+              else if (symbol === "GBPUSDT") targetKey = "GBPUSD";
+
+              if (targetKey !== "XAUUSD" && SUPPORTED_ASSETS.some((a) => a.key === targetKey)) {
+                setPrices((prev) => {
+                  const updated = {
+                    ...prev,
+                    [targetKey]: {
+                      price,
+                      changePct,
+                      high24h,
+                      low24h,
+                      volume24h,
+                      live: true,
+                      updatedAt: Date.now(),
+                      receivedAt: Date.now(),
+                      source: "Binance Realtime Stream",
+                      provider: "BINANCE",
+                      status: "Live" as const,
+                      feedStatus: "LIVE" as const,
+                    },
+                  };
+                  saveCachedPrices(updated);
+                  return updated;
+                });
+              }
+            }
+          } catch (err) {
+            // ignore parse error
+          }
+        };
+
+        ws.onerror = () => {
+          if (isSubscribed) setIsConnected(false);
+        };
+
+        ws.onclose = () => {
+          if (isSubscribed) {
+            setIsConnected(false);
+            // Reconnect after 3s
+            reconnectTimeout = setTimeout(connectWebSocket, 3000);
+          }
+        };
+      } catch (e) {
+        if (isSubscribed) {
+          setIsConnected(false);
+          reconnectTimeout = setTimeout(connectWebSocket, 5000);
         }
-      };
+      }
+    };
 
-      ws.onerror = () => {
-        if (isSubscribed) setIsConnected(false);
-      };
-
-      ws.onclose = () => {
-        if (isSubscribed) setIsConnected(false);
-      };
-    } catch (e) {
-      console.warn("WebSocket init error:", e);
-      setIsConnected(false);
-    }
+    connectWebSocket();
 
     return () => {
       isSubscribed = false;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) ws.close();
     };
   }, []);
 
-  // High-Speed Server-Sent Events (SSE) Stream for Zero-Latency Market Ticks
+  // 3. High-Speed Server-Sent Events (SSE) Stream for Zero-Latency Multi-Market Ticks
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let isSubscribed = true;
+    let sseReconnectTimer: any = null;
 
-    try {
-      eventSource = new EventSource("/api/live/stream");
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource("/api/live/stream");
 
-      eventSource.onopen = () => {
-        if (isSubscribed) setIsConnected(true);
-      };
+        eventSource.onopen = () => {
+          if (isSubscribed) setIsConnected(true);
+        };
 
-      eventSource.onmessage = (event) => {
-        if (!isSubscribed) return;
-        try {
-          const payload = JSON.parse(event.data);
-          const now = Date.now();
+        eventSource.onmessage = (event) => {
+          if (!isSubscribed) return;
+          try {
+            const payload = JSON.parse(event.data);
+            const now = Date.now();
 
-          if (payload.type === "INIT" && payload.ticks) {
-            setPrices((prev) => {
-              const updated = { ...prev };
-              for (const [sym, tick] of Object.entries<any>(payload.ticks)) {
-                let targetKey = sym;
-                if (sym === "BTCUSD") targetKey = "BTCUSDT";
+            if (payload.type === "INIT" && payload.ticks) {
+              setPrices((prev) => {
+                const updated = { ...prev };
+                for (const [sym, tick] of Object.entries<any>(payload.ticks)) {
+                  let targetKey = sym;
+                  if (sym === "BTCUSD") targetKey = "BTCUSDT";
 
-                if (SUPPORTED_ASSETS.some((a) => a.key === targetKey)) {
-                  updated[targetKey] = {
-                    price: tick.price,
-                    bid: tick.bid,
-                    ask: tick.ask,
-                    spread: tick.spread,
-                    changePct: tick.changePercent24h || 0.42,
-                    high24h: tick.high24h || tick.price * 1.01,
-                    low24h: tick.low24h || tick.price * 0.99,
-                    volume24h: prev[targetKey]?.volume24h || 185000,
-                    live: true,
-                    updatedAt: tick.timestamp || now,
-                    source: tick.source || "FCSAPI Realtime Socket",
-                    provider: tick.provider || "FCS_WEBSOCKET",
-                  };
+                  // Skip overriding XAUUSD if dedicated gold service is already active
+                  if (targetKey === "XAUUSD" && prev.XAUUSD?.price) {
+                    continue;
+                  }
+
+                  if (SUPPORTED_ASSETS.some((a) => a.key === targetKey)) {
+                    updated[targetKey] = {
+                      price: tick.price,
+                      bid: tick.bid,
+                      ask: tick.ask,
+                      spread: tick.spread,
+                      changePct: tick.changePercent24h || 0.42,
+                      high24h: tick.high24h || tick.price * 1.01,
+                      low24h: tick.low24h || tick.price * 0.99,
+                      volume24h: prev[targetKey]?.volume24h || 185000,
+                      live: true,
+                      updatedAt: tick.timestamp || now,
+                      receivedAt: now,
+                      source: tick.source || "GMC Institutional Stream",
+                      provider: tick.provider || "GMC_CORE",
+                      status: "Live",
+                      feedStatus: "LIVE",
+                    };
+                  }
                 }
+                saveCachedPrices(updated);
+                return updated;
+              });
+            } else if (payload.type === "TICK" && payload.tick) {
+              const tick = payload.tick;
+              let targetKey = tick.symbol;
+              if (tick.symbol === "BTCUSD") targetKey = "BTCUSDT";
+
+              if (targetKey === "XAUUSD") {
+                // Synchronize gold price from verified SSE tick
+                if (tick.price > 1800 && tick.price < 8000) {
+                  setPrices((prev) => {
+                    const updated = {
+                      ...prev,
+                      XAUUSD: {
+                        ...prev.XAUUSD,
+                        price: tick.price,
+                        bid: tick.bid || Number((tick.price - 0.23).toFixed(2)),
+                        ask: tick.ask || Number((tick.price + 0.23).toFixed(2)),
+                        spread: tick.spread || 0.46,
+                        changePct: tick.changePercent24h !== undefined ? tick.changePercent24h : prev.XAUUSD?.changePct || 0.45,
+                        high24h: tick.high24h || prev.XAUUSD?.high24h || tick.price * 1.004,
+                        low24h: tick.low24h || prev.XAUUSD?.low24h || tick.price * 0.996,
+                        live: true,
+                        updatedAt: tick.timestamp || now,
+                        receivedAt: now,
+                        source: tick.source || "Gold-API Realtime Spot (XAU/USD)",
+                        provider: tick.provider || "GOLD_API",
+                        status: "Live",
+                        feedStatus: "LIVE",
+                      },
+                    };
+                    saveCachedPrices(updated);
+                    return updated;
+                  });
+                }
+                return;
               }
-              saveCachedPrices(updated);
-              return updated;
-            });
-          } else if (payload.type === "TICK" && payload.tick) {
-            const tick = payload.tick;
-            let targetKey = tick.symbol;
-            if (tick.symbol === "BTCUSD") targetKey = "BTCUSDT";
 
-            const calcLatency = Math.max(1, Math.min(120, Math.abs(now - (tick.receivedAt || now))));
-            setLatencyMs(calcLatency);
-
-            setPrices((prev) => {
-              const updated = {
-                ...prev,
-                [targetKey]: {
-                  price: tick.price,
-                  bid: tick.bid,
-                  ask: tick.ask,
-                  spread: tick.spread,
-                  changePct: tick.changePercent24h !== undefined ? tick.changePercent24h : prev[targetKey]?.changePct || 0.42,
-                  high24h: tick.high24h || prev[targetKey]?.high24h || tick.price * 1.01,
-                  low24h: tick.low24h || prev[targetKey]?.low24h || tick.price * 0.99,
-                  volume24h: prev[targetKey]?.volume24h || 185000,
-                  live: true,
-                  updatedAt: tick.timestamp || now,
-                  source: tick.source || "FCSAPI Realtime Socket",
-                  provider: tick.provider || "FCS_WEBSOCKET",
-                },
-              };
-              saveCachedPrices(updated);
-              return updated;
-            });
+              if (SUPPORTED_ASSETS.some((a) => a.key === targetKey)) {
+                setPrices((prev) => {
+                  const updated = {
+                    ...prev,
+                    [targetKey]: {
+                      price: tick.price,
+                      bid: tick.bid,
+                      ask: tick.ask,
+                      spread: tick.spread,
+                      changePct: tick.changePercent24h !== undefined ? tick.changePercent24h : prev[targetKey]?.changePct || 0.42,
+                      high24h: tick.high24h || prev[targetKey]?.high24h || tick.price * 1.01,
+                      low24h: tick.low24h || prev[targetKey]?.low24h || tick.price * 0.99,
+                      volume24h: prev[targetKey]?.volume24h || 185000,
+                      live: true,
+                      updatedAt: tick.timestamp || now,
+                      receivedAt: now,
+                      source: tick.source || "GMC Institutional Stream",
+                      provider: tick.provider || "GMC_CORE",
+                      status: "Live",
+                      feedStatus: "LIVE",
+                    },
+                  };
+                  saveCachedPrices(updated);
+                  return updated;
+                });
+              }
+            }
+          } catch (e) {
+            // ignore parse error
           }
-        } catch (e) {
-          // ignore parse error
-        }
-      };
+        };
 
-      eventSource.onerror = () => {
+        eventSource.onerror = () => {
+          if (isSubscribed) {
+            setIsConnected(false);
+            if (eventSource) eventSource.close();
+            sseReconnectTimer = setTimeout(connectSSE, 4000);
+          }
+        };
+      } catch (e) {
         if (isSubscribed) {
-          setIsConnected(false);
+          sseReconnectTimer = setTimeout(connectSSE, 5000);
         }
-      };
-    } catch (e) {
-      console.warn("SSE init error:", e);
-    }
+      }
+    };
+
+    connectSSE();
 
     return () => {
       isSubscribed = false;
+      if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
       if (eventSource) eventSource.close();
     };
   }, []);
 
-  // Multi-source REST Polling Engine for Forex & Indices & FCS API
+  // 4. Multi-source REST Polling Engine for Forex & Indices & FCS API
   useEffect(() => {
     let active = true;
 
     const fetchInstitutionalPrices = async () => {
       try {
-        // 0. Primary FCS API Latest Endpoint
-        try {
-          const fcsRes = await fetch("/api/fcs/latest");
-          if (fcsRes.ok && active) {
-            const fcsData = await fcsRes.json();
-            if (fcsData.ok && fcsData.ticks) {
-              setPrices((prev) => {
-                const updated = { ...prev };
-                for (const [sym, tick] of Object.entries<any>(fcsData.ticks)) {
-                  let key = sym;
-                  if (sym === "BTCUSD") key = "BTCUSDT";
+        const now = Date.now();
 
-                  if (SUPPORTED_ASSETS.some((a) => a.key === key)) {
-                    updated[key] = {
-                      price: tick.price,
-                      changePct: tick.changePercent24h || 0.42,
-                      high24h: tick.high24h || tick.price * 1.01,
-                      low24h: tick.low24h || tick.price * 0.99,
-                      volume24h: prev[key]?.volume24h || 12450000,
-                      live: true,
-                      updatedAt: tick.receivedAt || Date.now(),
-                    };
-                  }
-                }
-                saveCachedPrices(updated);
-                return updated;
-              });
-            }
-          }
-        } catch (e) {
-          // Handled
-        }
-
-        // Fetch dedicated Gold API
-        fetchLiveGoldPrice().catch(() => {});
-
-        // Fetch Binance 24hr Ticker for Crypto (excluding Gold/PAXG)
-        const bRes = await fetch("https://api.binance.com/api/v3/ticker/24hr");
-        if (bRes.ok && active) {
-          const bData = await bRes.json();
-          if (Array.isArray(bData)) {
-            setPrices((prev) => {
-              const updated = { ...prev };
-              for (const item of bData) {
-                if (item.symbol === "PAXGUSDT") continue; // Strictly ignore Binance for Gold!
-
-                let key = item.symbol;
-                if (item.symbol === "EURUSDT") key = "EURUSD";
-                else if (item.symbol === "GBPUSDT") key = "GBPUSD";
-
-                if (SUPPORTED_ASSETS.some((a) => a.key === key)) {
-                  const price = parseFloat(item.lastPrice);
-                  if (!isNaN(price) && price > 0) {
-                    updated[key] = {
-                      price,
-                      changePct: parseFloat(item.priceChangePercent) || 0,
-                      high24h: parseFloat(item.highPrice) || price * 1.01,
-                      low24h: parseFloat(item.lowPrice) || price * 0.99,
-                      volume24h: parseFloat(item.volume) || 120000,
-                      live: true,
-                      updatedAt: Date.now(),
-                    };
-                  }
-                }
-              }
-              saveCachedPrices(updated);
-              return updated;
-            });
-          }
-        }
-
-        // 2. Fetch Yahoo Finance live market prices for US30, NAS100, XAGUSD, EURUSD, GBPUSD, USDJPY
+        // 1. Fetch Yahoo Finance live market prices for US30, NAS100, XAGUSD, EURUSD, GBPUSD, USDJPY
         const yahooMap: Record<string, string> = {
           US30: "%5EDJI",
           NAS100: "%5ENDX",
@@ -332,8 +390,9 @@ export function useLiveData(activeAssetKey: string) {
         for (const [assetKey, yahooSym] of Object.entries(yahooMap)) {
           if (!active) break;
           try {
+            const reqStart = performance.now();
             const yRes = await fetch(
-              `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1m`
+              `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1m&_t=${now}`
             );
             if (yRes.ok) {
               const yData = await yRes.json();
@@ -356,6 +415,11 @@ export function useLiveData(activeAssetKey: string) {
                       volume24h: prev[assetKey]?.volume24h || 850000,
                       live: true,
                       updatedAt: Date.now(),
+                      receivedAt: Date.now(),
+                      source: "Yahoo Finance Market Stream",
+                      provider: "YAHOO_FINANCE",
+                      status: "Live",
+                      feedStatus: "LIVE",
                     },
                   };
                   saveCachedPrices(updated);
@@ -368,12 +432,12 @@ export function useLiveData(activeAssetKey: string) {
           }
         }
       } catch (e) {
-        console.warn("Live REST fetch error:", e);
+        // Handled
       }
     };
 
     fetchInstitutionalPrices();
-    const interval = setInterval(fetchInstitutionalPrices, 5000);
+    const interval = setInterval(fetchInstitutionalPrices, 4000);
 
     return () => {
       active = false;
@@ -381,56 +445,28 @@ export function useLiveData(activeAssetKey: string) {
     };
   }, []);
 
-  // Intermarket tick engine for Forex & Metals (US30, NAS100, XAUUSD, XAGUSD, EURUSD, GBPUSD, USDJPY)
+  // 5. Mobile Safari / WebKit Visibility and Wakeup Recovery Engine
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPrices((prev) => {
-        const next = { ...prev };
-        for (const asset of SUPPORTED_ASSETS) {
-          // EXEMPT XAUUSD strictly: Gold prices MUST come from the centralized /api/gold-market-data service without random noise!
-          if (asset.key === "XAUUSD") continue;
+    const handleWakeup = () => {
+      if (document.visibilityState === "visible" || !document.hidden) {
+        forceRefreshGoldPrice().catch(() => {});
+      }
+    };
 
-          if (asset.category === "metal" || asset.category === "forex") {
-            const currentObj = prev[asset.key] || {
-              price: asset.basePrice,
-              changePct: 0.15,
-              high24h: asset.basePrice * 1.01,
-              low24h: asset.basePrice * 0.99,
-              volume24h: 89000,
-              live: true,
-              updatedAt: Date.now(),
-            };
+    document.addEventListener("visibilitychange", handleWakeup);
+    window.addEventListener("pageshow", handleWakeup);
+    window.addEventListener("focus", handleWakeup);
+    window.addEventListener("online", handleWakeup);
 
-            // If asset has received a fresh live API tick within 5 seconds, preserve that exact live price
-            if (Date.now() - (currentObj.updatedAt || 0) < 5000) {
-              continue;
-            }
-
-            const delta = (Math.random() - 0.495) * (asset.basePrice * 0.0003);
-            const newPrice = Math.max(0.001, currentObj.price + delta);
-            const formatted = parseFloat(newPrice.toFixed(asset.decimals));
-
-            next[asset.key] = {
-              ...currentObj,
-              price: formatted,
-              changePct: parseFloat((currentObj.changePct + (delta > 0 ? 0.005 : -0.005)).toFixed(2)),
-              high24h: Math.max(currentObj.high24h, formatted),
-              low24h: Math.min(currentObj.low24h, formatted),
-              updatedAt: Date.now(),
-              live: true,
-            };
-          }
-        }
-        saveCachedPrices(next);
-        return next;
-      });
-      setLatencyMs((prev) => Math.max(8, Math.min(65, prev + Math.floor((Math.random() - 0.5) * 6))));
-    }, 1200);
-
-    return () => clearInterval(interval);
+    return () => {
+      document.removeEventListener("visibilitychange", handleWakeup);
+      window.removeEventListener("pageshow", handleWakeup);
+      window.removeEventListener("focus", handleWakeup);
+      window.removeEventListener("online", handleWakeup);
+    };
   }, []);
 
-  const currentPrice = prices[activeAssetKey]?.price || SUPPORTED_ASSETS.find((a) => a.key === activeAssetKey)?.basePrice || 4348.50;
+  const currentPrice = prices[activeAssetKey]?.price || SUPPORTED_ASSETS.find((a) => a.key === activeAssetKey)?.basePrice || 4377.83;
 
   const liveIndicators = useMemo(() => {
     const vol24h = prices[activeAssetKey]?.volume24h || 12450000;

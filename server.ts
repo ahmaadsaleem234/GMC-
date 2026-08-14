@@ -432,10 +432,16 @@ async function startServer() {
 
   // API Routes
   app.get("/api/health", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
   app.get("/api/gold-market-data", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     try {
       const data = goldMarketDataService.getLatestData();
       res.json(data);
@@ -445,6 +451,9 @@ async function startServer() {
   });
 
   app.get("/api/gold-candles", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     try {
       const candles = goldMarketDataService.getH1Candles();
       res.json({ symbol: "XAU/USD", interval: "1h", candles });

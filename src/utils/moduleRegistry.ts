@@ -32,6 +32,16 @@ export interface ModuleRegistryItem {
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   {
+    id: "gmctrading",
+    label: "⚡ GMC TRADING — Multi-Timeframe Rejection & Confirmation Engine",
+    icon: Crown,
+    category: "Core",
+    desc: "Premier GMC Multi-Timeframe Matrix (1M-1D), Live Setup Card, Key Zones (SMC Demand/Supply), Confirmation Ladder & Discipline Verdict",
+    emoji: "⚡",
+    tag: "GMC TRADING APEX",
+    tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
+  },
+  {
     id: "tradeexecutionmap",
     label: "🎯 Trade Execution Map — XAUUSD Multi-Timeframe Smart Mapping",
     icon: Crown,

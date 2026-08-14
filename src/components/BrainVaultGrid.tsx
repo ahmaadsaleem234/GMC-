@@ -54,6 +54,20 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   ];
 
   const topTools = [
+    // ⚡ GMC TRADING — MULTI-TIMEFRAME REJECTION & CONFIRMATION ENGINE
+    {
+      id: "gmctrading",
+      title: "⚡ GMC TRADING — Multi-Timeframe Rejection & Confirmation Engine",
+      emoji: "⚡",
+      tag: "GMC TRADING APEX",
+      statusLabel: "APEX #1",
+      desc: "Multi-Timeframe Matrix (1M–1D), Live Setup Card, SMC Key Zones (Demand/Supply), Confirmation Ladder & Strict Verdict Discipline.",
+      useCase: "Top-tier high conviction institutional execution engine for Gold, Crypto & Forex.",
+      btnText: "Open GMC Trading",
+      tabTarget: "gmctrading",
+      highlight: true,
+      category: "SIGNALS",
+    },
     // 🎯 TOP 1 TRADE EXECUTION MAP — XAUUSD MULTI-TIMEFRAME SMART MAPPING
     {
       id: "tradeexecutionmap",

@@ -437,15 +437,15 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const h1Low = closedCandles.length > 0 ? Math.min(...closedCandles.map((c) => c.low)) : liveMarketPrice - atr * 2;
     const lastClose = closedCandles.length > 0 ? closedCandles[closedCandles.length - 1].close : liveMarketPrice;
 
-    // BTL Zone = Bank Pivot Equilibrium Point
-    const btlZone = parseFloat(((h1High + h1Low + lastClose) / 3).toFixed(decimals));
+    // GMC Zone = Bank Pivot Equilibrium Point
+    const gmcZone = parseFloat(((h1High + h1Low + lastClose) / 3).toFixed(decimals));
 
     // Sell Zones (Supply)
     const tier1SellLow = parseFloat(Math.max(liveMarketPrice + 0.3 * atr, h1High - 0.2 * atr).toFixed(decimals));
     const tier1SellHigh = parseFloat((tier1SellLow + 0.8 * atr).toFixed(decimals));
 
     // Buy Zones (Demand)
-    const tier1BuyHigh = parseFloat(Math.min(liveMarketPrice - 0.3 * atr, btlZone - 0.3 * atr).toFixed(decimals));
+    const tier1BuyHigh = parseFloat(Math.min(liveMarketPrice - 0.3 * atr, gmcZone - 0.3 * atr).toFixed(decimals));
     const tier1BuyLow = parseFloat((tier1BuyHigh - 0.7 * atr).toFixed(decimals));
 
     const tier2BuyHigh = parseFloat((tier1BuyLow - 0.4 * atr).toFixed(decimals));
@@ -466,7 +466,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     // Take Profit Targets
     const sellTP1 = tier1BuyHigh;
     const sellTP2 = tier2BuyHigh;
-    const sellTP3 = btlZone;
+    const sellTP3 = gmcZone;
     const sellTP4 = tier3BuyHigh;
 
     const buyTP1 = tier1SellLow;
@@ -475,7 +475,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     const buyTP4 = parseFloat((tier1SellHigh + 1.8 * atr).toFixed(decimals));
 
     return {
-      btlZone,
+      gmcZone,
       tier1SellLow,
       tier1SellHigh,
       tier1BuyLow,
@@ -519,7 +519,7 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
     return 360 - ((p - chartBounds.minP) / chartBounds.range) * 320;
   };
 
-  const isAboveBtlZone = liveMarketPrice >= zones.btlZone;
+  const isAboveGmcZone = liveMarketPrice >= zones.gmcZone;
 
   // Calculate live active order PnL dynamically without causing infinite re-render loops
   const lotMultiplier = selectedAsset.includes("BTC") ? 10 : selectedAsset.includes("XAU") ? 100 : 1000;
@@ -829,26 +829,26 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
         </div>
       </div>
 
-      {/* 4. DYNAMIC BTL ZONE BANNER CARD */}
+      {/* 4. DYNAMIC GMC ZONE BANNER CARD */}
       <div className="border-2 border-amber-500 bg-[#060810] rounded-xl p-3.5 sm:p-4 space-y-2 relative shadow-[0_0_20px_rgba(234,179,8,0.15)]">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-baseline gap-3">
             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-              BTL ZONE
+              GMC ZONE
             </span>
             <span className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight font-mono drop-shadow-[0_0_10px_rgba(234,179,8,0.3)]">
-              {zones.btlZone.toFixed(decimals)}
+              {zones.gmcZone.toFixed(decimals)}
             </span>
           </div>
 
           <div
             className={`border px-3 py-1 rounded-md text-xs font-black font-mono tracking-wide ${
-              isAboveBtlZone
+              isAboveGmcZone
                 ? "border-emerald-500/80 bg-emerald-500/15 text-emerald-400"
                 : "border-rose-500/80 bg-rose-500/15 text-rose-400"
             }`}
           >
-            NOW {liveMarketPrice.toFixed(decimals)} · {isAboveBtlZone ? "ABOVE BTL ZONE" : "BELOW BTL ZONE"}
+            NOW {liveMarketPrice.toFixed(decimals)} · {isAboveGmcZone ? "ABOVE GMC ZONE" : "BELOW GMC ZONE"}
           </div>
         </div>
 
@@ -1071,10 +1071,10 @@ export const GmcCap1HAIBrainView: React.FC<GmcCap1HAIBrainViewProps> = ({
               {zones.isTier1SellFlipped ? " [⇄ FLIPPED]" : ""}
             </text>
 
-            {/* BTL ZONE LINE (Thick Gold Horizontal Line) */}
-            <line x1="10" y1={priceToY(zones.btlZone)} x2="800" y2={priceToY(zones.btlZone)} stroke="#EAB308" strokeWidth="2.5" />
-            <text x="20" y={priceToY(zones.btlZone) - 5} fill="#FEF08A" fontSize="11" fontWeight="900" letterSpacing="0.5">
-              BTL ZONE {zones.btlZone.toFixed(decimals)}
+            {/* GMC ZONE LINE (Thick Gold Horizontal Line) */}
+            <line x1="10" y1={priceToY(zones.gmcZone)} x2="800" y2={priceToY(zones.gmcZone)} stroke="#EAB308" strokeWidth="2.5" />
+            <text x="20" y={priceToY(zones.gmcZone) - 5} fill="#FEF08A" fontSize="11" fontWeight="900" letterSpacing="0.5">
+              GMC ZONE {zones.gmcZone.toFixed(decimals)}
             </text>
 
             {/* TIER 1 PRIMARY BUY (DEMAND ZONE) */}

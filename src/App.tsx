@@ -25,6 +25,7 @@ import { InstitutionalHubView } from "./components/InstitutionalHubView";
 import { LiveEquityTrackerView } from "./components/LiveEquityTrackerView";
 import { HaramiAIView } from "./components/HaramiAIView";
 import { GmcCap1HAIBrainView } from "./components/GmcCap1HAIBrainView";
+import { GmcTradingAnalysisView } from "./components/GmcTradingAnalysisView";
 import { GmcGoldZoneCardView } from "./components/GmcGoldZoneCardView";
 import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
 import { LevelKeystoneView } from "./components/LevelKeystoneView";
@@ -598,7 +599,7 @@ export function App() {
               if (!isLoggedIn) {
                 setIsLoginModalOpen(true);
               } else {
-                handleSelectTab("gmcgold");
+                handleSelectTab("gmctrading");
               }
             }}
             onOpenWhatsApp={() => {
@@ -608,6 +609,32 @@ export function App() {
               setIsTelegramModalOpen(true);
             }}
           />
+        )}
+
+        {activeTab === "gmctrading" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["gmctrading"] || accounts["gmcgold"] || accounts["gmccap"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("gmctrading", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice * 0.995,
+                  takeProfit: currentPrice * 1.015,
+                  lotSize: 0.1,
+                  signalSource: "⚡ GMC TRADING — Rejection & Confirmation Engine",
+                })
+              }
+            />
+            <GmcTradingAnalysisView
+              currentPrice={currentPrice}
+              assetKey={activeAssetKey}
+              prices={prices}
+              onOpenTradeCopilot={handleOpenRiskCopilot}
+              onExecuteTrade={(tradeData) => executeTabTrade("gmctrading", tradeData)}
+            />
+          </div>
         )}
 
         {activeTab === "tradeexecutionmap" && (

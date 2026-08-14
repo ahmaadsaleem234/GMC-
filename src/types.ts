@@ -33,8 +33,15 @@ export interface LivePrice {
   volume24h: number;
   live: boolean;
   updatedAt: number;
+  receivedAt?: number;
   source?: string;
   provider?: string;
+  status?: "Live" | "Delayed" | "Stale" | "OFFLINE";
+  feedStatus?: "LIVE" | "DELAYED" | "RECONNECTING" | "FALLBACK" | "STALE" | "OFFLINE";
+  latency?: number;
+  latencyMs?: number;
+  isStale?: boolean;
+  tickAgeMs?: number;
 }
 
 export interface DojiZone {
