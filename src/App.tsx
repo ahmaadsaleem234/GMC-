@@ -12,6 +12,7 @@ import { PriceAlerts } from "./components/PriceAlerts";
 import { PerformanceMetricsView } from "./components/PerformanceMetricsView";
 import { WhatsAppButton } from "./components/WhatsAppButton";
 import { WhatsAppChannelModal } from "./components/WhatsAppChannelModal";
+import { GmcWhatsAppCommunityModal } from "./components/GmcWhatsAppCommunityModal";
 import { BrainVaultGrid } from "./components/BrainVaultGrid";
 import { Bond007View } from "./components/Bond007View";
 import { MarketSentimentGauge } from "./components/MarketSentimentGauge";
@@ -243,83 +244,90 @@ export function App() {
     };
   }, [isLoggedIn]);
 
-  // WhatsApp Channel Timed Popup State (Max 2 popups per session: 1st at 5s, 2nd 1min after dismissal)
-  const [isWhatsAppChannelModalOpen, setIsWhatsAppChannelModalOpen] = useState<boolean>(false);
-  const waTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // WhatsApp Smart Timed Popups State
+  // 1. At 5 seconds: Show existing first popup
+  // 2. After 1 minute of continued usage: Show GMC WhatsApp Community popup (Never show both together)
+  const [isFirstPopupOpen, setIsFirstPopupOpen] = useState<boolean>(false);
+  const [isCommunityPopupOpen, setIsCommunityPopupOpen] = useState<boolean>(false);
+  const firstPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const communityPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Check if user already converted or reached max 2 popups in this session
+    // Check if user already converted or already dismissed popups in this session
     const isConverted = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-    const count = parseInt(safeSessionStorage.getItem("gmc_wa_popup_count") || "0", 10);
+    if (isConverted) return;
 
-    if (isConverted || count >= 2) {
-      return;
-    }
+    const firstDismissed = safeSessionStorage.getItem("gmc_first_popup_dismissed") === "true";
+    const communityDismissed = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
 
-    if (count === 0) {
-      // 1. First popup: exactly 5 seconds (5000ms) after entering website
-      waTimerRef.current = setTimeout(() => {
-        if (safeSessionStorage.getItem("gmc_wa_popup_converted") !== "true") {
-          safeSessionStorage.setItem("gmc_wa_popup_count", "1");
-          setIsWhatsAppChannelModalOpen(true);
+    // 1. FIRST POPUP: Exactly 5 seconds (5000ms) after entering the website
+    if (!firstDismissed) {
+      firstPopupTimerRef.current = setTimeout(() => {
+        const convertedNow = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
+        const dismissedNow = safeSessionStorage.getItem("gmc_first_popup_dismissed") === "true";
+        if (!convertedNow && !dismissedNow) {
+          setIsFirstPopupOpen(true);
         }
       }, 5000);
-    } else if (count === 1) {
-      // 2. Second popup: check time passed since first popup was dismissed
-      const dismissedAtStr = safeSessionStorage.getItem("gmc_wa_popup_dismissed_at");
-      if (dismissedAtStr) {
-        const dismissedAt = parseInt(dismissedAtStr, 10);
-        const timePassed = Date.now() - dismissedAt;
-        const remainingDelay = Math.max(0, 60000 - timePassed); // 1 minute (60000ms)
+    }
 
-        waTimerRef.current = setTimeout(() => {
-          if (safeSessionStorage.getItem("gmc_wa_popup_converted") !== "true") {
-            safeSessionStorage.setItem("gmc_wa_popup_count", "2");
-            setIsWhatsAppChannelModalOpen(true);
-          }
-        }, remainingDelay);
-      }
+    // 2. SECOND POPUP (GMC WhatsApp Community): After 1 minute (60000ms) of session usage
+    if (!communityDismissed) {
+      communityPopupTimerRef.current = setTimeout(() => {
+        const convertedNow = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
+        const commDismissedNow = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
+        if (!convertedNow && !commDismissedNow) {
+          // IMPORTANT: Do NOT show both popups together.
+          setIsFirstPopupOpen((currentFirstOpen) => {
+            if (currentFirstOpen) {
+              // Defer community popup until first popup is closed
+              safeSessionStorage.setItem("gmc_pending_community_popup", "true");
+              return currentFirstOpen;
+            } else {
+              setIsCommunityPopupOpen(true);
+              return false;
+            }
+          });
+        }
+      }, 60000); // 1 minute
     }
 
     return () => {
-      if (waTimerRef.current) {
-        clearTimeout(waTimerRef.current);
-      }
+      if (firstPopupTimerRef.current) clearTimeout(firstPopupTimerRef.current);
+      if (communityPopupTimerRef.current) clearTimeout(communityPopupTimerRef.current);
     };
   }, []);
 
-  const handleCloseWhatsAppChannelModal = () => {
-    setIsWhatsAppChannelModalOpen(false);
+  const handleCloseFirstPopup = () => {
+    setIsFirstPopupOpen(false);
+    safeSessionStorage.setItem("gmc_first_popup_dismissed", "true");
 
-    if (safeSessionStorage.getItem("gmc_wa_popup_converted") === "true") return;
+    // If 1 minute timer already elapsed while first popup was open, smoothly show community popup
+    const pendingCommunity = safeSessionStorage.getItem("gmc_pending_community_popup") === "true";
+    const commDismissed = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
+    const isConverted = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
 
-    const count = parseInt(safeSessionStorage.getItem("gmc_wa_popup_count") || "1", 10);
-
-    if (count === 1) {
-      // First popup was dismissed! Record dismissal time and start 1-minute timer for second popup
-      const now = Date.now();
-      safeSessionStorage.setItem("gmc_wa_popup_dismissed_at", now.toString());
-
-      if (waTimerRef.current) clearTimeout(waTimerRef.current);
-
-      waTimerRef.current = setTimeout(() => {
-        const isConverted = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-        if (!isConverted) {
-          safeSessionStorage.setItem("gmc_wa_popup_count", "2");
-          setIsWhatsAppChannelModalOpen(true);
-        }
-      }, 60000); // Exactly 1 minute later
-    } else {
-      // Second popup was dismissed (count === 2)
-      safeSessionStorage.setItem("gmc_wa_popup_count", "2");
+    if (pendingCommunity && !commDismissed && !isConverted) {
+      safeSessionStorage.removeItem("gmc_pending_community_popup");
+      setTimeout(() => {
+        setIsCommunityPopupOpen(true);
+      }, 1200);
     }
+  };
+
+  const handleCloseCommunityPopup = () => {
+    setIsCommunityPopupOpen(false);
+    safeSessionStorage.setItem("gmc_wa_community_dismissed", "true");
   };
 
   const handleJoinWhatsApp = () => {
     safeSessionStorage.setItem("gmc_wa_popup_converted", "true");
-    safeSessionStorage.setItem("gmc_wa_popup_count", "2");
-    if (waTimerRef.current) clearTimeout(waTimerRef.current);
-    setIsWhatsAppChannelModalOpen(false);
+    safeSessionStorage.setItem("gmc_first_popup_dismissed", "true");
+    safeSessionStorage.setItem("gmc_wa_community_dismissed", "true");
+    if (firstPopupTimerRef.current) clearTimeout(firstPopupTimerRef.current);
+    if (communityPopupTimerRef.current) clearTimeout(communityPopupTimerRef.current);
+    setIsFirstPopupOpen(false);
+    setIsCommunityPopupOpen(false);
   };
 
   // 🔴 STRICT REDIRECT TO LUXURY INSTITUTIONAL ENTERPRISE ACCESS SCREEN IF NOT AUTHENTICATED
@@ -436,7 +444,7 @@ export function App() {
             setIsEnterpriseModalOpen(true);
           }}
           onOpenWhatsApp={() => {
-            window.open("https://chat.whatsapp.com/sample-gmc-trading-ai", "_blank");
+            setIsCommunityPopupOpen(true);
           }}
           onOpenTelegram={() => {
             setIsEnterpriseModalOpen(true);
@@ -446,10 +454,17 @@ export function App() {
         {/* Floating VIP WhatsApp Channel Link */}
         <WhatsAppButton />
 
-        {/* Timed WhatsApp Channel VIP Promo Popup */}
+        {/* 1. First Timed Popup (5 Seconds) */}
         <WhatsAppChannelModal
-          isOpen={isWhatsAppChannelModalOpen}
-          onClose={handleCloseWhatsAppChannelModal}
+          isOpen={isFirstPopupOpen}
+          onClose={handleCloseFirstPopup}
+          onJoin={handleJoinWhatsApp}
+        />
+
+        {/* 2. Smart GMC WhatsApp Community Popup (1 Minute / Continued Usage) */}
+        <GmcWhatsAppCommunityModal
+          isOpen={isCommunityPopupOpen}
+          onClose={handleCloseCommunityPopup}
           onJoin={handleJoinWhatsApp}
         />
       </div>
@@ -597,18 +612,26 @@ export function App() {
         {activeTab === "landing" && (
           <GmcLandingPage
             currentGoldPrice={currentPrice}
+            prices={prices}
             onOpenLiveTerminal={() => {
               if (!isLoggedIn) {
                 setIsLoginModalOpen(true);
               } else {
-                handleSelectTab("gmctrading");
+                handleSelectTab("gmcgold");
               }
             }}
             onOpenWhatsApp={() => {
-              window.open("https://chat.whatsapp.com/sample-gmc-trading-ai", "_blank");
+              setIsCommunityPopupOpen(true);
             }}
             onOpenTelegram={() => {
               setIsTelegramModalOpen(true);
+            }}
+            onNavigateTab={(tab) => {
+              if (!isLoggedIn) {
+                setIsLoginModalOpen(true);
+              } else {
+                handleSelectTab(tab);
+              }
             }}
           />
         )}
@@ -1223,10 +1246,17 @@ export function App() {
         loggedInUser={loggedInUser}
       />
 
-      {/* Timed WhatsApp Channel VIP Promo Popup */}
+      {/* 1. First Timed Popup (5 Seconds) */}
       <WhatsAppChannelModal
-        isOpen={isWhatsAppChannelModalOpen}
-        onClose={handleCloseWhatsAppChannelModal}
+        isOpen={isFirstPopupOpen}
+        onClose={handleCloseFirstPopup}
+        onJoin={handleJoinWhatsApp}
+      />
+
+      {/* 2. Smart GMC WhatsApp Community Popup (1 Minute / Continued Usage) */}
+      <GmcWhatsAppCommunityModal
+        isOpen={isCommunityPopupOpen}
+        onClose={handleCloseCommunityPopup}
         onJoin={handleJoinWhatsApp}
       />
     </div>

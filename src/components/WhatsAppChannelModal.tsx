@@ -1,10 +1,11 @@
 import React from "react";
-import { MessageCircle, X, Sparkles, CheckCircle2, Users, Radio } from "lucide-react";
+import { MessageCircle, X, Sparkles, CheckCircle2, Users, Radio, ArrowRight, BellRing } from "lucide-react";
 
-interface WhatsAppChannelModalProps {
+export interface WhatsAppChannelModalProps {
   isOpen: boolean;
   onClose: () => void;
   onJoin?: () => void;
+  variant?: "initial" | "reminder";
   channelLink?: string;
   groupLink?: string;
 }
@@ -13,6 +14,7 @@ export const WhatsAppChannelModal: React.FC<WhatsAppChannelModalProps> = ({
   isOpen,
   onClose,
   onJoin,
+  variant = "initial",
   channelLink = "https://whatsapp.com/channel/0029Vb80UvLLI8YPyMVfOq3X",
   groupLink = "https://chat.whatsapp.com/Cgn2qq7XVqI9Q0VGex44aJ?s=cl&p=i&ilr=4&amv=2",
 }) => {
@@ -38,85 +40,155 @@ export const WhatsAppChannelModal: React.FC<WhatsAppChannelModalProps> = ({
     }
   };
 
+  // VARIANT 2: 1-Minute Smart Reminder Modal
+  if (variant === "reminder") {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+        <div className="relative w-full max-w-md bg-[#07090D] border border-[#F1CC6B]/40 rounded-2xl p-5 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.8)] text-[#F3F4F5] font-sans space-y-4 my-auto">
+          {/* Subtle Top Gold Accent Line */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DDB458] via-[#F1CC6B] to-[#967232]" />
+
+          {/* Close X Button */}
+          <button
+            onClick={onClose}
+            id="close-whatsapp-reminder-modal"
+            className="absolute top-3.5 right-3.5 text-[#9299A3] hover:text-white p-1.5 rounded-xl hover:bg-[#111419] transition-colors cursor-pointer z-10"
+            aria-label="Close reminder popup"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          {/* Header */}
+          <div className="space-y-2 pt-1 text-center">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[10px] font-mono font-bold text-[#F1CC6B] uppercase tracking-wider">
+              <BellRing className="w-3 h-3 text-[#F1CC6B]" />
+              <span>MARKET DISPATCH NOTICE</span>
+            </div>
+
+            <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-tight">
+              DON’T MISS THE NEXT MARKET MOVE
+            </h3>
+
+            <p className="text-xs text-[#9299A3] leading-relaxed max-w-xs sm:max-w-sm mx-auto">
+              Stay connected with GMC Trading AI for important market updates, high-confluence setups and community alerts.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2.5 pt-1">
+            <a
+              href={channelLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleChannelClick}
+              id="reminder-join-channel-btn"
+              className="w-full py-3 px-4 rounded-xl bg-[#F1CC6B] hover:bg-[#E2BA57] text-[#111111] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-[0_4px_16px_rgba(241,204,107,0.2)]"
+            >
+              <MessageCircle className="w-4 h-4 fill-[#111111]" />
+              <span>JOIN WHATSAPP CHANNEL →</span>
+            </a>
+
+            <a
+              href={groupLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleGroupClick}
+              id="reminder-join-group-btn"
+              className="w-full py-2.5 px-4 rounded-xl bg-[#10141A] hover:bg-[#151B24] border border-[#292E35] hover:border-[#F1CC6B]/40 text-[#F1CC6B] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+            >
+              <Users className="w-4 h-4 text-[#F1CC6B]" />
+              <span>JOIN WHATSAPP GROUP →</span>
+            </a>
+          </div>
+
+          {/* Small Option */}
+          <div className="text-center pt-1 border-t border-[#242A31]">
+            <button
+              onClick={onClose}
+              id="reminder-continue-exploring-btn"
+              className="text-[#646C77] hover:text-[#9299A3] text-xs font-medium transition-colors cursor-pointer py-1"
+            >
+              Continue Exploring
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // VARIANT 1: 5-Second Primary Community Popup
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-xl animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-[#080B14] border border-[#25D366]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-[0_0_50px_rgba(37,211,102,0.2)] text-slate-200 font-sans space-y-3 max-h-[92vh] overflow-y-auto custom-scrollbar my-auto">
-        {/* Top Emerald/Neon Green Accent Line */}
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 via-[#25D366] to-teal-400 animate-pulse" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-[#07090D] border border-[#F1CC6B]/35 rounded-2xl p-4 sm:p-6 shadow-[0_16px_50px_rgba(0,0,0,0.85)] text-[#F3F4F5] font-sans space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar my-auto">
+        {/* Top Gold Accent Line */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#DDB458] via-[#F1CC6B] to-[#967232]" />
 
         {/* Close X Button */}
         <button
           onClick={onClose}
           id="close-whatsapp-modal"
-          className="absolute top-3 right-3 text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors cursor-pointer z-10"
+          className="absolute top-3.5 right-3.5 text-[#9299A3] hover:text-white p-1.5 rounded-xl hover:bg-[#111419] transition-colors cursor-pointer z-10"
           aria-label="Close popup"
         >
-          <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          <X className="w-4 h-4" />
         </button>
 
         {/* Header Section */}
-        <div className="text-center space-y-1.5 pt-0.5">
-          {/* WhatsApp Glow Icon */}
-          <div className="relative w-12 h-12 mx-auto rounded-xl sm:rounded-2xl bg-gradient-to-tr from-[#128C7E]/40 via-[#25D366]/25 to-emerald-500/10 border border-[#25D366]/50 flex items-center justify-center text-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.3)]">
-            <MessageCircle className="w-6 h-6 fill-[#25D366] stroke-[#25D366]" />
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#25D366] border-2 border-[#080B14]" />
-            </span>
-          </div>
-
-          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-[#25D366]/40 text-[9px] sm:text-[10px] font-mono font-black text-[#25D366] uppercase tracking-wider">
-            <Sparkles className="w-3 h-3 text-amber-400" /> ✨ OFFICIAL GMC VIP COMMUNITY
+        <div className="text-center space-y-2 pt-1">
+          {/* Institutional Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[10px] font-mono font-bold text-[#F1CC6B] uppercase tracking-wider">
+            <Sparkles className="w-3 h-3 text-[#F1CC6B]" />
+            <span>OFFICIAL GMC TRADING AI COMMUNITY</span>
           </div>
 
           <h3 className="text-lg sm:text-xl font-black text-white tracking-tight leading-snug">
             Join Official GMC Trading AI Community
           </h3>
 
-          <p className="text-[11px] sm:text-xs text-slate-400 max-w-xs sm:max-w-sm mx-auto leading-tight">
-            Get instant trading alerts, market updates & community access.
+          <p className="text-xs text-[#9299A3] max-w-xs sm:max-w-sm mx-auto leading-relaxed">
+            Get instant trading alerts, live institutional market updates and direct community access.
           </p>
         </div>
 
-        {/* Key Benefits */}
-        <div className="bg-[#050811] border border-slate-800/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 text-xs leading-relaxed">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] sm:text-[11px] font-medium text-slate-200">
-            <div className="flex items-center gap-1.5 bg-emerald-950/20 border border-emerald-500/20 px-2 py-1.5 rounded-lg sm:rounded-xl">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-              <span>Institutional Liquidity Sweep Signals</span>
+        {/* Key Institutional Features */}
+        <div className="bg-[#0B0F14] border border-[#242A31] rounded-xl p-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono text-[#D5D9DF]">
+            <div className="flex items-center gap-2 bg-[#10141A] border border-[#292E35] px-2.5 py-1.5 rounded-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#74D8A0]" />
+              <span>Liquidity Sweeps &amp; Zones</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-emerald-950/20 border border-emerald-500/20 px-2 py-1.5 rounded-lg sm:rounded-xl">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-              <span>Multi-Timeframe Bank Level Turning Points</span>
+            <div className="flex items-center gap-2 bg-[#10141A] border border-[#292E35] px-2.5 py-1.5 rounded-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#74D8A0]" />
+              <span>Bank Turning Points</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-emerald-950/20 border border-emerald-500/20 px-2 py-1.5 rounded-lg sm:rounded-xl">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-              <span>XAUUSD High-Confluence Setup Alerts</span>
+            <div className="flex items-center gap-2 bg-[#10141A] border border-[#292E35] px-2.5 py-1.5 rounded-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#F1CC6B]" />
+              <span>XAUUSD High-Confluence Setups</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-emerald-950/20 border border-emerald-500/20 px-2 py-1.5 rounded-lg sm:rounded-xl">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-              <span>Important Market Updates</span>
+            <div className="flex items-center gap-2 bg-[#10141A] border border-[#292E35] px-2.5 py-1.5 rounded-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#74D8A0]" />
+              <span>Institutional AI Updates</span>
             </div>
           </div>
         </div>
 
-        {/* Two Options: Separate Cards */}
-        <div className="space-y-2 pt-0.5">
+        {/* Options: Two Institutional Cards */}
+        <div className="space-y-2.5">
           {/* 1. WHATSAPP CHANNEL CARD */}
-          <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#05110B] border border-[#25D366]/50 shadow-[0_4px_20px_rgba(37,211,102,0.1)] space-y-1.5">
+          <div className="p-3.5 rounded-xl bg-[#0D1117] border border-[#292E35] hover:border-[#F1CC6B]/40 transition-all space-y-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 text-[#25D366] animate-pulse" />
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-[#74D8A0] animate-pulse" />
                 <h4 className="text-xs sm:text-sm font-bold text-white tracking-wide">
-                  📢 Official WhatsApp Channel
+                  Official WhatsApp Channel
                 </h4>
               </div>
-              <span className="px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-mono font-bold bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30">
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-[#17342E] text-[#74D8A0] border border-[#74D8A0]/30">
                 INSTANT ALERTS
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-300">
-              Instant Signals & Market Updates
+            <p className="text-[11px] text-[#9299A3]">
+              Real-time verified market releases and high-impact event updates.
             </p>
             <a
               href={channelLink}
@@ -124,28 +196,28 @@ export const WhatsAppChannelModal: React.FC<WhatsAppChannelModalProps> = ({
               rel="noopener noreferrer"
               onClick={handleChannelClick}
               id="join-whatsapp-channel-btn"
-              className="w-full py-2.5 px-3 rounded-lg sm:rounded-xl bg-gradient-to-r from-[#128C7E] via-[#25D366] to-[#075E54] hover:brightness-110 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_0_20px_rgba(37,211,102,0.4)] transition-all transform hover:scale-[1.01] active:scale-95 cursor-pointer text-center"
+              className="w-full py-2.5 px-3 rounded-xl bg-[#F1CC6B] hover:bg-[#E2BA57] text-[#111111] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-[0_4px_16px_rgba(241,204,107,0.18)] text-center"
             >
-              <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white stroke-white" />
+              <MessageCircle className="w-4 h-4 fill-[#111111]" />
               <span>JOIN WHATSAPP CHANNEL →</span>
             </a>
           </div>
 
           {/* 2. WHATSAPP GROUP CARD */}
-          <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-[#040912] border border-slate-800 hover:border-[#25D366]/40 transition-all space-y-1.5">
+          <div className="p-3.5 rounded-xl bg-[#0D1117] border border-[#292E35] hover:border-[#F1CC6B]/40 transition-all space-y-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-[#25D366]" />
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#F1CC6B]" />
                 <h4 className="text-xs sm:text-sm font-bold text-white tracking-wide">
-                  💬 Official WhatsApp Group
+                  Official WhatsApp Group
                 </h4>
               </div>
-              <span className="px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-[#10141A] text-[#9299A3] border border-[#292E35]">
                 COMMUNITY CHAT
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-300">
-              Trading Discussions & Community Access
+            <p className="text-[11px] text-[#9299A3]">
+              Professional market discussions with serious quantitative traders.
             </p>
             <a
               href={groupLink}
@@ -153,29 +225,30 @@ export const WhatsAppChannelModal: React.FC<WhatsAppChannelModalProps> = ({
               rel="noopener noreferrer"
               onClick={handleGroupClick}
               id="join-whatsapp-group-btn"
-              className="w-full py-2.5 px-3 rounded-lg sm:rounded-xl bg-[#061D12] border-2 border-[#25D366]/70 hover:border-[#25D366] hover:bg-[#25D366]/20 text-[#25D366] hover:text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(37,211,102,0.15)] transition-all transform hover:scale-[1.01] active:scale-95 cursor-pointer text-center"
+              className="w-full py-2.5 px-3 rounded-xl bg-[#10141A] hover:bg-[#151B24] border border-[#292E35] hover:border-[#F1CC6B]/40 text-[#F1CC6B] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer text-center"
             >
-              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Users className="w-4 h-4" />
               <span>JOIN WHATSAPP GROUP →</span>
             </a>
           </div>
         </div>
 
         {/* Maybe Later & Footer text */}
-        <div className="space-y-1.5 pt-0.5 text-center">
+        <div className="space-y-2 pt-1 text-center">
           <button
             onClick={onClose}
             id="maybe-later-whatsapp-btn"
-            className="text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors cursor-pointer py-0.5"
+            className="text-[#646C77] hover:text-[#9299A3] text-xs font-medium transition-colors cursor-pointer py-1"
           >
             Maybe Later
           </button>
 
-          <p className="text-[10px] sm:text-[11px] font-mono text-emerald-400/80 tracking-wide font-medium border-t border-slate-800/80 pt-2">
-            ⚡ GMC Trading AI • Smart Signals. Serious Trading.
+          <p className="text-[10px] font-mono text-[#646C77] tracking-wider border-t border-[#242A31] pt-2">
+            GMC TRADING AI • INSTITUTIONAL MARKET INTELLIGENCE
           </p>
         </div>
       </div>
     </div>
   );
 };
+

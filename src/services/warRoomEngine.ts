@@ -605,6 +605,8 @@ export interface LockedWarRoomSetup {
 
   // 🔒 LOCKED IMMUTABLE LEVELS
   entryZone: [number, number];
+  entryLow?: number;
+  entryHigh?: number;
   bestEntry: number;
   stopLoss: number;
   invalidationLevel: number;
@@ -614,6 +616,11 @@ export interface LockedWarRoomSetup {
   tp4: number;
   riskToReward: string;
   rrNumber: number;
+  confidenceScore?: number;
+  riskRewardRatio?: number;
+  formattedTime?: string;
+  reasoning?: string;
+  aiConsensusSnapshot?: any;
 
   // MTF Context & Provenance
   h4Bias: "Bullish" | "Bearish" | "Neutral";

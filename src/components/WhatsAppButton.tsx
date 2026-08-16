@@ -3,12 +3,12 @@ import { MessageCircle } from "lucide-react";
 
 export const WhatsAppButton: React.FC = () => {
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 group">
+    <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-40 flex items-center gap-2 group pointer-events-auto">
       {/* Tooltip text */}
-      <div className="hidden sm:flex items-center gap-2 bg-[#0A0D14] border border-[#25D366]/40 px-3 py-1.5 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 font-mono text-xs pointer-events-none">
-        <span className="w-2 h-2 bg-[#25D366] rounded-full animate-ping" />
-        <span className="text-white font-bold">GMC Official WhatsApp Channel</span>
-        <span className="text-[10px] text-emerald-400 font-semibold">(VIP Signals)</span>
+      <div className="hidden sm:flex items-center gap-2 bg-[#0B0F14] border border-[#F1CC6B]/30 px-3 py-1.5 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0 font-mono text-xs pointer-events-none">
+        <span className="w-1.5 h-1.5 bg-[#74D8A0] rounded-full animate-ping" />
+        <span className="text-white font-semibold">GMC Official Community</span>
+        <span className="text-[10px] text-[#F1CC6B] font-mono">VIP</span>
       </div>
 
       {/* Main Floating Button */}
@@ -18,19 +18,18 @@ export const WhatsAppButton: React.FC = () => {
         rel="noopener noreferrer"
         aria-label="Join GMC WhatsApp Channel"
         id="whatsapp-floating-btn"
-        className="relative flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-[#128C7E] via-[#25D366] to-[#075E54] text-white rounded-full shadow-[0_4px_25px_rgba(37,211,102,0.4)] hover:shadow-[0_6px_35px_rgba(37,211,102,0.7)] hover:scale-105 active:scale-95 transition-all duration-300 border-2 border-emerald-300/40"
+        className="relative flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 bg-[#0D1117] hover:bg-[#121720] text-[#74D8A0] rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.6)] hover:shadow-[0_4px_25px_rgba(241,204,107,0.25)] hover:scale-105 active:scale-95 transition-all duration-200 border border-[#292E35] hover:border-[#F1CC6B]/50"
       >
         {/* Pulsating background ring */}
-        <span className="absolute -inset-1 rounded-full bg-[#25D366]/30 animate-pulse pointer-events-none" />
+        <span className="absolute -inset-0.5 rounded-full bg-[#74D8A0]/15 animate-pulse pointer-events-none" />
 
         {/* WhatsApp Icon */}
-        <MessageCircle className="w-7 h-7 fill-white stroke-white relative z-10" />
+        <MessageCircle className="w-5 h-5 sm:w-5 sm:h-5 fill-[#74D8A0] stroke-[#74D8A0] relative z-10" />
 
-        {/* Unread badge dot */}
-        <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-rose-500 text-white font-bold text-[9px] font-mono rounded-full flex items-center justify-center border-2 border-[#0A0A0A] shadow-md z-20">
-          1
-        </span>
+        {/* Unread dot */}
+        <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-[#F1CC6B] rounded-full border-2 border-[#07090D] z-20" />
       </a>
     </div>
   );
 };
+
