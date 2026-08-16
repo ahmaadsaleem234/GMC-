@@ -32,6 +32,16 @@ export interface ModuleRegistryItem {
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   {
+    id: "warroom",
+    label: "⚔️ GMC AI WAR ROOM — Final Supreme Decision Center & Execution Hub",
+    icon: Flame,
+    category: "Core",
+    desc: "The ultimate institutional trading decision engine: 4H Macro Context → 1H Directional Bias → 15M Main Setup POI → 5M Confirmation → 1M Precision Trigger with Bull AI, Bear AI & Risk AI Consensus.",
+    emoji: "⚔️",
+    tag: "WAR ROOM SUPREME",
+    tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse",
+  },
+  {
     id: "gmctrading",
     label: "⚡ GMC TRADING — Multi-Timeframe Rejection & Confirmation Engine",
     icon: Crown,

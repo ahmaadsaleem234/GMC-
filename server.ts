@@ -6,6 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { generateSignalChartBuffer, SignalChartParams } from "./src/services/signalChartService.js";
 import { generateDynamicReason, formatHaramiSignalMessage } from "./src/utils/haramiSignalFormatter.js";
 import { fcsMarketService } from "./src/services/fcsMarketService.js";
+import { warRoomServerService } from "./src/services/warRoomServerService.js";
 
 // Black Shark Command V1 default live signal payload
 const BLACK_SHARK_DATA = {
@@ -1728,6 +1729,7 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
             price: primaryPrice,
             bid,
             ask,
+            mid: (bid + ask) / 2 || primaryPrice,
             spread,
             high24h: primaryHigh || primaryPrice,
             low24h: primaryLow || primaryPrice,
@@ -2843,6 +2845,12 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
     while (true) {
       try {
         await executeServerSignalEngineTick();
+        const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+        if (goldTick?.price) {
+          await warRoomServerService.tickMonitoring(goldTick.price, async (msg) => {
+            return await sendServerTelegramMessage(msg);
+          });
+        }
       } catch (err) {
         console.warn("[SERVER 24/7 BROADCASTER LOOP WARNING]:", err);
       }
@@ -2949,6 +2957,132 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
       botToken: cachedValidTelegramToken,
       chatId: serverTargetChatId,
     });
+  });
+
+  // ==========================================
+  // GMC AI WAR ROOM API ROUTES
+  // ==========================================
+  app.get("/api/warroom/state", async (req, res) => {
+    try {
+      const state = await warRoomServerService.generateWarRoomState();
+      res.json({ ok: true, state });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/warroom/active-setup", (req, res) => {
+    res.json({
+      ok: true,
+      activeSetup: warRoomServerService.getActiveSetup(),
+    });
+  });
+
+  const handleLockSetup = async (req: any, res: any) => {
+    try {
+      const { direction } = req.body || {};
+      const dir: "BUY" | "SELL" = direction === "SELL" ? "SELL" : "BUY";
+      const goldTick = await fetchLiveServerGoldTick();
+
+      const setup = await warRoomServerService.lockNewSetup(dir, goldTick.price, async (msg) => {
+        return await sendServerTelegramMessage(msg);
+      });
+
+      res.json({ ok: true, setup, message: `🔒 Official GMC AI War Room ${dir} setup locked & synchronized!` });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  };
+
+  app.post("/api/warroom/lock", handleLockSetup);
+  app.post("/api/warroom/lock-setup", handleLockSetup);
+
+  const handleCancelSetup = async (req: any, res: any) => {
+    try {
+      const { reason } = req.body || {};
+      const cancelled = await warRoomServerService.cancelActiveSetup(reason || "Manual cancellation by operator", async (msg) => {
+        return await sendServerTelegramMessage(msg);
+      });
+      res.json({ ok: true, setup: cancelled, message: "Setup invalidated and archived." });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  };
+
+  app.post("/api/warroom/cancel", handleCancelSetup);
+  app.post("/api/warroom/cancel-setup", handleCancelSetup);
+
+  app.get("/api/warroom/database", (req, res) => {
+    res.json({
+      ok: true,
+      database: warRoomServerService.getDatabase(),
+      total: warRoomServerService.getDatabase().length,
+    });
+  });
+
+  app.get("/api/warroom/performance", (req, res) => {
+    const filter = (req.query.filter as any) || "ALL";
+    const performance = warRoomServerService.getPerformanceMetrics(filter);
+    res.json({ ok: true, metrics: performance, performance });
+  });
+
+  app.get("/api/warroom/config", (req, res) => {
+    res.json({
+      ok: true,
+      config: warRoomServerService.getConfig(),
+    });
+  });
+
+  app.post("/api/warroom/config", (req, res) => {
+    try {
+      const updated = warRoomServerService.updateConfig(req.body || {});
+      res.json({ ok: true, config: updated, message: "War Room configuration updated." });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/warroom/audit-logs", (req, res) => {
+    res.json({
+      ok: true,
+      logs: warRoomServerService.getAuditLogs(),
+    });
+  });
+
+  app.post("/api/warroom/trigger-telegram", async (req, res) => {
+    try {
+      const activeSetup = warRoomServerService.getActiveSetup();
+      if (!activeSetup) {
+        return res.status(400).json({ ok: false, error: "No active locked setup to dispatch. Lock a setup first." });
+      }
+
+      const signalText = formatHaramiSignalMessage({
+        direction: activeSetup.direction === "SELL" ? "SELL" : "BUY",
+        symbolShort: "XAUUSD",
+        assetName: "GOLD",
+        h4Context: activeSetup.h4Bias,
+        h1Bias: activeSetup.h1Bias.toUpperCase(),
+        m15Setup: activeSetup.m15Setup,
+        m5Entry: "CONFIRMED",
+        entryLow: activeSetup.entryZone[0],
+        entryHigh: activeSetup.entryZone[1],
+        bestEntry: activeSetup.bestEntry,
+        currentPrice: activeSetup.currentPrice,
+        sl: activeSetup.stopLoss,
+        tp1: activeSetup.tp1,
+        tp2: activeSetup.tp2,
+        tp3: activeSetup.tp3,
+        tp4: activeSetup.tp4,
+        rr: activeSetup.riskToReward,
+        confidence: activeSetup.confidence,
+        reason: activeSetup.m15Setup,
+      });
+
+      const sent = await sendServerTelegramMessage(signalText);
+      res.json({ ok: true, sent, message: "War Room setup successfully broadcast to Telegram channel!" });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   app.post("/api/telegram/config", (req, res) => {
@@ -3632,6 +3766,199 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
         error: err.message || "Failed to analyze trade with Gemini",
         fallbackAnalysis: `GMC AI Brain Algorithmic Backup for ${assetKey || "XAUUSD"}: Signal is BULLISH. Entry zone validated.`
       });
+    }
+  });
+
+  // ==========================================
+  // GMC AI WAR ROOM API ENDPOINTS & TELEMETRY
+  // ==========================================
+
+  // Hook live FCS tick engine to War Room background lifecycle
+  fcsMarketService.onTick((tick) => {
+    if (tick.symbol === "XAUUSD" && tick.price > 0) {
+      warRoomServerService.tickMonitoring(tick.price, async (msg) => {
+        return await sendServerTelegramMessage(msg);
+      }).catch(() => {});
+    }
+  });
+
+  // 1. Get Live Complete War Room State Snapshot
+  app.get("/api/warroom/state", async (req, res) => {
+    try {
+      const state = await warRoomServerService.generateWarRoomState();
+      res.json({ ok: true, state });
+    } catch (err: any) {
+      console.error("[WAR ROOM STATE ERROR]:", err);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 2. Get Database Performance Metrics (Calculated Dynamically from Real Records)
+  app.get("/api/warroom/performance", (req, res) => {
+    try {
+      const filter = (req.query.filter as any) || "ALL";
+      const metrics = warRoomServerService.getPerformanceMetrics(filter);
+      res.json({ ok: true, metrics });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3. Get Trade Database History / Authoritative Setups
+  app.get("/api/warroom/database", (req, res) => {
+    try {
+      const database = warRoomServerService.getDatabase();
+      res.json({ ok: true, database });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3b. Authoritative Setups List with Lifecycle & Text Filters
+  app.get("/api/warroom/setups", (req, res) => {
+    try {
+      const { status, direction, search } = req.query as any;
+      const setups = warRoomServerService.getAuthoritativeSetups({ status, direction, search });
+      res.json({ ok: true, setups });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3c. Get Specific Setup by Single Authoritative setupId
+  app.get("/api/warroom/setups/:setupId", (req, res) => {
+    try {
+      const setup = warRoomServerService.getAuthoritativeSetup(req.params.setupId);
+      if (!setup) {
+        return res.status(404).json({ ok: false, error: "Setup not found" });
+      }
+      res.json({ ok: true, setup });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3d. Get Immutable Setup Proof (Audit, Timelines, Visual Snapshots)
+  app.get("/api/warroom/setups/:setupId/proof", (req, res) => {
+    try {
+      const proof = warRoomServerService.getSetupProof(req.params.setupId);
+      if (!proof) {
+        return res.status(404).json({ ok: false, error: "Setup proof not found" });
+      }
+      res.json({ ok: true, proof });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3e. Get Live Alert Feed
+  app.get("/api/warroom/alerts", (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 30;
+      const alerts = warRoomServerService.getRecentAlerts(limit);
+      res.json({ ok: true, alerts });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3f. Mark Alert Read
+  app.post("/api/warroom/alerts/:alertId/read", (req, res) => {
+    try {
+      warRoomServerService.markAlertRead(req.params.alertId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 4. Get Audit Logs
+  app.get("/api/warroom/audit-logs", (req, res) => {
+    try {
+      const auditLogs = warRoomServerService.getAuditLogs();
+      res.json({ ok: true, auditLogs });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 5. Get and Update War Room Config
+  app.get("/api/warroom/config", (req, res) => {
+    res.json({ ok: true, config: warRoomServerService.getConfig() });
+  });
+
+  app.post("/api/warroom/config", (req, res) => {
+    try {
+      const updated = warRoomServerService.updateConfig(req.body || {});
+      res.json({ ok: true, config: updated });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 6. Manual / Auto Lock Setup Action
+  app.post("/api/warroom/lock-setup", async (req, res) => {
+    try {
+      const { direction, currentPrice } = req.body || {};
+      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+      const px = currentPrice || goldTick.price;
+      const setup = await warRoomServerService.lockNewSetup(
+        direction || "BUY",
+        px,
+        async (msg) => await sendServerTelegramMessage(msg)
+      );
+      res.json({ ok: true, setup });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 7. Invalidate / Cancel Active Setup
+  app.post("/api/warroom/cancel-setup", async (req, res) => {
+    try {
+      const { reason } = req.body || {};
+      const setup = await warRoomServerService.cancelActiveSetup(
+        reason || "Manual cancellation by operator",
+        async (msg) => await sendServerTelegramMessage(msg)
+      );
+      res.json({ ok: true, setup });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 8. Manual Trigger Telegram Broadcast
+  app.post("/api/warroom/trigger-telegram", async (req, res) => {
+    try {
+      const activeSetup = warRoomServerService.getActiveSetup();
+      if (!activeSetup) {
+        return res.status(400).json({ ok: false, error: "No active locked setup to broadcast." });
+      }
+      const text = `<b>🎯 GMC AI WAR ROOM • SUPREME SIGNAL BROADCAST</b>
+━━━━━━━━━━━━━━━━━━━
+<b>ASSET:</b> <code>${activeSetup.symbol}</code>
+<b>DIRECTION:</b> <b>${activeSetup.direction} (GRADE ${activeSetup.grade})</b>
+<b>ENTRY ZONE:</b> <code>$${activeSetup.entryZone[0].toFixed(2)} - $${activeSetup.entryZone[1].toFixed(2)}</code>
+<b>BEST EXECUTION:</b> <code>$${activeSetup.bestEntry.toFixed(2)}</code>
+<b>STOP LOSS:</b> <code>$${activeSetup.stopLoss.toFixed(2)}</code>
+<b>TP1:</b> <code>$${activeSetup.tp1.toFixed(2)}</code> | <b>TP2:</b> <code>$${activeSetup.tp2.toFixed(2)}</code>
+<b>TP3:</b> <code>$${activeSetup.tp3.toFixed(2)}</code> | <b>TP4:</b> <code>$${activeSetup.tp4.toFixed(2)}</code>
+<b>RISK:REWARD:</b> <code>1 : ${activeSetup.riskToReward || activeSetup.rrNumber}</code>
+<b>CONFIDENCE SCORE:</b> <code>${activeSetup.confidence}%</code>
+
+<b>INSTITUTIONAL SMC CONFLUENCES:</b>
+• 4H Macro: ${activeSetup.h4Bias}
+• 1H Direction: ${activeSetup.h1Bias}
+• 15M Structure: ${activeSetup.m15Setup}
+• 5M Confirmation: ${activeSetup.m5Confirmation}
+• 1M Execution Trigger: ${activeSetup.m1Trigger}
+
+<i>Automated institutional trade execution active. Managed strictly via GMC AI War Room.</i>`;
+
+      const sent = await sendServerTelegramMessage(text);
+      res.json({ ok: true, sent, message: "Telegram signal broadcast dispatched successfully." });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 

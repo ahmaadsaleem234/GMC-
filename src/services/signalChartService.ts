@@ -423,3 +423,293 @@ export async function generateSignalChartBuffer(params: SignalChartParams): Prom
   return canvas.toBuffer("image/jpeg");
 }
 
+export interface WarRoomSnapshotParams {
+  setupId: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryZone: [number, number];
+  bestEntry: number;
+  sl: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  tp4: number;
+  currentPrice: number;
+  status: string;
+  eventType: string;
+  eventNote: string;
+  grade?: string;
+  confidence?: number;
+  timestamp: string;
+}
+
+/**
+ * Generates an authoritative 1200x675 War Room Lifecycle Chart Snapshot with Event Watermark
+ */
+export async function generateWarRoomLifecycleSnapshotBuffer(params: WarRoomSnapshotParams): Promise<Buffer> {
+  const width = 1200;
+  const height = 675;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  const isBuy = params.direction === "BUY";
+  const mainColor = isBuy ? "#089981" : "#f23645"; 
+  const bgDark = "#08080c";
+  const cardBg = "#0e111a";
+  const gridColor = "#1a1d28";
+  const goldAccent = "#d4af37";
+
+  // 1. Fill Canvas
+  ctx.fillStyle = bgDark;
+  ctx.fillRect(0, 0, width, height);
+
+  // Layout Boundaries
+  const chartLeft = 30;
+  const chartRight = 1030;
+  const chartTop = 85;
+  const chartBottom = 610;
+  const chartWidth = chartRight - chartLeft;
+  const chartHeight = chartBottom - chartTop;
+
+  // 2. Generate Candles anchored to current price
+  const candles = generate5mOHLCCandles(params.currentPrice, params.direction, 36);
+
+  // 3. Price Scaling
+  const allPrices = [
+    ...candles.map(c => c.high),
+    ...candles.map(c => c.low),
+    params.bestEntry,
+    params.entryZone[0],
+    params.entryZone[1],
+    params.sl,
+    params.tp1,
+    params.tp2,
+    params.tp3,
+    params.tp4,
+    params.currentPrice,
+  ];
+
+  const minP = Math.min(...allPrices) - 2.5;
+  const maxP = Math.max(...allPrices) + 2.5;
+  const priceRange = maxP - minP || 1;
+
+  function priceToY(p: number): number {
+    const norm = (p - minP) / priceRange;
+    return chartBottom - norm * chartHeight;
+  }
+
+  // 4. Grid Lines
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+
+  const priceStep = priceRange / 8;
+  for (let p = minP; p <= maxP; p += priceStep) {
+    const y = priceToY(p);
+    ctx.beginPath();
+    ctx.moveTo(chartLeft, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+
+    ctx.fillStyle = "#8a8f9d";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.toFixed(2), chartRight + 12, y);
+  }
+
+  const candleSpacing = chartWidth / candles.length;
+  candles.forEach((c, i) => {
+    if (i % 6 === 0) {
+      const x = chartLeft + i * candleSpacing + candleSpacing / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, chartTop);
+      ctx.lineTo(x, chartBottom);
+      ctx.stroke();
+
+      ctx.fillStyle = "#8a8f9d";
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(c.timeLabel, x, chartBottom + 18);
+    }
+  });
+
+  // 5. Watermark in Center
+  ctx.save();
+  ctx.globalAlpha = 0.07;
+  ctx.fillStyle = "#d4af37";
+  ctx.font = "900 60px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("GMC WAR ROOM", width / 2, height / 2 - 10);
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(`ID: ${params.setupId} • IMMUTABLE PROOF`, width / 2, height / 2 + 40);
+  ctx.restore();
+
+  // 6. Draw Demand / Supply Box
+  if (isBuy) {
+    const obTop = priceToY(params.entryZone[0]);
+    const obBottom = priceToY(params.sl - 1.0);
+    const obH = Math.abs(obBottom - obTop);
+    ctx.fillStyle = "rgba(8, 153, 129, 0.18)";
+    ctx.fillRect(chartLeft, obTop, chartWidth, obH);
+    ctx.strokeStyle = "rgba(8, 153, 129, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chartLeft, obTop, chartWidth, obH);
+    ctx.fillStyle = "#089981";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("15M INSTITUTIONAL DEMAND ZONE 🟢", chartLeft + 15, obTop + 16);
+  } else {
+    const obTop = priceToY(params.sl + 1.0);
+    const obBottom = priceToY(params.entryZone[1]);
+    const obH = Math.abs(obBottom - obTop);
+    ctx.fillStyle = "rgba(242, 54, 69, 0.18)";
+    ctx.fillRect(chartLeft, obTop, chartWidth, obH);
+    ctx.strokeStyle = "rgba(242, 54, 69, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(chartLeft, obTop, chartWidth, obH);
+    ctx.fillStyle = "#f23645";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("15M INSTITUTIONAL SUPPLY ZONE 🛑", chartLeft + 15, obTop + 16);
+  }
+
+  // 7. Entry Zone highlight
+  const zoneTopY = priceToY(Math.max(...params.entryZone));
+  const zoneBottomY = priceToY(Math.min(...params.entryZone));
+  const zoneH = Math.abs(zoneBottomY - zoneTopY);
+  ctx.fillStyle = "rgba(212, 175, 55, 0.22)";
+  ctx.fillRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 10));
+  ctx.strokeStyle = "#d4af37";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(chartLeft, zoneTopY, chartWidth, Math.max(zoneH, 10));
+
+  // 8. Render Candlesticks
+  ctx.lineWidth = 1.5;
+  candles.forEach((c, i) => {
+    const x = chartLeft + i * candleSpacing + candleSpacing / 2;
+    const isBull = c.close >= c.open;
+    const candleColor = isBull ? "#089981" : "#f23645";
+    const openY = priceToY(c.open);
+    const closeY = priceToY(c.close);
+    const highY = priceToY(c.high);
+    const lowY = priceToY(c.low);
+
+    ctx.strokeStyle = candleColor;
+    ctx.beginPath();
+    ctx.moveTo(x, highY);
+    ctx.lineTo(x, lowY);
+    ctx.stroke();
+
+    ctx.fillStyle = candleColor;
+    const bodyY = Math.min(openY, closeY);
+    const bodyH = Math.max(Math.abs(closeY - openY), 2);
+    const candleWidth = Math.max(candleSpacing * 0.65, 8);
+    ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+  });
+
+  // 9. Draw Level Horizontal Dashed Lines & Badges
+  function drawLevelLine(price: number, label: string, bgColor: string, textColor = "#ffffff", isDashed = true, lineW = 1.5) {
+    const y = priceToY(price);
+    ctx.save();
+    ctx.strokeStyle = bgColor;
+    ctx.lineWidth = lineW;
+    if (isDashed) ctx.setLineDash([4, 3]);
+
+    ctx.beginPath();
+    ctx.moveTo(chartLeft, y);
+    ctx.lineTo(chartRight, y);
+    ctx.stroke();
+    ctx.restore();
+
+    const badgeW = 150;
+    const badgeH = 20;
+    const badgeX = chartRight + 2;
+    const badgeY = y - badgeH / 2;
+
+    ctx.fillStyle = bgColor;
+    if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3);
+    else ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+    ctx.fill();
+
+    ctx.fillStyle = textColor;
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${label} ${price.toFixed(2)}`, badgeX + 6, y);
+  }
+
+  drawLevelLine(params.sl, "SL", "#f23645", "#ffffff", false, 2);
+  drawLevelLine(params.bestEntry, "BEST", "#d4af37", "#000000", false, 2);
+  drawLevelLine(params.tp1, "TP1", "#089981", "#ffffff", true, 1.5);
+  drawLevelLine(params.tp2, "TP2", "#089981", "#ffffff", true, 1.5);
+  drawLevelLine(params.tp3, "TP3", "#089981", "#ffffff", true, 1.5);
+  drawLevelLine(params.tp4, "TP4", "#089981", "#ffffff", false, 2);
+  drawLevelLine(params.currentPrice, "EVENT PX", "#ffd700", "#000000", true, 2);
+
+  // 10. Top Header Bar
+  ctx.fillStyle = cardBg;
+  ctx.fillRect(0, 0, width, 72);
+  ctx.strokeStyle = goldAccent;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 72);
+  ctx.lineTo(width, 72);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(`GMC WAR ROOM • ${params.symbol}`, 25, 30);
+
+  ctx.fillStyle = "#d4af37";
+  ctx.font = "bold 12px sans-serif";
+  ctx.fillText(`ID: ${params.setupId} • 5M Execution Chart • Grade ${params.grade || "A+"}`, 25, 52);
+
+  // Event Badge Pill in Top Right
+  const badgeX = width - 320;
+  const badgeY = 15;
+  const badgeW = 295;
+  const badgeH = 42;
+
+  let eventBadgeBg = "#3b82f6";
+  if (params.eventType.includes("TP")) eventBadgeBg = "#10b981";
+  else if (params.eventType.includes("SL") || params.eventType.includes("INVALID") || params.eventType.includes("CANCEL")) eventBadgeBg = "#ef4444";
+  else if (params.eventType.includes("ACTIVAT") || params.eventType.includes("ENTRY")) eventBadgeBg = "#f59e0b";
+
+  ctx.fillStyle = eventBadgeBg;
+  if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+  else ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${params.eventType.replace(/_/g, " ")}`, badgeX + badgeW / 2, badgeY + badgeH / 2);
+
+  // 11. Bottom Footer Bar
+  ctx.fillStyle = cardBg;
+  ctx.fillRect(0, height - 42, width, 42);
+  ctx.strokeStyle = "#1a1d28";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, height - 42);
+  ctx.lineTo(width, height - 42);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffd700";
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`PROOF AUDIT: ${params.eventNote}`, 25, height - 20);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(`TIMESTAMP: ${params.timestamp}`, width - 25, height - 20);
+
+  return canvas.toBuffer("image/jpeg");
+}
+
+

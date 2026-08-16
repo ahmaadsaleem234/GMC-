@@ -68,6 +68,20 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
       highlight: true,
       category: "SIGNALS",
     },
+    // ⚔️ GMC AI WAR ROOM — FINAL SUPREME DECISION CENTER
+    {
+      id: "warroom",
+      title: "⚔️ GMC AI WAR ROOM — Supreme Decision Center & Execution Hub",
+      emoji: "⚔️",
+      tag: "WAR ROOM SUPREME",
+      statusLabel: "SUPREME",
+      desc: "Institutional decision engine: 4H Macro → 1H Bias → 15M Setup → 5M Confirmation → 1M Trigger. Bull/Bear/Risk AI Consensus, Liquidity Battlefield & Telegram Auto-Sync.",
+      useCase: "Final validated trading decision center with locked setup tracking, MFE/MAE telemetry & post-trade autopsies.",
+      btnText: "Open War Room",
+      tabTarget: "warroom",
+      highlight: true,
+      category: "SIGNALS",
+    },
     // 🎯 TOP 1 TRADE EXECUTION MAP — XAUUSD MULTI-TIMEFRAME SMART MAPPING
     {
       id: "tradeexecutionmap",

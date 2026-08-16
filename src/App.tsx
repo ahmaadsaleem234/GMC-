@@ -30,6 +30,7 @@ import { GmcGoldZoneCardView } from "./components/GmcGoldZoneCardView";
 import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
 import { LevelKeystoneView } from "./components/LevelKeystoneView";
 import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
+import { GmcAiWarRoomView } from "./components/warroom/GmcAiWarRoomView";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
 import { GmcLandingPage } from "./components/GmcLandingPage";
@@ -861,6 +862,10 @@ export function App() {
             prices={prices}
             onOpenRiskCopilot={handleOpenRiskCopilot}
           />
+        )}
+
+        {activeTab === "warroom" && (
+          <GmcAiWarRoomView onBackToDashboard={() => setActiveTab("vault")} />
         )}
 
         {activeTab === "equitytracker" && (

@@ -122,6 +122,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
+          {/* ⚔️ GMC AI WAR ROOM SUPREME SHORTCUT BUTTON */}
+          <button
+            id="header-nav-warroom-btn"
+            onClick={() => setActiveTab("warroom")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "warroom"
+                ? "bg-amber-400 text-slate-950 border border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.5)]"
+                : "bg-amber-500/10 text-amber-300 border border-amber-500/40 hover:bg-amber-500/20"
+            }`}
+            title="Launch GMC AI War Room Supreme Decision Center"
+          >
+            <span>⚔️</span>
+            <span>WAR ROOM</span>
+          </button>
+
           {/* TOP #1 TRADE EXECUTION MAP SHORTCUT BUTTON */}
           <button
             id="header-nav-[#1-execution-map-btn]"
