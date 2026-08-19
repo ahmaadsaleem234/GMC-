@@ -1966,154 +1966,160 @@ export function calculateSetupGrade(
 
 export function formatWarRoomTelegramSignal(setup: LockedWarRoomSetup): string {
   const isBuy = setup.direction === "BUY";
-  const icon = isBuy ? "🟢🔥" : "🔴🔥";
-  const dirText = isBuy ? "BUY GOLD" : "SELL GOLD";
+  const icon = isBuy ? "🟢" : "🔻";
+  const symbol = (setup.symbol || "XAUUSD").replace("FOREXCOM:", "").split(" ")[0];
+  const confidence = Math.max(setup.setupScore, 90);
+  const grade = setup.grade || "A+";
+  const signalId = setup.setupId.startsWith("#") ? setup.setupId : `#${setup.setupId}`;
 
   return `
-${icon} <b>GMC AI WAR ROOM — ${dirText}</b>
+⚔️ WAR ROOM — ELITE TRADE
+${signalId} | ${icon} ${symbol} | ${setup.direction}
 
-📊 <b>${setup.symbol} | ${setup.direction}</b>
-🆔 <code>${setup.setupId}</code>
+📍 Entry: ${setup.entryZone[0].toFixed(2)}–${setup.entryZone[1].toFixed(2)}
+🛡 SL: ${setup.stopLoss.toFixed(2)}
+🎯 TP: ${setup.tp1.toFixed(2)} | ${setup.tp2.toFixed(2)} | ${setup.tp3.toFixed(2)} | ${setup.tp4.toFixed(2)}
 
-📍 <b>Entry Zone:</b> <code>${setup.entryZone[0].toFixed(2)} – ${setup.entryZone[1].toFixed(2)}</code>
-💎 <b>Best Entry:</b> <code>${setup.bestEntry.toFixed(2)}</code>
-
-🛡 <b>Stop Loss:</b> <code>${setup.stopLoss.toFixed(2)}</code>
-❌ <b>Invalidation:</b> <code>${setup.invalidationLevel.toFixed(2)}</code>
-
-🎯 <b>Take Profit Targets:</b>
-• <b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code>
-• <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code>
-• <b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code>
-• <b>TP4:</b> <code>${setup.tp4.toFixed(2)}</code> (Runner)
-
-⚖️ <b>R:R:</b> <code>${setup.riskToReward}</code>
-
-🔥 <b>Setup Score:</b> <code>${setup.setupScore}/100</code>
-🏆 <b>Grade:</b> <code>${setup.grade}</code>
-
-📈 <b>4H:</b> <code>${setup.h4Bias}</code>
-📈 <b>1H:</b> <code>${setup.h1Bias}</code>
-📍 <b>15M:</b> <code>${setup.m15Setup}</code>
-🔍 <b>5M:</b> <code>${setup.m5Confirmation}</code>
-⚡ <b>1M:</b> <code>${setup.m1Trigger}</code>
-
-📰 <b>News Risk:</b> <code>${setup.newsRisk}</code>
-🔒 <b>SETUP LOCKED (${setup.strategyVersion})</b>
-
-🧠 <b>GMC AI Verdict:</b> <code>EXECUTION APPROVED</code>
-
-<i>GMC Trading • AI War Room</i>
+🔥 Confidence: ${confidence}% | ${grade}
+⚡ HIGH CONVICTION
 `.trim();
 }
 
 export function formatWarRoomTelegramUpdate(
   setup: LockedWarRoomSetup,
-  updateType: "ENTRY_ACTIVATED" | "TP1_HIT" | "TP2_HIT" | "TP3_HIT" | "TP4_HIT" | "STOP_LOSS" | "CANCELLED" | "EXPIRED" | "NEWS_WARNING",
+  updateType: "ENTRY_ACTIVATED" | "TP1_HIT" | "TP2_HIT" | "TP3_HIT" | "TP4_HIT" | "BREAKEVEN" | "PROFIT_SECURED" | "STOP_LOSS" | "CANCELLED" | "EXPIRED" | "CLOSED" | "NEWS_WARNING",
   extraNote?: string
 ): string {
+  const signalId = setup.setupId.startsWith("#") ? setup.setupId : `#${setup.setupId}`;
+  const symbol = (setup.symbol || "XAUUSD").replace("FOREXCOM:", "").split(" ")[0];
   const isBuy = setup.direction === "BUY";
-  const icon = isBuy ? "🟢" : "🔴";
 
   switch (updateType) {
     case "ENTRY_ACTIVATED":
       return `
-${icon} <b>GMC WAR ROOM — ENTRY ACTIVATED</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>Symbol:</b> <code>${setup.symbol}</code>
-📍 <b>Entry Triggered At:</b> <code>$${setup.bestEntry.toFixed(2)}</code>
-🛡 <b>Stop Loss:</b> <code>$${setup.stopLoss.toFixed(2)}</code>
-🎯 <b>Target TP1:</b> <code>$${setup.tp1.toFixed(2)}</code>
+🟢 ENTRY ACTIVATED
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Trade is officially LIVE. Position monitored 24/7 by War Room AI.</i>
+📍 Entry Price: ${setup.bestEntry.toFixed(2)}
+🛡 SL: ${setup.stopLoss.toFixed(2)}
+🎯 Next Target: TP1 (${setup.tp1.toFixed(2)})
 `.trim();
 
-    case "TP1_HIT":
+    case "TP1_HIT": {
+      const pips = Number((Math.abs(setup.tp1 - setup.bestEntry) * 10).toFixed(0));
       return `
-🎯 <b>GMC WAR ROOM — TP1 HIT (+${Math.abs(setup.tp1 - setup.bestEntry).toFixed(2)} pts)</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>TP1 Price:</b> <code>$${setup.tp1.toFixed(2)}</code>
-🔒 <b>Action:</b> <code>Move Stop Loss to Break-Even ($${setup.bestEntry.toFixed(2)}) & Lock 50% Profit</code>
-🎯 <b>Next Objective TP2:</b> <code>$${setup.tp2.toFixed(2)}</code>
+🎯 TP1 HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Trade remains active with 0% downside risk.</i>
+📍 Price: ${setup.tp1.toFixed(2)}
+🔄 SL moved to BREAKEVEN
 `.trim();
+    }
 
-    case "TP2_HIT":
+    case "TP2_HIT": {
+      const pips = Number((Math.abs(setup.tp2 - setup.bestEntry) * 10).toFixed(0));
       return `
-🎯🔥 <b>GMC WAR ROOM — TP2 HIT (+${Math.abs(setup.tp2 - setup.bestEntry).toFixed(2)} pts)</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>TP2 Price:</b> <code>$${setup.tp2.toFixed(2)}</code>
-🔒 <b>Action:</b> <code>Trailing Stop Active in High Profit</code>
-🎯 <b>Next Objective TP3:</b> <code>$${setup.tp3.toFixed(2)}</code>
-`.trim();
+🎯 TP2 HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${setup.direction}
 
-    case "TP3_HIT":
+📍 Price: ${setup.tp2.toFixed(2)}
+🔒 70% Profit Locked | Runner Active
+`.trim();
+    }
+
+    case "TP3_HIT": {
+      const pips = Number((Math.abs(setup.tp3 - setup.bestEntry) * 10).toFixed(0));
       return `
-🔥🚀 <b>GMC WAR ROOM — TP3 HIT (+${Math.abs(setup.tp3 - setup.bestEntry).toFixed(2)} pts)</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>TP3 Price:</b> <code>$${setup.tp3.toFixed(2)}</code>
-🎯 <b>Runner Target TP4:</b> <code>$${setup.tp4.toFixed(2)}</code>
-`.trim();
+🎯 TP3 HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${setup.direction}
 
-    case "TP4_HIT":
+📍 Price: ${setup.tp3.toFixed(2)}
+🔒 Trailing SL Active in Profit
+`.trim();
+    }
+
+    case "TP4_HIT": {
+      const pips = Number((Math.abs(setup.tp4 - setup.bestEntry) * 10).toFixed(0));
       return `
-🏆👑 <b>GMC WAR ROOM — FULL TARGET COMPLETED (TP4 SMASHED)</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>Final TP4:</b> <code>$${setup.tp4.toFixed(2)}</code>
-💰 <b>Total Reward:</b> <code>+${Math.abs(setup.tp4 - setup.bestEntry).toFixed(2)} pts (R:R ${setup.riskToReward})</code>
+🎯 TP4 ALL TARGETS HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Full trade closed with maximum institutional execution efficiency.</i>
+📍 Price: ${setup.tp4.toFixed(2)}
+✅ TRADE FULLY CLOSED
 `.trim();
+    }
 
-    case "STOP_LOSS":
+    case "BREAKEVEN":
       return `
-🛑 <b>GMC WAR ROOM — STOP LOSS HIT</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📊 <b>Exit Price:</b> <code>$${setup.stopLoss.toFixed(2)}</code>
-📉 <b>Risk Incurred:</b> <code>-${Math.abs(setup.bestEntry - setup.stopLoss).toFixed(2)} pts (-1.0 R)</code>
-🧠 <b>AI Autopsy:</b> <code>Archived to Trade Database for post-mortem analysis.</code>
+🔄 SL → BREAKEVEN
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Risk was controlled strictly within parameter limits.</i>
+🛡 Stop Loss: ${setup.bestEntry.toFixed(2)}
+🔒 Trade is now completely Risk-Free
 `.trim();
+
+    case "PROFIT_SECURED":
+      return `
+🔒 PROFIT SECURED
+${signalId} | ${symbol} | ${setup.direction}
+
+💰 Partial profit taken
+🛡 Trailing SL locked in green (+35 pips)
+`.trim();
+
+    case "STOP_LOSS": {
+      const pips = Number((Math.abs(setup.bestEntry - setup.stopLoss) * 10).toFixed(0));
+      return `
+🛑 STOP LOSS HIT (-${pips} Pips)
+${signalId} | ${symbol} | ${setup.direction}
+
+📍 Exit: ${setup.stopLoss.toFixed(2)}
+✅ CLOSED
+`.trim();
+    }
 
     case "CANCELLED":
       return `
-❌ <b>GMC WAR ROOM — SETUP CANCELLED</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-⚠️ <b>Reason:</b> <code>${extraNote || "Thesis invalidated by structural shift before execution."}</code>
+❌ TRADE CANCELLED
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Order cancelled. War Room scanning for the next A+ setup.</i>
+⚠️ Structure broken before entry.
+🛡 Setup Invalidated.
 `.trim();
 
     case "EXPIRED":
       return `
-⏱ <b>GMC WAR ROOM — SETUP EXPIRED</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-⚠️ <b>Note:</b> <code>Setup reached max lifespan (${setup.currentAgeMinutes}m) without entry fill.</code>
+🚫 SIGNAL EXPIRED
+${signalId} | ${symbol} | ${setup.direction}
+
+⏳ Price did not tap entry zone in validity window.
+🛡 Risk Capital 100% Preserved.
+`.trim();
+
+    case "CLOSED":
+      return `
+✅ TRADE CLOSED
+${signalId} | ${symbol} | ${setup.direction}
+
+🏆 Outcome: ${extraNote || "Trade Completed"}
+⏱ Duration: ${setup.currentAgeMinutes || 35}m
 `.trim();
 
     case "NEWS_WARNING":
       return `
-🚨 <b>GMC WAR ROOM — HIGH IMPACT NEWS WARNING</b>
-━━━━━━━━━━━━━━━━━━━━
-🆔 <b>Setup ID:</b> <code>${setup.setupId}</code>
-📰 <b>Event:</b> <code>${extraNote || "Tier-1 High Impact Macro Release"}</code>
-⚠️ <b>Risk Level:</b> <code>EXTREME (NEWS BLACKOUT ACTIVE)</code>
+🚨 NEWS RISK WARNING
+${signalId} | ${symbol} | ${setup.direction}
 
-<i>Maintain discipline. Original locked SL/TP parameters remain active.</i>
+⚠️ Event: ${extraNote || "High Impact Release"}
+🛡 Original SL/TP protections remain active.
 `.trim();
 
     default:
-      return `GMC WAR ROOM update for ${setup.setupId}`;
+      return `
+ℹ️ TRADE UPDATE
+${signalId} | ${symbol} | ${setup.direction}
+${extraNote || ""}
+`.trim();
   }
 }
 

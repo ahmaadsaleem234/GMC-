@@ -408,6 +408,8 @@ class WarRoomServerService {
   private lastAnalyzedTick: { price: number; timestamp: number } | null = null;
   private dispatchedSetupIds: Set<string> = new Set(["GMC-WAR-20260814-001", "GMC-WAR-20260812-002"]);
   private lastTradeClosedAt: number = 0;
+  private telegramSender?: (msg: string) => Promise<boolean>;
+  private duplicateChecker?: (direction: string, price: number) => boolean;
 
   constructor() {
     // Ensure all baseline historical database setups exist and are normalized in persistent disk storage
@@ -466,6 +468,14 @@ class WarRoomServerService {
 
   public getAuditLogs(): WarRoomAuditLog[] {
     return [...this.auditLogs];
+  }
+
+  public setTelegramSender(fn: (msg: string) => Promise<boolean>) {
+    this.telegramSender = fn;
+  }
+
+  public setDuplicateChecker(fn: (direction: string, price: number) => boolean) {
+    this.duplicateChecker = fn;
   }
 
   public addAuditLog(
@@ -1230,7 +1240,7 @@ class WarRoomServerService {
       riskAnalysis.executionAllowed &&
       (aiConsensus.consensus.includes("EXECUTION APPROVED") || aiConsensus.consensus.includes("EXECUTION ALLOWED"))
     ) {
-      this.lockNewSetup(targetDirection, px).catch(() => {});
+      this.lockNewSetup(targetDirection, px, this.telegramSender).catch(() => {});
     }
 
     // 16. If an active locked setup exists, update its live floating telemetry
@@ -1497,18 +1507,28 @@ class WarRoomServerService {
     }
 
     // 4. Dispatch Telegram Message if Auto-Publish is Enabled
-    if (this.config.telegramAutoPublish && sendTelegramFn) {
+    const effectiveSendTelegram = sendTelegramFn || this.telegramSender;
+    if (this.config.telegramAutoPublish && effectiveSendTelegram) {
       try {
         let telegramText = "";
         if (eventType === "CANDIDATE_CREATED" || eventType === "LEVELS_FROZEN") {
           telegramText = `<b>🟡 GMC WAR ROOM • CANDIDATE FROZEN (WAITING)</b>\n━━━━━━━━━━━━━━━━━━━\n<b>SETUP ID:</b> <code>${setup.setupId}</code>\n<b>ASSET:</b> <code>${setup.symbol}</code>\n<b>DIRECTION:</b> <b>${setup.direction} (GRADE ${setup.grade})</b>\n<b>ENTRY ZONE:</b> <code>${setup.entryZone[0].toFixed(2)} - ${setup.entryZone[1].toFixed(2)}</code>\n<b>BEST ENTRY:</b> <code>${setup.bestEntry.toFixed(2)}</code>\n<b>STOP LOSS:</b> <code>${setup.stopLoss.toFixed(2)}</code>\n<b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code> | <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code>\n<b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code> | <b>TP4:</b> <code>${setup.tp4.toFixed(2)}</code>\n<b>CONFIDENCE:</b> <code>${setup.confidence}%</code>\n\n<i>Setup candidate levels are locked. Waiting for execution gates trigger.</i>`;
         } else if (eventType === "SETUP_ACTIVATED") {
           telegramText = formatWarRoomTelegramSignal(setup);
+        } else if (eventType === "ENTRY_HIT") {
+          telegramText = formatWarRoomTelegramUpdate(setup, "ENTRY_ACTIVATED", message);
+        } else if (eventType === "SL_HIT") {
+          const updateType = setup.finalOutcome === "BREAKEVEN" ? "BREAKEVEN" : "STOP_LOSS";
+          telegramText = formatWarRoomTelegramUpdate(setup, updateType, message);
+        } else if (eventType === "SETUP_EXPIRED") {
+          telegramText = formatWarRoomTelegramUpdate(setup, "EXPIRED", message);
+        } else if (eventType === "SETUP_CANCELLED") {
+          telegramText = formatWarRoomTelegramUpdate(setup, "CANCELLED", message);
         } else {
           telegramText = formatWarRoomTelegramUpdate(setup, eventType as any, message);
         }
 
-        const sent = await sendTelegramFn(telegramText);
+        const sent = await effectiveSendTelegram(telegramText);
         if (sent) {
           alert.telegramSent = true;
           alert.telegramSentAt = new Date().toISOString().replace("T", " ").substring(11, 19) + " UTC";
@@ -1574,6 +1594,19 @@ class WarRoomServerService {
       const reward = Math.abs(tp3 - bestEntry) || 16.5;
       rrNumber = Number((reward / risk).toFixed(2));
       riskToReward = `1 : ${rrNumber}`;
+    }
+
+    // Check cross-engine deduplication before creating setup
+    if (this.duplicateChecker && this.duplicateChecker(direction, bestEntry)) {
+      this.addAuditLog(
+        "LIFECYCLE",
+        "SETUP_SKIPPED_DUPLICATE",
+        `War Room duplicate prevention active: ${direction} setup at $${bestEntry} was recently dispatched. Suppressing duplicate signal.`,
+        bestEntry,
+        95,
+        "WARNING"
+      );
+      if (this.activeSetup) return this.activeSetup;
     }
 
     const setupId = `GMC-WAR-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(this.database.length + 1).padStart(3, "0")}`;
@@ -1713,6 +1746,7 @@ class WarRoomServerService {
   public async tickMonitoring(currentPrice: number, sendTelegramFn?: (msg: string) => Promise<boolean>) {
     if (!this.activeSetup) return;
 
+    const sendFn = sendTelegramFn || this.telegramSender;
     const setup = this.activeSetup;
     const px = currentPrice;
     const isBuy = setup.direction === "BUY";
@@ -1762,7 +1796,7 @@ class WarRoomServerService {
         `Setup expired without trigger after ${setup.currentAgeMinutes}m. Risk capital 100% preserved.`,
         px,
         "INFO",
-        sendTelegramFn
+        sendFn
       );
 
       this.activeSetup = null;
@@ -1787,7 +1821,7 @@ class WarRoomServerService {
           `Price touched entry zone (${px.toFixed(2)}). Live execution active.`,
           px,
           "SUCCESS",
-          sendTelegramFn
+          sendFn
         );
       }
     }
@@ -1809,7 +1843,7 @@ class WarRoomServerService {
           `Target 1 reached at ${setup.tp1.toFixed(2)}. SL shifted to Break-Even (${setup.bestEntry.toFixed(2)}). Risk is 0%.`,
           px,
           "SUCCESS",
-          sendTelegramFn
+          sendFn
         );
       }
 
@@ -1827,7 +1861,7 @@ class WarRoomServerService {
           `Target 2 reached at ${setup.tp2.toFixed(2)}. Institutional continuation confirmed.`,
           px,
           "SUCCESS",
-          sendTelegramFn
+          sendFn
         );
       }
 
@@ -1845,7 +1879,7 @@ class WarRoomServerService {
           `Target 3 reached at ${setup.tp3.toFixed(2)}. Major runner profits locked.`,
           px,
           "SUCCESS",
-          sendTelegramFn
+          sendFn
         );
       }
 
@@ -1880,7 +1914,7 @@ class WarRoomServerService {
           `All 4 profit targets smashed! Trade closed in pure profit.`,
           px,
           "SUCCESS",
-          sendTelegramFn
+          sendFn
         );
 
         this.activeSetup = null;
@@ -1917,7 +1951,7 @@ class WarRoomServerService {
           isBE ? `Stop hit at Break-Even. Zero risk was realized.` : `Stop loss triggered at ${px.toFixed(2)}. Risk strictly managed.`,
           px,
           isBE ? "INFO" : "CRITICAL",
-          sendTelegramFn
+          sendFn
         );
 
         this.activeSetup = null;

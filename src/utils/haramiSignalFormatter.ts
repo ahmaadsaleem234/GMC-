@@ -4,9 +4,11 @@
  */
 
 export interface HaramiSignalParams {
+  signalId?: string;
   direction: "BUY" | "SELL" | "NO_TRADE";
   symbolShort?: string;
   assetName?: string;
+  timeframe?: string;
   h4Context?: string;
   h1Bias?: string;
   m15Setup?: string;
@@ -22,6 +24,7 @@ export interface HaramiSignalParams {
   tp4?: number;
   rr?: string;
   confidence?: number;
+  grade?: string;
   reason?: string;
 }
 
@@ -52,49 +55,30 @@ export function generateDynamicReason(direction: "BUY" | "SELL" | "NO_TRADE", se
 
 export function formatHaramiSignalMessage(params: HaramiSignalParams): string {
   if (params.direction === "NO_TRADE") {
-    const h4 = params.h4Context || "Neutral";
-    const h1 = params.h1Bias || "Neutral";
-    const m15 = params.m15Setup || "Neutral";
-    const m5 = params.m5Entry || "Waiting";
-    const reasonText = params.reason || generateDynamicReason("NO_TRADE");
-
+    const symbolShort = params.symbolShort || "XAUUSD";
+    const tf = params.timeframe || "M15";
     return `
-⏳ <b>HARAMI AI — NO TRADE</b>
+🔥 HARAMI AI — NO TRADE
+${symbolShort} | ${tf}
 
-<b>📊 XAUUSD | WAIT</b>
-
-🕒 <b>TIMEFRAME ANALYSIS</b>
-H4 Context: ${h4}
-H1 Bias: ${h1}
-M15 Setup: ${m15}
-M5 Confirmation: ${m5}
-
-🧠 <b>Reason:</b>
-${reasonText}
-
-⚡ <i>Harami AI • Serious Signals, Zero Drama.</i>
+⏳ Market structure scanning in progress. Awaiting clean A+ setup.
     `.trim();
   }
 
   const isBuy = params.direction === "BUY";
-  const iconEmoji = isBuy ? "🟢🔥" : "🔴🔥";
-  const symbolShort = params.symbolShort || "XAUUSD";
+  const symbolShort = (params.symbolShort || "XAUUSD").replace("FOREXCOM:", "");
   const assetLabel = params.assetName || (symbolShort === "XAUUSD" ? "GOLD" : symbolShort);
+  const timeframe = params.timeframe || "M15";
+  const signalId = params.signalId ? `#${params.signalId.replace(/^#/, "")}` : "#HRM-XAU";
 
-  const bestEntry = params.bestEntry ?? (isBuy ? 4342.26 : 4342.26);
+  const bestEntry = params.bestEntry ?? 4495.90;
   const entryLow = params.entryLow ?? (isBuy ? bestEntry - 0.8 : bestEntry - 0.5);
   const entryHigh = params.entryHigh ?? (isBuy ? bestEntry + 0.5 : bestEntry + 0.8);
-  const currentPrice = params.currentPrice ?? bestEntry;
   const sl = params.sl ?? (isBuy ? bestEntry - 4.5 : bestEntry + 4.5);
   const tp1 = params.tp1 ?? (isBuy ? bestEntry + 7.0 : bestEntry - 7.0);
   const tp2 = params.tp2 ?? (isBuy ? bestEntry + 10.0 : bestEntry - 10.0);
   const tp3 = params.tp3 ?? (isBuy ? bestEntry + 14.0 : bestEntry - 14.0);
   const tp4 = params.tp4 ?? (isBuy ? bestEntry + 20.0 : bestEntry - 20.0);
-
-  const h4 = params.h4Context || (isBuy ? "Bullish" : "Bearish");
-  const h1 = params.h1Bias || (isBuy ? "BULLISH" : "BEARISH");
-  const m15 = params.m15Setup || (isBuy ? "BULLISH" : "BEARISH");
-  const m5 = params.m5Entry || "CONFIRMED";
 
   // Calculate actual mathematical R:R
   let rrStr = params.rr;
@@ -103,44 +87,231 @@ ${reasonText}
     const reward = Math.abs(tp1 - bestEntry);
     if (risk > 0) {
       const ratio = (reward / risk).toFixed(2);
-      rrStr = `1 : ${ratio}`;
+      rrStr = `1:${ratio}`;
     } else {
-      rrStr = "1 : 1.56";
+      rrStr = "1:1.56";
     }
+  } else {
+    rrStr = rrStr.replace(/\s+/g, "");
   }
 
-  const confidenceVal = params.confidence || 96.9;
-  const confidenceGrade = confidenceVal >= 95.0 ? "A+" : "A";
-  const reasonText = params.reason || generateDynamicReason(params.direction);
-  const priceIcon = isBuy ? "📈" : "📉";
+  const confidenceVal = typeof params.confidence === "number" ? Number(params.confidence.toFixed(1)) : 89.8;
+  const confidenceGrade = params.grade || (confidenceVal >= 92.0 ? "A+" : "A");
 
   return `
-${iconEmoji} <b>HARAMI AI — ${params.direction} ${assetLabel}</b>
+🔥 HARAMI AI — ${params.direction} ${assetLabel}
+${signalId} | ${symbolShort} | ${timeframe}
 
-<b>📊 ${symbolShort} | ${params.direction}</b>
+📍 Entry: ${entryLow.toFixed(2)}–${entryHigh.toFixed(2)}
+💎 Best: ${bestEntry.toFixed(2)}
+🛡 SL: ${sl.toFixed(2)}
 
-🕒 <b>TIMEFRAME ANALYSIS</b>
-H4 Context: ${h4}
-H1 Bias: ${h1}
-M15 Setup: ${m15}
-M5 Entry: ${m5}
+🎯 TP1: ${tp1.toFixed(2)} | TP2: ${tp2.toFixed(2)}
+🎯 TP3: ${tp3.toFixed(2)} | TP4: ${tp4.toFixed(2)}
 
-📍 <b>Entry:</b> <code>$${entryLow.toFixed(2)} - $${entryHigh.toFixed(2)}</code>
-💎 <b>Best:</b> <code>$${bestEntry.toFixed(2)}</code>
-${priceIcon} <b>Current:</b> <code>$${currentPrice.toFixed(2)}</code>
-🛡️ <b>SL:</b> <code>$${sl.toFixed(2)}</code>
+🔥 Confidence: ${confidenceVal}% | Grade: ${confidenceGrade}
+⚖️ R:R ${rrStr}
+  `.trim();
+}
 
-🎯 <b>TP1:</b> <code>$${tp1.toFixed(2)}</code>
-🎯 <b>TP2:</b> <code>$${tp2.toFixed(2)}</code>
-🎯 <b>TP3:</b> <code>$${tp3.toFixed(2)}</code>
-🎯 <b>TP4:</b> <code>$${tp4.toFixed(2)}</code>
+export interface LifecycleAlertParams {
+  signalId: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  price?: number;
+  entryPrice?: number;
+  exitPrice?: number;
+  sl?: number;
+  newSlPrice?: number;
+  tp1?: number;
+  tp2?: number;
+  tp3?: number;
+  tp4?: number;
+  pips?: number;
+  securedPips?: number;
+  pnlUSD?: number;
+  pnlPips?: number;
+  confidence?: number;
+  grade?: string;
+  duration?: string;
+  outcome?: string;
+  reason?: string;
+}
 
-⚖️ <b>R:R:</b> <code>${rrStr}</code>
-🔥 <b>Confidence:</b> <code>${confidenceVal}% ${confidenceGrade}</code>
+export function formatEntryActivatedAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const price = (params.entryPrice || params.price || 4495.80).toFixed(2);
+  const sl = params.sl ? params.sl.toFixed(2) : "—";
+  const nextTarget = params.tp1 ? `TP1 (${params.tp1.toFixed(2)})` : "TP1";
 
-🧠 <b>Setup:</b>
-${reasonText}
+  return `
+🟢 ENTRY ACTIVATED
+${signalId} | ${symbol} | ${params.direction}
 
-⚡ <i>Harami AI • Serious Signals, Zero Drama.</i>
+📍 Entry Price: ${price}
+🛡 SL: ${sl}
+🎯 Next Target: ${nextTarget}
+  `.trim();
+}
+
+export function formatTpHitAlert(level: 1 | 2 | 3 | 4, params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const price = (params.price || 0).toFixed(2);
+  const pips = params.pips ?? (level === 1 ? 70 : level === 2 ? 100 : level === 3 ? 140 : 200);
+
+  if (level === 4) {
+    return `
+🎯 TP4 ALL TARGETS HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${params.direction}
+
+📍 Price: ${price}
+✅ TRADE FULLY CLOSED
+    `.trim();
+  }
+
+  let followUpNote = "🔄 SL moved to BREAKEVEN";
+  if (level === 2) followUpNote = "🔒 70% Profit Locked | Runner Active";
+  if (level === 3) followUpNote = "🔒 Trailing SL Active in Profit";
+
+  return `
+🎯 TP${level} HIT (+${pips} Pips)
+${signalId} | ${symbol} | ${params.direction}
+
+📍 Price: ${price}
+${followUpNote}
+  `.trim();
+}
+
+export function formatBreakevenAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const sl = (params.sl || params.entryPrice || 0).toFixed(2);
+
+  return `
+🔄 SL → BREAKEVEN
+${signalId} | ${symbol} | ${params.direction}
+
+🛡 Stop Loss: ${sl}
+🔒 Trade is now completely Risk-Free
+  `.trim();
+}
+
+export function formatProfitSecuredAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const pips = params.pips ?? 35;
+
+  return `
+🔒 PROFIT SECURED
+${signalId} | ${symbol} | ${params.direction}
+
+💰 Partial profit taken
+🛡 Trailing SL locked in green (+${pips} pips)
+  `.trim();
+}
+
+export function formatSlHitAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const price = (params.price || params.sl || 0).toFixed(2);
+  const pips = params.pips ?? 45;
+
+  return `
+🛑 STOP LOSS HIT (-${pips} Pips)
+${signalId} | ${symbol} | ${params.direction}
+
+📍 Exit: ${price}
+✅ CLOSED
+  `.trim();
+}
+
+export function formatSignalExpiredAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+
+  return `
+🚫 SIGNAL EXPIRED
+${signalId} | ${symbol} | ${params.direction}
+
+⏳ Price did not tap entry zone in validity window.
+🛡 Risk Capital 100% Preserved.
+  `.trim();
+}
+
+export function formatTradeCancelledAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+
+  return `
+❌ TRADE CANCELLED
+${signalId} | ${symbol} | ${params.direction}
+
+⚠️ Structure broken before entry.
+🛡 Setup Invalidated.
+  `.trim();
+}
+
+export function formatWarRoomUpgradeAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const confidence = params.confidence ? params.confidence.toFixed(1) : "95.0";
+  const grade = params.grade || "A+";
+  const sl = params.sl ? params.sl.toFixed(2) : "—";
+
+  return `
+⚔️ UPGRADED TO WAR ROOM
+${signalId} | ${symbol} | ${params.direction}
+
+🔥 Confidence: ${confidence}% | ${grade}
+⚡ HIGH CONVICTION UPGRADE
+🛡 SL: ${sl} | Targets Maintained
+  `.trim();
+}
+
+export function formatTradeClosedAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const outcome = params.outcome || "+70 Pips";
+  const duration = params.duration || "42m";
+
+  return `
+✅ TRADE CLOSED
+${signalId} | ${symbol} | ${params.direction}
+
+🏆 Outcome: ${outcome}
+⏱ Duration: ${duration}
+  `.trim();
+}
+
+export interface DailySummaryParams {
+  date?: string;
+  totalTrades: number;
+  tpCount?: number;
+  tpHits?: number;
+  slCount?: number;
+  slHits?: number;
+  beCount: number;
+  netPips: number;
+  netPnLUSD?: number;
+  winRate?: number | string;
+}
+
+export function formatDailySummaryAlert(params: DailySummaryParams): string {
+  const dateStr = params.date || new Date().toISOString().slice(0, 10);
+  const pipsSign = params.netPips >= 0 ? "+" : "";
+  const tp = params.tpCount ?? params.tpHits ?? 0;
+  const sl = params.slCount ?? params.slHits ?? 0;
+
+  return `
+📊 DAILY TRADE SUMMARY
+${dateStr}
+
+📈 Total Trades: ${params.totalTrades}
+🎯 TP: ${tp} | 🛑 SL: ${sl} | 🔄 BE: ${params.beCount}
+💰 Net Result: ${pipsSign}${params.netPips} Pips
+
+⚡ GMC AI • Harami & War Room
   `.trim();
 }
