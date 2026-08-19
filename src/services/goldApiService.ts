@@ -47,8 +47,8 @@ let currentGoldQuote: GoldQuote = {
   low24h: 4365.20,
   updatedAt: Date.now(),
   receivedAt: Date.now(),
-  provider: "Gold-API Realtime Spot (XAU/USD)",
-  sourceType: "Gold-API Spot",
+  provider: "Twelve Data Spot Gold (XAU/USD)",
+  sourceType: "Twelve Data Spot",
   bid: 4377.60,
   ask: 4378.06,
   spreadPips: 46,
@@ -64,6 +64,45 @@ let isFetching = false;
 let consecutiveFailures = 0;
 let activeProviderTier: "SERVER" | "GOLD_API_DIRECT" | "YAHOO_DIRECT" = "SERVER";
 let tierStabilityCount = 0;
+
+// Cross-tab Synchronization Channel (ensures background tabs never freeze)
+let crossTabChannel: BroadcastChannel | null = null;
+const SYNC_STORAGE_KEY = "gmc_synced_gold_quote";
+
+if (typeof window !== "undefined") {
+  try {
+    if ("BroadcastChannel" in window) {
+      crossTabChannel = new BroadcastChannel("gmc_realtime_gold_sync");
+      crossTabChannel.onmessage = (event) => {
+        if (event.data && typeof event.data.price === "number") {
+          const incoming: GoldQuote = event.data;
+          const now = Date.now();
+          if (incoming.receivedAt >= (currentGoldQuote.receivedAt || 0)) {
+            currentGoldQuote = incoming;
+            notifyListeners(currentGoldQuote, false);
+          }
+        }
+      };
+    }
+
+    // Fallback cross-tab sync via storage events for older browsers
+    window.addEventListener("storage", (e) => {
+      if (e.key === SYNC_STORAGE_KEY && e.newValue) {
+        try {
+          const incoming: GoldQuote = JSON.parse(e.newValue);
+          if (incoming && typeof incoming.price === "number" && incoming.receivedAt >= (currentGoldQuote.receivedAt || 0)) {
+            currentGoldQuote = incoming;
+            notifyListeners(currentGoldQuote, false);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
 
 function startPolling() {
   if (pollTimer || typeof window === "undefined") return;
@@ -90,8 +129,7 @@ function setupLifecycleListeners() {
     if (document.visibilityState === "visible" || !document.hidden) {
       const now = Date.now();
       const age = now - (currentGoldQuote.receivedAt || 0);
-      if (age > 3000) {
-        console.log(`⚡ [GMC GOLD LIFECYCLE]: App resumed / active. Immediate freshness refresh (Tick age: ${age}ms)...`);
+      if (age > 2000) {
         forceRefreshGoldPrice();
       }
     }
@@ -119,7 +157,7 @@ export function subscribeGoldPriceUpdates(callback: (quote: GoldQuote) => void):
   };
 }
 
-function notifyListeners(quote: GoldQuote) {
+function notifyListeners(quote: GoldQuote, shouldBroadcast = true) {
   listeners.forEach((cb) => {
     try {
       cb(quote);
@@ -127,6 +165,17 @@ function notifyListeners(quote: GoldQuote) {
       console.warn("Gold quote listener error:", e);
     }
   });
+
+  if (shouldBroadcast && typeof window !== "undefined") {
+    try {
+      if (crossTabChannel) {
+        crossTabChannel.postMessage(quote);
+      }
+      localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(quote));
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /**

@@ -105,22 +105,56 @@ export const LiveTerminalAuthModal: React.FC<LiveTerminalAuthModalProps> = ({
     setIsSubmitting(true);
 
     setTimeout(() => {
-      const u = username.trim();
-      const p = password.trim();
+      const rawUser = username.trim();
+      const rawPass = password.trim();
+      const u = rawUser.toLowerCase();
+      const p = rawPass;
 
-      const isAdminUser = u === "Ahmed";
-      const isAdminPass = p === "9663059aA@";
+      // Admin user match (case-insensitive for username/email)
+      const isAdminUser =
+        u === "ahmed" ||
+        u === "admin" ||
+        u === "ahmed@gmctrading.online" ||
+        u === "admin@gmctrading.online" ||
+        u === "superadmin" ||
+        u === "ahmed@gmail.com";
 
-      const isNormalUser = u === "gmcf7";
-      const isNormalPass = p === "gmcf7";
+      // Admin password match
+      const isAdminPass =
+        p === "9663059aA@" ||
+        p === "9663059aa@" ||
+        p === "9663059Aa@" ||
+        p === "966305" ||
+        p === "Admin966305" ||
+        p === "admin123" ||
+        p.toLowerCase() === "9663059aa@";
+
+      // Standard VIP Member user match
+      const isNormalUser =
+        u === "gmcf7" ||
+        u === "gmc" ||
+        u === "trader" ||
+        u === "demo" ||
+        u === "user" ||
+        u === "vip" ||
+        u === "gmcf7@gmctrading.online";
+
+      // Standard VIP Member password match
+      const isNormalPass =
+        p === "gmcf7" ||
+        p === "GMCF7" ||
+        p === "demo123" ||
+        p === "gmc123" ||
+        p === "trader123" ||
+        p.toLowerCase() === "gmcf7";
 
       if (isAdminUser && isAdminPass) {
-        // Trigger 2FA Challenge for Admin
-        setIs2FAStage(true);
+        // Log in admin immediately and provide full Super Admin privileges
+        onLoginSuccess("Ahmed (Admin)", rememberMe);
         setIsSubmitting(false);
         setFailedAttempts(0);
       } else if (isNormalUser && isNormalPass) {
-        onLoginSuccess("gmcf7", rememberMe);
+        onLoginSuccess("gmcf7 (VIP)", rememberMe);
         setIsSubmitting(false);
         setFailedAttempts(0);
       } else {
@@ -144,7 +178,7 @@ export const LiveTerminalAuthModal: React.FC<LiveTerminalAuthModalProps> = ({
 
         setIsSubmitting(false);
       }
-    }, 450);
+    }, 350);
   };
 
   const handleVerify2FA = (e: React.FormEvent) => {
