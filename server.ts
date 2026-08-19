@@ -827,6 +827,8 @@ async function startServer() {
     joinedAt: string;
     lastActive: string;
     totalSignalsReceived: number;
+    decisionAt?: string | null;
+    languageCode?: string;
   }
 
   let telegramUsersStore: Record<string, TelegramBotUser> = {};
@@ -853,6 +855,7 @@ async function startServer() {
         joinedAt: new Date().toISOString(),
         lastActive: new Date().toISOString(),
         totalSignalsReceived: 0,
+        decisionAt: new Date().toISOString(),
       };
       saveTelegramUsers();
     }
@@ -913,36 +916,84 @@ async function startServer() {
                 const username = msg.from?.username ? `@${msg.from.username}` : "";
                 const firstName = msg.from?.first_name || "Trader";
                 const lastName = msg.from?.last_name || "";
+                const languageCode = msg.from?.language_code || "en";
                 const nowIso = new Date().toISOString();
+                const masterId = cleanServerTelegramInput(serverTargetChatId || "5218548758");
+                const isMasterAdmin = (userId === masterId || chatId === masterId);
 
-                // Auto-register and approve user for seamless signal broadcast
-                let user = telegramUsersStore[userId] || telegramUsersStore[chatId];
+                // Find existing user in store by userId or chatId
+                let existingKey = Object.keys(telegramUsersStore).find(
+                  (k) => telegramUsersStore[k].userId === userId || telegramUsersStore[k].chatId === chatId
+                );
+                let user = existingKey ? telegramUsersStore[existingKey] : null;
+
                 if (!user) {
+                  // BRAND NEW USER: Default to PENDING status unless Master Admin
+                  const initialStatus = isMasterAdmin ? "approved" : "pending";
                   user = {
                     userId,
                     username,
                     firstName,
                     lastName,
                     chatId,
-                    status: "approved",
+                    status: initialStatus,
                     joinedAt: nowIso,
                     lastActive: nowIso,
                     totalSignalsReceived: 0,
+                    decisionAt: isMasterAdmin ? nowIso : null,
+                    languageCode,
                   };
-                  telegramUsersStore[chatId] = user;
+                  telegramUsersStore[userId] = user;
                   saveTelegramUsers();
-                  console.log(`[TELEGRAM USER REGISTERED]: ${firstName} (${chatId}) - Approved & Subscribed`);
+                  console.log(`[TELEGRAM USER REGISTERED]: ${firstName} (${userId}) - Status: ${initialStatus.toUpperCase()}`);
+
+                  // Notify Super Admin if a new non-admin user requests bot access
+                  if (!isMasterAdmin && masterId) {
+                    sendSingleTelegramMessage(
+                      masterId,
+                      `🔔 <b>NEW TELEGRAM BOT ACCESS REQUEST</b>\n━━━━━━━━━━━━━━━━━━━\n<b>User:</b> <b>${firstName} ${lastName}</b> (${username || "No @username"})\n<b>Telegram ID:</b> <code>${userId}</code>\n<b>Requested At:</b> <code>${new Date().toLocaleString()}</code>\n<b>Status:</b> ⏳ <code>PENDING APPROVAL</code>\n\n<i>⚡ Log in to the GMC Super Admin Dashboard to APPROVE or REJECT this request.</i>`
+                    ).catch(() => {});
+                  }
                 } else {
+                  // EXISTING USER: Update profile & activity metadata while PRESERVING status & decisionAt
                   user.username = username || user.username;
                   user.firstName = firstName || user.firstName;
                   user.lastName = lastName || user.lastName;
                   user.chatId = chatId;
-                  user.status = "approved";
+                  user.languageCode = languageCode || user.languageCode;
                   user.lastActive = nowIso;
-                  telegramUsersStore[chatId] = user;
+                  telegramUsersStore[existingKey || userId] = user;
                   saveTelegramUsers();
                 }
 
+                // ============================================================
+                // STRICT SERVER-SIDE AUTHORIZATION GATE
+                // ============================================================
+                if (user.status === "blocked") {
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `🚫 <b>Access Blocked</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account (ID: <code>${userId}</code>) has been blocked from GMC Trading AI Bot by the Super Admin.`
+                  );
+                  continue;
+                }
+
+                if (user.status === "rejected") {
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `❌ <b>Your Telegram Bot access request was rejected.</b>\n━━━━━━━━━━━━━━━━━━━\nYour access request for GMC Trading AI Bot (Telegram ID: <code>${userId}</code>) was rejected by the Super Admin.\n\nPlease contact the Super Admin if you believe this is an error.`
+                  );
+                  continue;
+                }
+
+                if (user.status === "pending") {
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `⏳ <b>Access Pending – Approval Required</b>\n━━━━━━━━━━━━━━━━━━━\nHello <b>${firstName}</b>!\n\nYour Telegram Bot access request is waiting for Super Admin approval.\n\n<b>👤 Telegram ID:</b> <code>${userId}</code>\n<b>📱 Username:</b> ${username || "None"}\n<b>🔒 Access Status:</b> <code>PENDING APPROVAL</code>\n<b>🕒 Joined:</b> <code>${new Date(user.joinedAt).toLocaleString()}</code>\n\n<i>🛡️ Institutional Security: Trading signals, entry alerts, TP/SL alerts, and protected commands remain locked until approved by the Super Admin. You will receive an automated Telegram message once approved.</i>`
+                  );
+                  continue;
+                }
+
+                // User is APPROVED — Proceed with command handling
                 let replyText = "";
                 let chartBufferToSend: Buffer | undefined;
 
@@ -3482,75 +3533,155 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
   // -------------------------------------------------------------
 
   app.get("/api/admin/telegram/users", (req, res) => {
-    const usersList = Object.values(telegramUsersStore);
+    // Deduplicate by userId
+    const uniqueMap = new Map<string, TelegramBotUser>();
+    for (const u of Object.values(telegramUsersStore)) {
+      if (u && u.userId) {
+        uniqueMap.set(u.userId, u);
+      }
+    }
+    const usersList = Array.from(uniqueMap.values());
     const stats = {
       total: usersList.length,
       approved: usersList.filter((u) => u.status === "approved").length,
       pending: usersList.filter((u) => u.status === "pending").length,
       rejected: usersList.filter((u) => u.status === "rejected").length,
       blocked: usersList.filter((u) => u.status === "blocked").length,
+      totalSignalsSent: usersList.reduce((acc, u) => acc + (u.totalSignalsReceived || 0), 0),
     };
+
+    // Sort: Pending users first, then by last active timestamp descending
+    const sorted = usersList.sort((a, b) => {
+      if (a.status === "pending" && b.status !== "pending") return -1;
+      if (a.status !== "pending" && b.status === "pending") return 1;
+      return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
+    });
 
     res.json({
       ok: true,
-      users: usersList.sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime()),
+      users: sorted,
       stats,
     });
   });
 
   app.post("/api/admin/telegram/users/action", async (req, res) => {
     try {
-      const { userId, action } = req.body || {};
+      const { userId, action, customMessage } = req.body || {};
       if (!userId || !action) {
         return res.status(400).json({ ok: false, error: "Missing userId or action" });
       }
 
       const cleanId = String(userId).trim();
-      const user = telegramUsersStore[cleanId];
+      // Find matching user by userId or chatId
+      let targetUser = Object.values(telegramUsersStore).find(
+        (u) => u.userId === cleanId || u.chatId === cleanId
+      );
 
-      if (!user && action !== "delete") {
-        return res.status(404).json({ ok: false, error: "Telegram user not found" });
+      if (!targetUser && action !== "delete") {
+        return res.status(404).json({ ok: false, error: `Telegram user ${cleanId} not found in database.` });
       }
 
-      if (action === "approve") {
-        user.status = "approved";
+      const nowIso = new Date().toISOString();
+
+      if (action === "approve" && targetUser) {
+        targetUser.status = "approved";
+        targetUser.decisionAt = nowIso;
         saveTelegramUsers();
-        // Send approval message to user
+
+        // Send instant approval notification directly to the Telegram user
         await sendSingleTelegramMessage(
-          user.chatId,
-          `<b>🎉 ACCESS APPROVED BY ADMIN!</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${user.firstName || "Trader"}</b>! Your access request (User ID: <code>${user.userId}</code>) has been <b>APPROVED</b> by the Administrator.\n\nYou are now live-subscribed to receive 24/7 Harami AI Gold signals directly in this chat!`
+          targetUser.chatId,
+          `<b>🎉 ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${targetUser.firstName || "Trader"}</b>! Your Telegram Bot access request (ID: <code>${targetUser.userId}</code>) has been <b>APPROVED</b>.\n\n✅ You are now authorized to receive real-time institutional GMC Gold trading signals, entry alerts, and TP/SL hits.\n\nType /start or /signal to check active market status!`
         );
-      } else if (action === "reject") {
-        user.status = "rejected";
+      } else if (action === "reject" && targetUser) {
+        targetUser.status = "rejected";
+        targetUser.decisionAt = nowIso;
         saveTelegramUsers();
+
         await sendSingleTelegramMessage(
-          user.chatId,
-          `<b>❌ ACCESS RESTRICTED</b>\n━━━━━━━━━━━━━━━━━━━\nYour signal access request (User ID: <code>${user.userId}</code>) was updated to restricted by the Admin.`
+          targetUser.chatId,
+          `<b>❌ ACCESS REQUEST REJECTED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram Bot access request (ID: <code>${targetUser.userId}</code>) was rejected by the Super Admin.\n\n${customMessage ? `<i>Reason: ${customMessage}</i>\n\n` : ""}Please contact the Super Admin if you believe this is an error.`
         );
-      } else if (action === "block") {
-        user.status = "blocked";
+      } else if (action === "block" && targetUser) {
+        targetUser.status = "blocked";
+        targetUser.decisionAt = nowIso;
         saveTelegramUsers();
-      } else if (action === "unblock" || action === "revoke") {
-        user.status = "pending";
+
+        await sendSingleTelegramMessage(
+          targetUser.chatId,
+          `<b>🚫 ACCOUNT BLOCKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account (ID: <code>${targetUser.userId}</code>) has been blocked from GMC Trading AI signals by the Super Admin.`
+        );
+      } else if (action === "unblock" && targetUser) {
+        targetUser.status = "approved";
+        targetUser.decisionAt = nowIso;
         saveTelegramUsers();
+
+        await sendSingleTelegramMessage(
+          targetUser.chatId,
+          `<b>✅ ACCOUNT UNBLOCKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account has been unblocked by the Super Admin. You are now authorized to receive signals!`
+        );
+      } else if (action === "revoke" && targetUser) {
+        targetUser.status = "pending";
+        targetUser.decisionAt = nowIso;
+        saveTelegramUsers();
+
+        await sendSingleTelegramMessage(
+          targetUser.chatId,
+          `<b>⚠️ ACCESS REVOKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram Bot access has been revoked and placed back in PENDING status by the Super Admin.`
+        );
+      } else if (action === "ping" && targetUser) {
+        const pingSent = await sendSingleTelegramMessage(
+          targetUser.chatId,
+          `<b>⚡ GMC TRADING • SUPER ADMIN DIRECT PING</b>\n━━━━━━━━━━━━━━━━━━━\nHello <b>${targetUser.firstName || "Trader"}</b>!\nThis is a direct connectivity test from the GMC Super Admin.\n\n<b>Telegram ID:</b> <code>${targetUser.userId}</code>\n<b>Status:</b> <code>${targetUser.status.toUpperCase()}</code>\n<b>Time:</b> <code>${new Date().toLocaleString()}</code>\n\n<i>All systems operational.</i>`
+        );
+        if (!pingSent) {
+          return res.status(200).json({ ok: false, error: "Failed to deliver ping to user. Bot may be blocked or chat not started." });
+        }
+      } else if (action === "message" && targetUser) {
+        if (!customMessage) {
+          return res.status(400).json({ ok: false, error: "Message text is required" });
+        }
+        await sendSingleTelegramMessage(
+          targetUser.chatId,
+          `<b>📢 MESSAGE FROM SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\n${customMessage}\n\n<i>Sent: ${new Date().toLocaleString()}</i>`
+        );
       } else if (action === "delete") {
-        delete telegramUsersStore[cleanId];
+        // Delete all matching keys
+        for (const [key, val] of Object.entries(telegramUsersStore)) {
+          if (val.userId === cleanId || val.chatId === cleanId || key === cleanId) {
+            delete telegramUsersStore[key];
+          }
+        }
         saveTelegramUsers();
       }
 
-      const usersList = Object.values(telegramUsersStore);
+      // Return refreshed deduplicated list and stats
+      const uniqueMap = new Map<string, TelegramBotUser>();
+      for (const u of Object.values(telegramUsersStore)) {
+        if (u && u.userId) {
+          uniqueMap.set(u.userId, u);
+        }
+      }
+      const usersList = Array.from(uniqueMap.values());
       const stats = {
         total: usersList.length,
         approved: usersList.filter((u) => u.status === "approved").length,
         pending: usersList.filter((u) => u.status === "pending").length,
         rejected: usersList.filter((u) => u.status === "rejected").length,
         blocked: usersList.filter((u) => u.status === "blocked").length,
+        totalSignalsSent: usersList.reduce((acc, u) => acc + (u.totalSignalsReceived || 0), 0),
       };
+
+      const sorted = usersList.sort((a, b) => {
+        if (a.status === "pending" && b.status !== "pending") return -1;
+        if (a.status !== "pending" && b.status === "pending") return 1;
+        return new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime();
+      });
 
       res.json({
         ok: true,
-        message: `Action '${action}' applied successfully to user ${cleanId}`,
-        users: usersList.sort((a, b) => new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime()),
+        message: `Action '${action}' applied successfully for user ${cleanId}`,
+        users: sorted,
         stats,
       });
     } catch (err: any) {
