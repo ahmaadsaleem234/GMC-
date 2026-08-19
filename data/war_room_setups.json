@@ -1,0 +1,481 @@
+[
+  {
+    "setupId": "GMC-WAR-20260814-001",
+    "symbol": "XAUUSD (Gold Spot)",
+    "direction": "BUY",
+    "grade": "A+",
+    "confidence": 91.5,
+    "setupScore": 92,
+    "status": "CLOSED",
+    "mode": "LIVE",
+    "strategyVersion": "GMC-WAR-v2.2.0",
+    "isOfficialSignal": true,
+    "entryZone": [
+      4428.5,
+      4430.8
+    ],
+    "entryLow": 4428.5,
+    "entryHigh": 4430.8,
+    "bestEntry": 4429.6,
+    "stopLoss": 4423.8,
+    "invalidationLevel": 4422,
+    "tp1": 4436.5,
+    "tp2": 4444,
+    "tp3": 4455,
+    "tp4": 4470,
+    "riskToReward": "1 : 3.86",
+    "rrNumber": 3.86,
+    "h4Bias": "Bullish",
+    "h1Bias": "Bullish",
+    "m15Setup": "15M Virgin Demand zone unmitigated with Bullish Order Block",
+    "m5Confirmation": "London session low liquidity swept with sharp displacement",
+    "m1Trigger": "1M MSS + 46% wick lower rejection",
+    "sourceZoneIds": [
+      "GMC-XAU-15M-DZ-001",
+      "GMC-XAU-1H-BULL-OB-002"
+    ],
+    "createdAt": 1786984284808,
+    "createdAtUtc": "2026-08-14 13:45 UTC",
+    "lockedAt": 1786984284808,
+    "activatedAt": 1786984464808,
+    "expiresAt": 1786995084808,
+    "closedAt": 1786991484808,
+    "currentAgeMinutes": 120,
+    "currentPrice": 4455,
+    "currentFloatingR": 3.86,
+    "mfePoints": 25.4,
+    "maePoints": 1.8,
+    "mfeR": 4.38,
+    "maeR": 0.31,
+    "targetsHit": {
+      "tp1": true,
+      "tp2": true,
+      "tp3": true,
+      "tp4": false
+    },
+    "healthScore": 94,
+    "healthStatus": "PRISTINE",
+    "healthDowngradeReasons": [],
+    "newsRisk": "LOW",
+    "dataQualityScore": 98,
+    "marketRegime": "Strong Trend (Expansion)",
+    "currentSession": "LONDON",
+    "telegramDispatched": true,
+    "telegramMessageId": 84920,
+    "telegramSentAt": "2026-08-14 13:45 UTC",
+    "telegramStatus": "SENT",
+    "telegramRetryCount": 0,
+    "telegramLastError": null,
+    "dispatchedUpdates": [
+      "ENTRY_ACTIVATED",
+      "TP1_HIT",
+      "TP2_HIT",
+      "TP3_HIT"
+    ],
+    "finalOutcome": "WIN_TP3",
+    "finalPnlPts": 25.4,
+    "finalPnlR": 3.86,
+    "autopsySummary": {
+      "storedEvidenceUsed": [
+        {
+          "rule": "4H Macro Trend Alignment",
+          "detectedAt": "13:30 UTC",
+          "expected": "Higher Low Continuity",
+          "actualResult": "Held firmly at $4428.50"
+        },
+        {
+          "rule": "5M London Low SSL Sweep",
+          "detectedAt": "13:42 UTC",
+          "expected": "Displacement Reversal",
+          "actualResult": "Displaced +14 pts within 25m"
+        },
+        {
+          "rule": "1M MSS Trigger",
+          "detectedAt": "13:45 UTC",
+          "expected": "Break of Micro Resistance",
+          "actualResult": "Confirmed with 46% wick rejection"
+        }
+      ],
+      "whatWorked": [
+        "4H + 1H trend synchronization",
+        "Pristine London session liquidity sweep",
+        "Low spread & 1M MSS displacement trigger"
+      ],
+      "whatFailed": [
+        "TP4 extended target paused at overnight Asian range consolidation"
+      ],
+      "lessons": "Securing 50% volume at TP1 with break-even stop guaranteed 0% risk for the remaining runners.",
+      "rootCause": "Institutional accumulation block at London open catalyzed momentum surge."
+    },
+    "confidenceScore": 91.5,
+    "riskRewardRatio": 3.86,
+    "formattedTime": "2026-08-14 13:45 UTC",
+    "reasoning": "15M Virgin Demand zone unmitigated with Bullish Order Block",
+    "aiConsensusSnapshot": {
+      "structure": "BULLISH",
+      "smartMoney": "BULLISH",
+      "liquidity": "ALIGNED",
+      "momentum": "BULLISH",
+      "macro": "NEUTRAL",
+      "newsSentiment": "BULLISH",
+      "riskProtocol": "PASSED (6/6)",
+      "verdict": "BUY XAU/USD (CONFIDENCE: 91.5%)",
+      "confidence": 91.5
+    }
+  },
+  {
+    "setupId": "GMC-WAR-20260812-002",
+    "symbol": "XAUUSD (Gold Spot)",
+    "direction": "SELL",
+    "grade": "A",
+    "confidence": 86.4,
+    "setupScore": 86,
+    "status": "CLOSED",
+    "mode": "LIVE",
+    "strategyVersion": "GMC-WAR-v2.2.0",
+    "isOfficialSignal": true,
+    "entryZone": [
+      4442,
+      4444.5
+    ],
+    "entryLow": 4442,
+    "entryHigh": 4444.5,
+    "bestEntry": 4443.2,
+    "stopLoss": 4448.5,
+    "invalidationLevel": 4450,
+    "tp1": 4435,
+    "tp2": 4426,
+    "tp3": 4415,
+    "tp4": 4400,
+    "riskToReward": "1 : 3.25",
+    "rrNumber": 3.25,
+    "h4Bias": "Bearish",
+    "h1Bias": "Bearish",
+    "m15Setup": "15M Supply Block retest + Bearish FVG Imbalance",
+    "m5Confirmation": "Equal Highs (EQH) swept into 1H Bearish Order Block",
+    "m1Trigger": "1M CHoCH break below micro support",
+    "sourceZoneIds": [
+      "GMC-XAU-15M-SZ-001",
+      "GMC-XAU-1H-BEAR-OB-001"
+    ],
+    "createdAt": 1786897884808,
+    "createdAtUtc": "2026-08-12 15:30 UTC",
+    "lockedAt": 1786897884808,
+    "activatedAt": 1786898124808,
+    "expiresAt": 1786908684808,
+    "closedAt": 1786903284808,
+    "currentAgeMinutes": 90,
+    "currentPrice": 4426,
+    "currentFloatingR": 3.25,
+    "mfePoints": 17.2,
+    "maePoints": 2.1,
+    "mfeR": 3.25,
+    "maeR": 0.4,
+    "targetsHit": {
+      "tp1": true,
+      "tp2": true,
+      "tp3": false,
+      "tp4": false
+    },
+    "healthScore": 88,
+    "healthStatus": "PRISTINE",
+    "healthDowngradeReasons": [],
+    "newsRisk": "LOW",
+    "dataQualityScore": 96,
+    "marketRegime": "Compression to Expansion",
+    "currentSession": "NEW_YORK",
+    "telegramDispatched": true,
+    "telegramMessageId": 84812,
+    "telegramSentAt": "2026-08-12 15:30 UTC",
+    "telegramStatus": "SENT",
+    "telegramRetryCount": 0,
+    "telegramLastError": null,
+    "dispatchedUpdates": [
+      "ENTRY_ACTIVATED",
+      "TP1_HIT",
+      "TP2_HIT"
+    ],
+    "finalOutcome": "WIN_TP2",
+    "finalPnlPts": 17.2,
+    "finalPnlR": 3.25,
+    "autopsySummary": {
+      "storedEvidenceUsed": [
+        {
+          "rule": "1H Bearish Order Block Retest",
+          "detectedAt": "15:15 UTC",
+          "expected": "Absorption at $4443.50",
+          "actualResult": "Held with 3 consecutive rejections"
+        },
+        {
+          "rule": "5M EQH Sweep",
+          "detectedAt": "15:28 UTC",
+          "expected": "Liquidity Grab",
+          "actualResult": "Swept +0.8 pts then broke down"
+        },
+        {
+          "rule": "1M CHoCH Break",
+          "detectedAt": "15:30 UTC",
+          "expected": "Displacement below $4441.00",
+          "actualResult": "Closed +4.5 pts downward"
+        }
+      ],
+      "whatWorked": [
+        "EQH buy-side liquidity trap engineered institutional sellers",
+        "1M CHoCH confirmed before entry trigger"
+      ],
+      "whatFailed": [
+        "TP3 halted before Asian floor demand"
+      ],
+      "lessons": "Trailing stop preserved 3.25 R with zero stress.",
+      "rootCause": "NY session volume rollover absorbed liquidity at key supply zone."
+    },
+    "confidenceScore": 86.4,
+    "riskRewardRatio": 3.25,
+    "formattedTime": "2026-08-12 15:30 UTC",
+    "reasoning": "15M Supply Block retest + Bearish FVG Imbalance",
+    "aiConsensusSnapshot": {
+      "structure": "BEARISH",
+      "smartMoney": "BEARISH",
+      "liquidity": "ALIGNED",
+      "momentum": "BEARISH",
+      "macro": "NEUTRAL",
+      "newsSentiment": "BULLISH",
+      "riskProtocol": "PASSED (6/6)",
+      "verdict": "SELL XAU/USD (CONFIDENCE: 86.4%)",
+      "confidence": 86.4
+    }
+  },
+  {
+    "setupId": "GMC-WAR-20260810-003",
+    "symbol": "XAUUSD (Gold Spot)",
+    "direction": "BUY",
+    "grade": "A+",
+    "confidence": 94.2,
+    "setupScore": 95,
+    "status": "CLOSED",
+    "mode": "LIVE",
+    "strategyVersion": "GMC-WAR-v2.2.0",
+    "isOfficialSignal": true,
+    "entryZone": [
+      4312,
+      4314.5
+    ],
+    "entryLow": 4312,
+    "entryHigh": 4314.5,
+    "bestEntry": 4313.2,
+    "stopLoss": 4295,
+    "invalidationLevel": 4293,
+    "tp1": 4325,
+    "tp2": 4340,
+    "tp3": 4355,
+    "tp4": 4368,
+    "riskToReward": "1 : 4.20",
+    "rrNumber": 4.2,
+    "h4Bias": "Bullish",
+    "h1Bias": "Bullish",
+    "m15Setup": "4H Macro Demand Tap + 15M Bullish Structure Shift",
+    "m5Confirmation": "Asian session range low cleared with massive buying volume",
+    "m1Trigger": "1M Institutional Displacement Candle with FVG creation",
+    "sourceZoneIds": [
+      "GMC-XAU-4H-DZ-001",
+      "GMC-XAU-15M-BULL-OB-003"
+    ],
+    "createdAt": 1786725084808,
+    "createdAtUtc": "2026-08-10 08:45 UTC",
+    "lockedAt": 1786725084808,
+    "activatedAt": 1786725204808,
+    "expiresAt": 1786735884808,
+    "closedAt": 1786739484808,
+    "currentAgeMinutes": 240,
+    "currentPrice": 4368,
+    "currentFloatingR": 4.2,
+    "mfePoints": 54.8,
+    "maePoints": 1.2,
+    "mfeR": 4.2,
+    "maeR": 0.09,
+    "targetsHit": {
+      "tp1": true,
+      "tp2": true,
+      "tp3": true,
+      "tp4": true
+    },
+    "healthScore": 98,
+    "healthStatus": "PRISTINE",
+    "healthDowngradeReasons": [],
+    "newsRisk": "LOW",
+    "dataQualityScore": 99,
+    "marketRegime": "Major Trend Expansion Wave",
+    "currentSession": "LONDON",
+    "telegramDispatched": true,
+    "telegramMessageId": 84605,
+    "telegramSentAt": "2026-08-10 08:45 UTC",
+    "telegramStatus": "SENT",
+    "telegramRetryCount": 0,
+    "telegramLastError": null,
+    "dispatchedUpdates": [
+      "ENTRY_ACTIVATED",
+      "TP1_HIT",
+      "TP2_HIT",
+      "TP3_HIT",
+      "TP4_HIT"
+    ],
+    "finalOutcome": "WIN_TP4",
+    "finalPnlPts": 54.8,
+    "finalPnlR": 4.2,
+    "autopsySummary": {
+      "storedEvidenceUsed": [
+        {
+          "rule": "4H Macro Demand Key Level",
+          "detectedAt": "08:15 UTC",
+          "expected": "Heavy Buyer Mitigation",
+          "actualResult": "Price rejected precisely at $4312.50"
+        },
+        {
+          "rule": "Asian Range Sweep",
+          "detectedAt": "08:35 UTC",
+          "expected": "Liquidity Absorption",
+          "actualResult": "Displaced +54 pts straight into TP4"
+        }
+      ],
+      "whatWorked": [
+        "Pristine 4H macro alignment",
+        "Zero MAE drawdown on entry",
+        "Full runner ride to TP4 target"
+      ],
+      "whatFailed": [],
+      "lessons": "All 4 targets completed seamlessly with 0% risk after TP1.",
+      "rootCause": "Major institutional accumulation wave delivered maximum expansion."
+    },
+    "confidenceScore": 94.2,
+    "riskRewardRatio": 4.2,
+    "formattedTime": "2026-08-10 08:45 UTC",
+    "reasoning": "4H Macro Demand Tap + 15M Bullish Structure Shift",
+    "aiConsensusSnapshot": {
+      "structure": "BULLISH",
+      "smartMoney": "BULLISH",
+      "liquidity": "ALIGNED",
+      "momentum": "BULLISH",
+      "macro": "NEUTRAL",
+      "newsSentiment": "BULLISH",
+      "riskProtocol": "PASSED (6/6)",
+      "verdict": "BUY XAU/USD (CONFIDENCE: 94.2%)",
+      "confidence": 94.2
+    }
+  },
+  {
+    "setupId": "GMC-WAR-20260808-004",
+    "symbol": "XAUUSD (Gold Spot)",
+    "direction": "BUY",
+    "grade": "A",
+    "confidence": 88,
+    "setupScore": 89,
+    "status": "CLOSED",
+    "mode": "LIVE",
+    "strategyVersion": "GMC-WAR-v2.2.0",
+    "isOfficialSignal": true,
+    "entryZone": [
+      4285.5,
+      4288
+    ],
+    "entryLow": 4285.5,
+    "entryHigh": 4288,
+    "bestEntry": 4286.8,
+    "stopLoss": 4268,
+    "invalidationLevel": 4265,
+    "tp1": 4298,
+    "tp2": 4318,
+    "tp3": 4335,
+    "tp4": 4350,
+    "riskToReward": "1 : 2.90",
+    "rrNumber": 2.9,
+    "h4Bias": "Bullish",
+    "h1Bias": "Bullish",
+    "m15Setup": "15M Bullish Order Block + Fair Value Gap Fill",
+    "m5Confirmation": "London Open SSL Sweep into virgin demand",
+    "m1Trigger": "1M MSS + 50% wick rejection",
+    "sourceZoneIds": [
+      "GMC-XAU-15M-DZ-002",
+      "GMC-XAU-1H-BULL-OB-001"
+    ],
+    "createdAt": 1786552284808,
+    "createdAtUtc": "2026-08-08 10:15 UTC",
+    "lockedAt": 1786552284808,
+    "activatedAt": 1786552584808,
+    "expiresAt": 1786563084808,
+    "closedAt": 1786563084808,
+    "currentAgeMinutes": 180,
+    "currentPrice": 4318,
+    "currentFloatingR": 2.9,
+    "mfePoints": 31.2,
+    "maePoints": 2.4,
+    "mfeR": 2.9,
+    "maeR": 0.22,
+    "targetsHit": {
+      "tp1": true,
+      "tp2": true,
+      "tp3": false,
+      "tp4": false
+    },
+    "healthScore": 91,
+    "healthStatus": "PRISTINE",
+    "healthDowngradeReasons": [],
+    "newsRisk": "LOW",
+    "dataQualityScore": 97,
+    "marketRegime": "Impulse & Expansion",
+    "currentSession": "LONDON",
+    "telegramDispatched": true,
+    "telegramMessageId": 84430,
+    "telegramSentAt": "2026-08-08 10:15 UTC",
+    "telegramStatus": "SENT",
+    "telegramRetryCount": 0,
+    "telegramLastError": null,
+    "dispatchedUpdates": [
+      "ENTRY_ACTIVATED",
+      "TP1_HIT",
+      "TP2_HIT"
+    ],
+    "finalOutcome": "WIN_TP2",
+    "finalPnlPts": 31.2,
+    "finalPnlR": 2.9,
+    "autopsySummary": {
+      "storedEvidenceUsed": [
+        {
+          "rule": "15M Bullish Order Block",
+          "detectedAt": "09:50 UTC",
+          "expected": "Demand absorption",
+          "actualResult": "Held with 2 bullish pins"
+        },
+        {
+          "rule": "London Open SSL Sweep",
+          "detectedAt": "10:10 UTC",
+          "expected": "Stop run",
+          "actualResult": "Swept 1.4 pts then reversed strongly"
+        }
+      ],
+      "whatWorked": [
+        "Clean FVG fill and order block reaction",
+        "TP2 target executed cleanly"
+      ],
+      "whatFailed": [
+        "TP3 paused due to early NY profit taking"
+      ],
+      "lessons": "Break-even lock at TP1 protected 100% of capital.",
+      "rootCause": "London session volume surge catalyzed rapid 31-point expansion."
+    },
+    "confidenceScore": 88,
+    "riskRewardRatio": 2.9,
+    "formattedTime": "2026-08-08 10:15 UTC",
+    "reasoning": "15M Bullish Order Block + Fair Value Gap Fill",
+    "aiConsensusSnapshot": {
+      "structure": "BULLISH",
+      "smartMoney": "BULLISH",
+      "liquidity": "ALIGNED",
+      "momentum": "BULLISH",
+      "macro": "NEUTRAL",
+      "newsSentiment": "BULLISH",
+      "riskProtocol": "PASSED (6/6)",
+      "verdict": "BUY XAU/USD (CONFIDENCE: 88%)",
+      "confidence": 88
+    }
+  }
+]

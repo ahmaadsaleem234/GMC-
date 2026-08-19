@@ -116,9 +116,9 @@ export const GmcLandingPage: React.FC<GmcLandingPageProps> = ({
 
   // Real market price object
   const xauObj = prices["XAUUSD"] || {
-    price: currentGoldPrice || 4377.83,
-    bid: (currentGoldPrice || 4377.83) - 0.22,
-    ask: (currentGoldPrice || 4377.83) + 0.22,
+    price: currentGoldPrice || 4498.10,
+    bid: (currentGoldPrice || 4498.10) - 0.22,
+    ask: (currentGoldPrice || 4498.10) + 0.22,
     spread: 0.44,
     changePct: 0.45,
     live: true,
@@ -127,7 +127,7 @@ export const GmcLandingPage: React.FC<GmcLandingPageProps> = ({
     updatedAt: Date.now(),
   };
 
-  const goldPrice = xauObj.price || currentGoldPrice || 4377.83;
+  const goldPrice = xauObj.price || currentGoldPrice || 4498.10;
   const spreadVal = typeof xauObj.spread === "number" ? xauObj.spread : 0.44;
   const bidVal = xauObj.bid || (goldPrice - spreadVal / 2);
   const askVal = xauObj.ask || (goldPrice + spreadVal / 2);

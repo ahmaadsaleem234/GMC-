@@ -26,13 +26,13 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
   }, []);
 
   const xauObj = prices["XAUUSD"] || {
-    price: currentPrice || 4377.83,
-    bid: Number(((currentPrice || 4377.83) - 0.23).toFixed(2)),
-    ask: Number(((currentPrice || 4377.83) + 0.23).toFixed(2)),
+    price: currentPrice || 4498.10,
+    bid: Number(((currentPrice || 4498.10) - 0.23).toFixed(2)),
+    ask: Number(((currentPrice || 4498.10) + 0.23).toFixed(2)),
     spread: 0.46,
     changePct: 0.45,
-    high24h: (currentPrice || 4377.83) * 1.004,
-    low24h: (currentPrice || 4377.83) * 0.996,
+    high24h: (currentPrice || 4498.10) * 1.004,
+    low24h: (currentPrice || 4498.10) * 0.996,
     volume24h: 185400,
     live: true,
     updatedAt: Date.now(),
@@ -43,7 +43,7 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
     latency: latencyMs,
   };
 
-  const goldPrice = xauObj.price || currentPrice || 4377.83;
+  const goldPrice = xauObj.price || currentPrice || 4498.10;
   const changePct = xauObj.changePct !== undefined ? xauObj.changePct : 0.45;
   const isPositive = changePct >= 0;
 

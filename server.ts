@@ -1576,77 +1576,17 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
       let primaryChange: number | null = null;
       let primaryChangePct: number | null = null;
       let primaryTimestamp: number = now;
-      let primaryProvider: "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK" = "TWELVE_DATA";
-      let activeProviderName = "Twelve Data";
-
-      // 1. PRIMARY SOURCE OF TRUTH: Twelve Data Realtime Quote for XAU/USD
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(`https://api.twelvedata.com/quote?symbol=XAU/USD&apikey=${twelveDataKey}`, {
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        if (res.ok) {
-          const data = await res.json();
-          this.currentTick.requestsCount++;
-
-          const rawPrice = parseFloat(data?.close || data?.price);
-          if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
-            primaryPrice = Number(rawPrice.toFixed(2));
-            primaryHigh = data?.high ? Number(parseFloat(data.high).toFixed(2)) : primaryPrice * 1.005;
-            primaryLow = data?.low ? Number(parseFloat(data.low).toFixed(2)) : primaryPrice * 0.995;
-            primaryChange = data?.change ? Number(parseFloat(data.change).toFixed(2)) : 0;
-            primaryChangePct = data?.percent_change ? Number(parseFloat(data.percent_change).toFixed(2)) : 0;
-            primaryTimestamp = data?.timestamp ? data.timestamp * 1000 : now;
-            primaryProvider = "TWELVE_DATA";
-            activeProviderName = "Twelve Data";
-          }
-        }
-      } catch (err) {
-        // Fallback below
-      }
-
-      // If Twelve Data fails or returns empty, try Twelve Data /price endpoint
-      if (primaryPrice === null) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3500);
-          const res = await fetch(`https://api.twelvedata.com/price?symbol=XAU/USD&apikey=${twelveDataKey}`, {
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-
-          if (res.ok) {
-            const data = await res.json();
-            this.currentTick.requestsCount++;
-            const rawPrice = parseFloat(data?.price);
-            if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
-              primaryPrice = Number(rawPrice.toFixed(2));
-              primaryHigh = primaryPrice * 1.004;
-              primaryLow = primaryPrice * 0.996;
-              primaryChange = 0;
-              primaryChangePct = 0;
-              primaryTimestamp = now;
-              primaryProvider = "TWELVE_DATA";
-              activeProviderName = "Twelve Data";
-            }
-          }
-        } catch (err) {
-          // Fallback below
-        }
-      }
-
-      // 2. SECONDARY / VERIFICATION PROVIDER FETCH (Gold-API / Alpha Vantage)
+      let primaryProvider: "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK" = "GOLD_API";
+      let activeProviderName = "Gold-API Spot Gold";
       let verificationPrice: number | null = null;
-      let verificationSource = "Gold-API Spot Gold";
+      let verificationSource = "Twelve Data Spot Gold";
 
+      // 1. FAST REAL-TIME LIVE SPOT SOURCE: Gold-API Realtime Spot (Zero rate limits, real-time institutional tick)
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+        const timeout = setTimeout(() => controller.abort(), 2500);
         const res = await fetch("https://api.gold-api.com/price/XAU", {
-          headers: { "User-Agent": "Mozilla/5.0" },
+          headers: { "User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache" },
           signal: controller.signal,
         });
         clearTimeout(timeout);
@@ -1655,23 +1595,55 @@ Welcome <b>${firstName}</b>! You are connected to the <b>HARAMI AI TRADING SYSTE
           const data = await res.json();
           const rawPrice = parseFloat(data?.price);
           if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
-            verificationPrice = Number(rawPrice.toFixed(2));
+            primaryPrice = Number(rawPrice.toFixed(2));
+            primaryHigh = Number((primaryPrice * 1.004).toFixed(2));
+            primaryLow = Number((primaryPrice * 0.996).toFixed(2));
+            primaryChange = 0;
+            primaryChangePct = 0;
+            primaryTimestamp = now;
+            primaryProvider = "GOLD_API";
+            activeProviderName = "Gold-API Spot Gold";
           }
         }
       } catch (err) {
-        // Verification fetch optional
+        // Fallback below
       }
 
-      // If Primary Twelve Data is down, use Gold-API as Primary Fallback
-      if (primaryPrice === null && verificationPrice !== null) {
-        primaryPrice = verificationPrice;
-        primaryHigh = primaryPrice * 1.004;
-        primaryLow = primaryPrice * 0.996;
-        primaryChange = 0;
-        primaryChangePct = 0;
-        primaryTimestamp = now;
-        primaryProvider = "GOLD_API";
-        activeProviderName = "Gold-API (Fallback)";
+      // 2. SECONDARY / BENCHMARK PROVIDER FETCH: Twelve Data Realtime Quote
+      if (primaryPrice === null || now - this.lastCandleFetchMs > 20000) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3500);
+          const res = await fetch(`https://api.twelvedata.com/quote?symbol=XAU/USD&apikey=${twelveDataKey}`, {
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          if (res.ok) {
+            const data = await res.json();
+            this.currentTick.requestsCount++;
+
+            const rawPrice = parseFloat(data?.close || data?.price);
+            if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
+              const tdPrice = Number(rawPrice.toFixed(2));
+              if (primaryPrice === null) {
+                primaryPrice = tdPrice;
+                primaryHigh = data?.high ? Number(parseFloat(data.high).toFixed(2)) : primaryPrice * 1.005;
+                primaryLow = data?.low ? Number(parseFloat(data.low).toFixed(2)) : primaryPrice * 0.995;
+                primaryChange = data?.change ? Number(parseFloat(data.change).toFixed(2)) : 0;
+                primaryChangePct = data?.percent_change ? Number(parseFloat(data.percent_change).toFixed(2)) : 0;
+                primaryTimestamp = now;
+                primaryProvider = "TWELVE_DATA";
+                activeProviderName = "Twelve Data Spot Gold";
+              } else {
+                verificationPrice = tdPrice;
+                verificationSource = "Twelve Data Benchmark";
+              }
+            }
+          }
+        } catch (err) {
+          // Fallback below
+        }
       }
 
       // If still null, try Alpha Vantage

@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Asset, Candle, LivePrice } from "./types";
-import { fetchLiveGoldPrice, subscribeGoldPriceUpdates, forceRefreshGoldPrice, GoldQuote } from "./services/goldApiService";
+import { fetchLiveGoldPrice, subscribeGoldPriceUpdates, forceRefreshGoldPrice, getLatestGoldQuote, GoldQuote } from "./services/goldApiService";
 
 export const SUPPORTED_ASSETS: Asset[] = [
   { key: "US30", label: "US30 Dow Jones Index", short: "US30", basePrice: 54025.0, seed: 99, decimals: 1, color: "#38bdf8", category: "forex" },
   { key: "NAS100", label: "NASDAQ 100 Index", short: "NAS100", basePrice: 29413.0, seed: 100, decimals: 1, color: "#00e08a", category: "forex" },
-  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4377.83, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
+  { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4498.10, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },
   { key: "XAGUSD", label: "Silver / USD Spot", short: "XAGUSD", basePrice: 61.95, seed: 115, decimals: 2, color: "#cbd5e1", category: "metal" },
   { key: "BTCUSDT", label: "Bitcoin / USDT", short: "BTCUSDT", basePrice: 64740.0, seed: 102, decimals: 2, color: "#f97316", category: "crypto" },
   { key: "ETHUSDT", label: "Ethereum / USDT", short: "ETHUSDT", basePrice: 1915.0, seed: 103, decimals: 2, color: "#6366f1", category: "crypto" },
@@ -55,26 +55,50 @@ export function useLiveData(activeAssetKey: string) {
   const [prices, setPrices] = useState<Record<string, LivePrice>>(() => {
     const cached = loadCachedPrices();
     const initial: Record<string, LivePrice> = {};
+    const latestGold = getLatestGoldQuote();
     for (const a of SUPPORTED_ASSETS) {
-      initial[a.key] = cached[a.key] || {
-        price: a.basePrice,
-        bid: Number((a.basePrice - 0.25).toFixed(a.decimals)),
-        ask: Number((a.basePrice + 0.25).toFixed(a.decimals)),
-        spread: a.key === "XAUUSD" ? 0.46 : 0.0004,
-        changePct: 0.42,
-        high24h: a.basePrice * 1.012,
-        low24h: a.basePrice * 0.988,
-        volume24h: 12450000,
-        live: true,
-        updatedAt: Date.now(),
-        receivedAt: Date.now(),
-        source: a.key === "XAUUSD" ? "Gold-API Realtime Spot (XAU/USD)" : "GMC Realtime Stream",
-        provider: a.key === "XAUUSD" ? "GOLD_API" : "GMC_CORE",
-        status: "Live",
-        feedStatus: "LIVE",
-        latency: 18,
-        latencyMs: 18,
-      };
+      if (a.key === "XAUUSD" && latestGold?.price) {
+        const spread = latestGold.spreadPips ? latestGold.spreadPips / 100 : 0.46;
+        initial["XAUUSD"] = {
+          price: latestGold.price,
+          bid: latestGold.bid ?? Number((latestGold.price - spread / 2).toFixed(2)),
+          ask: latestGold.ask ?? Number((latestGold.price + spread / 2).toFixed(2)),
+          spread,
+          changePct: latestGold.changePct || 0.45,
+          high24h: latestGold.high24h || latestGold.price * 1.004,
+          low24h: latestGold.low24h || latestGold.price * 0.996,
+          volume24h: 185400,
+          live: true,
+          updatedAt: Date.now(),
+          receivedAt: Date.now(),
+          source: latestGold.provider || "Gold-API Realtime Spot (XAU/USD)",
+          provider: latestGold.sourceType,
+          status: "Live",
+          feedStatus: "LIVE",
+          latency: latestGold.latencyMs || 18,
+          latencyMs: latestGold.latencyMs || 18,
+        };
+      } else {
+        initial[a.key] = cached[a.key] || {
+          price: a.basePrice,
+          bid: Number((a.basePrice - 0.25).toFixed(a.decimals)),
+          ask: Number((a.basePrice + 0.25).toFixed(a.decimals)),
+          spread: a.key === "XAUUSD" ? 0.46 : 0.0004,
+          changePct: 0.42,
+          high24h: a.basePrice * 1.012,
+          low24h: a.basePrice * 0.988,
+          volume24h: 12450000,
+          live: true,
+          updatedAt: Date.now(),
+          receivedAt: Date.now(),
+          source: a.key === "XAUUSD" ? "Gold-API Realtime Spot (XAU/USD)" : "GMC Realtime Stream",
+          provider: a.key === "XAUUSD" ? "GOLD_API" : "GMC_CORE",
+          status: "Live",
+          feedStatus: "LIVE",
+          latency: 18,
+          latencyMs: 18,
+        };
+      }
     }
     return initial;
   });
@@ -250,8 +274,24 @@ export function useLiveData(activeAssetKey: string) {
                   let targetKey = sym;
                   if (sym === "BTCUSD") targetKey = "BTCUSDT";
 
-                  // Skip overriding XAUUSD if dedicated gold service is already active
-                  if (targetKey === "XAUUSD" && prev.XAUUSD?.price) {
+                  if (targetKey === "XAUUSD" && tick.price > 1800 && tick.price < 8000) {
+                    updated["XAUUSD"] = {
+                      price: tick.price,
+                      bid: tick.bid || Number((tick.price - 0.23).toFixed(2)),
+                      ask: tick.ask || Number((tick.price + 0.23).toFixed(2)),
+                      spread: tick.spread || 0.46,
+                      changePct: tick.changePercent24h || 0.45,
+                      high24h: tick.high24h || tick.price * 1.004,
+                      low24h: tick.low24h || tick.price * 0.996,
+                      volume24h: prev.XAUUSD?.volume24h || 185400,
+                      live: true,
+                      updatedAt: tick.timestamp || now,
+                      receivedAt: now,
+                      source: tick.source || "Gold-API Realtime Spot (XAU/USD)",
+                      provider: tick.provider || "GOLD_API",
+                      status: "Live",
+                      feedStatus: "LIVE",
+                    };
                     continue;
                   }
 
