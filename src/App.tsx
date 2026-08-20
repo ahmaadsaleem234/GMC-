@@ -339,8 +339,15 @@ export function App() {
   }, [isLoggedIn, activeTab]);
 
   const { prices, currentPrice, isConnected, latencyMs } = useLiveData(activeAssetKey);
-  const { candles, loading } = useCandleData(activeAssetKey, timeframe);
+  const { candles, loading, appendTick } = useCandleData(activeAssetKey, timeframe);
   const { accounts, executeTabTrade, refillTabAccount, resetDemoAccounts } = useDemoAccounts();
+
+  // Continuously update forming candle with live real-time price
+  useEffect(() => {
+    if (currentPrice && appendTick) {
+      appendTick(currentPrice);
+    }
+  }, [currentPrice, appendTick]);
 
   // Activate Hands-Free Automatic Telegram Trade Signal Broadcaster
   useAutoTelegramBroadcaster();

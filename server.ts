@@ -4502,6 +4502,42 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
   start247ServerSignalEngine().catch((err) => console.error("Broadcaster error:", err));
 
   // ==========================================
+  // AUTHORITATIVE GOLD MARKET DATA API ENDPOINTS
+  // ==========================================
+  app.get("/api/gold-market-data", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    try {
+      const data = goldMarketDataService.getLatestData();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/gold/live", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    try {
+      const tick = goldMarketDataService.getLatestData();
+      res.json({ ok: true, tick });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/gold/h1-candles", (req, res) => {
+    try {
+      const candles = goldMarketDataService.getH1Candles();
+      res.json({ ok: true, candles });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ==========================================
   // FCS REALTIME MARKET & CANDLES API
   // ==========================================
   app.get("/api/fcs/latest", async (req, res) => {

@@ -204,6 +204,33 @@ function notifyListeners(quote: GoldQuote, shouldBroadcast = true) {
 }
 
 /**
+ * Update gold quote externally (e.g. from SSE stream, WebSocket, or WarRoom tick)
+ */
+export function updateExternalGoldQuote(quote: Partial<GoldQuote> & { price: number }) {
+  if (typeof quote.price !== "number" || quote.price <= 1800 || quote.price >= 8000) return;
+  const now = Date.now();
+  const spread = typeof quote.spreadPips === "number" ? quote.spreadPips / 100 : 0.46;
+  const bid = quote.bid ?? Number((quote.price - spread / 2).toFixed(2));
+  const ask = quote.ask ?? Number((quote.price + spread / 2).toFixed(2));
+
+  currentGoldQuote = {
+    ...currentGoldQuote,
+    ...quote,
+    price: Number(quote.price.toFixed(2)),
+    bid,
+    ask,
+    spreadPips: Math.round(spread * 100),
+    updatedAt: quote.updatedAt || now,
+    receivedAt: now,
+    status: "Live",
+    isFresh: true,
+  };
+
+  consecutiveFailures = 0;
+  notifyListeners(currentGoldQuote);
+}
+
+/**
  * Get latest cached Gold quote synchronously
  */
 export function getLatestGoldQuote(): GoldQuote {

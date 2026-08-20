@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Asset, Candle, LivePrice } from "./types";
-import { fetchLiveGoldPrice, subscribeGoldPriceUpdates, forceRefreshGoldPrice, getLatestGoldQuote, GoldQuote } from "./services/goldApiService";
+import {
+  fetchLiveGoldPrice,
+  subscribeGoldPriceUpdates,
+  forceRefreshGoldPrice,
+  getLatestGoldQuote,
+  updateExternalGoldQuote,
+  GoldQuote,
+} from "./services/goldApiService";
 
 export const SUPPORTED_ASSETS: Asset[] = [
   { key: "US30", label: "US30 Dow Jones Index", short: "US30", basePrice: 54025.0, seed: 99, decimals: 1, color: "#38bdf8", category: "forex" },
@@ -275,6 +282,16 @@ export function useLiveData(activeAssetKey: string) {
                   if (sym === "BTCUSD") targetKey = "BTCUSDT";
 
                   if (targetKey === "XAUUSD" && tick.price > 1800 && tick.price < 8000) {
+                    updateExternalGoldQuote({
+                      price: tick.price,
+                      bid: tick.bid,
+                      ask: tick.ask,
+                      spreadPips: tick.spread ? Math.round(tick.spread * 100) : 46,
+                      high24h: tick.high24h,
+                      low24h: tick.low24h,
+                      changePct: tick.changePercent24h,
+                      provider: tick.source || "GMC Realtime Institutional Stream",
+                    });
                     updated["XAUUSD"] = {
                       price: tick.price,
                       bid: tick.bid || Number((tick.price - 0.23).toFixed(2)),
@@ -326,6 +343,16 @@ export function useLiveData(activeAssetKey: string) {
               if (targetKey === "XAUUSD") {
                 // Synchronize gold price from verified SSE tick
                 if (tick.price > 1800 && tick.price < 8000) {
+                  updateExternalGoldQuote({
+                    price: tick.price,
+                    bid: tick.bid,
+                    ask: tick.ask,
+                    spreadPips: tick.spread ? Math.round(tick.spread * 100) : 46,
+                    high24h: tick.high24h,
+                    low24h: tick.low24h,
+                    changePct: tick.changePercent24h,
+                    provider: tick.source || "GMC Realtime Institutional Stream",
+                  });
                   setPrices((prev) => {
                     const updated = {
                       ...prev,
