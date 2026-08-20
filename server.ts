@@ -900,6 +900,27 @@ async function startServer() {
   // Load registered users on startup
   loadTelegramUsers();
 
+  interface PendingTradeSetupCandidate {
+    id: string;
+    engine: "HARAMI_AI" | "WAR_ROOM";
+    symbol: string;
+    direction: "BUY" | "SELL";
+    entryZone: [number, number];
+    bestEntry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+    tp3: number;
+    tp4: number;
+    rr: string;
+    confidence: number;
+    grade: string;
+    reason: string;
+    timestamp: number;
+  }
+
+  const pendingAdminTradeCandidates: Map<string, PendingTradeSetupCandidate> = new Map();
+
   async function checkUserSubscriptionExpirations() {
     const now = Date.now();
     let changed = false;
@@ -1471,6 +1492,149 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
       }
       const menu = superAdminService.renderLiveTradeControlMenu(serverActiveTrade, warRoomServerService.getActiveSetup());
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:approval:menu") {
+      const menu = superAdminService.renderSignalApprovalModeMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:approval:set:auto") {
+      superAdminService.getConfig().autoApproveSignals = true;
+      superAdminService.saveConfig();
+      superAdminService.logAction("SIGNAL_POLICY_UPDATED", "Switched to Auto-Approve & Broadcast Mode", cbUserId);
+      const menu = superAdminService.renderSignalApprovalModeMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:approval:set:manual") {
+      superAdminService.getConfig().autoApproveSignals = false;
+      superAdminService.saveConfig();
+      superAdminService.logAction("SIGNAL_POLICY_UPDATED", "Switched to Manual Admin Approval Mode", cbUserId);
+      const menu = superAdminService.renderSignalApprovalModeMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data.startsWith("adm:trd:appr:")) {
+      const targetSetupId = data.replace("adm:trd:appr:", "");
+      const candidate = pendingAdminTradeCandidates.get(targetSetupId);
+      
+      const nowMs = Date.now();
+      const approvedUsersList = Object.values(telegramUsersStore).filter((u) => {
+        if (u.status !== "approved" && u.status !== "trial") return false;
+        if (u.expiresAt && nowMs > u.expiresAt) return false;
+        return true;
+      });
+
+      if (candidate) {
+        pendingAdminTradeCandidates.delete(targetSetupId);
+        
+        // Broadcast approved trade to ALL approved users
+        const isBuy = candidate.direction === "BUY";
+        const entry = candidate.bestEntry;
+        const sl = candidate.sl;
+        const tp1 = candidate.tp1;
+        const tp2 = candidate.tp2;
+        const tp3 = candidate.tp3;
+        const tp4 = candidate.tp4;
+
+        serverActiveTrade = {
+          id: candidate.id,
+          signalId: candidate.id,
+          symbol: candidate.symbol || "XAUUSD (Gold Spot)",
+          direction: candidate.direction,
+          entryZone: candidate.entryZone,
+          entry: candidate.bestEntry,
+          sl,
+          tp1,
+          tp2,
+          tp3,
+          tp4,
+          confidence: candidate.confidence,
+          grade: candidate.grade,
+          reason: candidate.reason,
+          status: "ENTRY_CONFIRMED",
+          currentBid: entry,
+          currentAsk: entry,
+          livePrice: entry,
+          lastPriceTimestamp: Date.now(),
+          priceFeedStatus: "Live",
+          priceSource: "Institutional Stream",
+          tp1Hit: false,
+          tp2Hit: false,
+          tp3Hit: false,
+          tp4Hit: false,
+          slHit: false,
+          dispatchedOutcomes: ["SIGNAL"],
+          signalGeneratedAt: new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC",
+          entryTriggeredAt: new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC",
+          currentFloatingPnL: 0,
+          pnlPips: 0,
+          createdAt: Date.now(),
+          auditLogs: [
+            {
+              timestamp: new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC",
+              event: "SIGNAL_APPROVED_BY_ADMIN",
+              price: entry,
+              bid: entry,
+              ask: entry,
+              note: `Trade #${candidate.id} approved by Super Admin (${cbUserId}) and broadcasted to ${approvedUsersList.length} subscribers.`,
+            },
+          ],
+        };
+
+        const signalMsg = formatHaramiSignalMessage({
+          signalId: candidate.id,
+          direction: candidate.direction,
+          symbolShort: "XAUUSD",
+          assetName: "GOLD",
+          timeframe: "M15",
+          entryLow: candidate.entryZone[0],
+          entryHigh: candidate.entryZone[1],
+          bestEntry: candidate.bestEntry,
+          sl: candidate.sl,
+          tp1: candidate.tp1,
+          tp2: candidate.tp2,
+          tp3: candidate.tp3,
+          tp4: candidate.tp4,
+          confidence: candidate.confidence,
+          grade: candidate.grade,
+          reason: candidate.reason,
+          rr: candidate.rr,
+        });
+
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(signalMsg);
+        }
+
+        superAdminService.logAction(
+          "TRADE_APPROVED_BROADCAST",
+          `Super Admin approved setup #${candidate.id} (${candidate.direction} $${candidate.bestEntry}) - delivered to ${approvedUsersList.length} users`,
+          cbUserId
+        );
+
+        const successText = superAdminService.renderTradeApprovedConfirmation(candidate.id, approvedUsersList.length);
+        await editTelegramMessageText(cbChatId, cbMsgId, successText);
+      } else {
+        await editTelegramMessageText(
+          cbChatId,
+          cbMsgId,
+          `ℹ️ <b>SETUP #${targetSetupId} ALREADY PROCESSED</b>\n━━━━━━━━━━━━━━━━━━━━\nThis setup has already been approved, rejected, or expired.`
+        );
+      }
+      return;
+    }
+
+    if (data.startsWith("adm:trd:rejc:")) {
+      const targetSetupId = data.replace("adm:trd:rejc:", "");
+      pendingAdminTradeCandidates.delete(targetSetupId);
+      superAdminService.logAction("TRADE_REJECTED", `Super Admin rejected candidate setup #${targetSetupId}`, cbUserId);
+      const rejcText = superAdminService.renderTradeRejectedConfirmation(targetSetupId);
+      await editTelegramMessageText(cbChatId, cbMsgId, rejcText);
       return;
     }
 
@@ -2624,11 +2788,19 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
       return ok;
     }
 
-    // Live Mode: Retrieve ALL approved Telegram users
-    const approvedUsers = Object.values(telegramUsersStore).filter((u) => u.status === "approved");
+    // Live Mode: Retrieve ALL active approved & trial Telegram users (excluding expired access)
+    const nowMs = Date.now();
+    const approvedUsers = Object.values(telegramUsersStore).filter((u) => {
+      if (u.status !== "approved" && u.status !== "trial") return false;
+      if (u.expiresAt && nowMs > u.expiresAt) return false;
+      return true;
+    });
 
     const targetChatIds = Array.from(
-      new Set([masterId, ...approvedUsers.map((u) => cleanServerTelegramInput(u.chatId))].filter(Boolean))
+      new Set([
+        masterId,
+        ...approvedUsers.map((u) => cleanServerTelegramInput(u.chatId || u.userId)).filter(Boolean),
+      ])
     );
 
     let successCount = 0;
@@ -3422,8 +3594,58 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
           }
 
           let dispatched = false;
-          if (mt5Config.telegramSignalsEnabled) {
-            dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer);
+          const isManualApproval = superAdminService.getConfig().autoApproveSignals === false;
+
+          if (isManualApproval) {
+            pendingAdminTradeCandidates.set(signalId, {
+              id: signalId,
+              engine: "HARAMI_AI",
+              symbol: "XAUUSD (Gold Spot)",
+              direction,
+              entryZone: [entryLow, entryHigh],
+              bestEntry: entry,
+              sl,
+              tp1,
+              tp2,
+              tp3,
+              tp4,
+              rr: calculatedRR,
+              confidence,
+              grade: confidence >= 92.0 ? "A+" : "A",
+              reason: reasonForEntry,
+              timestamp: now,
+            });
+
+            const prompt = superAdminService.renderTradeApprovalPrompt({
+              id: signalId,
+              engine: "HARAMI_AI",
+              symbol: "XAUUSD (Gold Spot)",
+              direction,
+              entryZone: [entryLow, entryHigh],
+              bestEntry: entry,
+              sl,
+              tp1,
+              tp2,
+              tp3,
+              tp4,
+              rr: calculatedRR,
+              confidence,
+              grade: confidence >= 92.0 ? "A+" : "A",
+              reason: reasonForEntry,
+            });
+
+            const masterAdminId = cleanServerTelegramInput(serverTargetChatId || "5218548758");
+            await sendSingleTelegramMessage(masterAdminId, prompt.text, chartBuffer, prompt.keyboard);
+            dispatched = true;
+            superAdminService.logAction(
+              "TRADE_APPROVAL_REQUESTED",
+              `Setup #${signalId} (${direction} $${entry}) dispatched to Super Admin for 1-Tap approval`,
+              "SYSTEM"
+            );
+          } else {
+            if (mt5Config.telegramSignalsEnabled) {
+              dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer);
+            }
           }
 
           serverLastPulseTime = now;

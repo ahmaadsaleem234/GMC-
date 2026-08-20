@@ -26,6 +26,7 @@ export interface SuperAdminConfig {
   haramiMinConfidence: number;
   warRoomEnabled: boolean;
   warRoomMinScore: number;
+  autoApproveSignals: boolean;
   allowedMarkets: {
     XAUUSD: boolean;
     BTCUSD: boolean;
@@ -79,6 +80,7 @@ const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   haramiMinConfidence: 88.0,
   warRoomEnabled: true,
   warRoomMinScore: 90.0,
+  autoApproveSignals: true,
   allowedMarkets: {
     XAUUSD: true,
     BTCUSD: true,
@@ -283,13 +285,14 @@ export class SuperAdminTelegramService {
         ],
         [
           { text: "📢 Broadcast", callback_data: "adm:broadcast:menu" },
+          { text: "🛡️ Signal Approval", callback_data: "adm:approval:menu" },
+        ],
+        [
           { text: "🎯 Markets", callback_data: "adm:markets:menu" },
-        ],
-        [
           { text: "📈 Statistics", callback_data: "adm:stats:menu" },
-          { text: "🧾 Logs", callback_data: "adm:logs:menu" },
         ],
         [
+          { text: "🧾 Logs", callback_data: "adm:logs:menu" },
           { text: "🚨 Master Control", callback_data: "adm:master:menu" },
         ],
       ],
@@ -1009,6 +1012,130 @@ ${logLines}
       inline_keyboard: [
         [
           { text: "🔄 Refresh Logs", callback_data: "adm:logs:menu" },
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * 🎯 INTERACTIVE TRADE APPROVAL PROMPT (SUPER ADMIN)
+   */
+  public renderTradeApprovalPrompt(setup: {
+    id: string;
+    engine: string;
+    symbol: string;
+    direction: "BUY" | "SELL";
+    entryZone: [number, number];
+    bestEntry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+    tp3: number;
+    tp4: number;
+    rr: string;
+    confidence: number;
+    grade: string;
+    reason: string;
+  }): { text: string; keyboard: TelegramInlineKeyboard } {
+    const isBuy = setup.direction === "BUY";
+    const dirEmoji = isBuy ? "🟢 BUY" : "🔻 SELL";
+    const text = `
+🎯 <b>TRADE APPROVAL REQUIRED (SUPER ADMIN)</b>
+━━━━━━━━━━━━━━━━━━━━
+⚡ <b>${setup.engine.toUpperCase()}</b> • <b>${setup.symbol}</b>
+<b>DIRECTION:</b> <b>${dirEmoji} (${setup.grade} • ${setup.confidence.toFixed(1)}%)</b>
+
+📍 <b>ENTRY ZONE:</b> <code>$${setup.entryZone[0].toFixed(2)} - $${setup.entryZone[1].toFixed(2)}</code>
+💎 <b>BEST ENTRY:</b> <code>$${setup.bestEntry.toFixed(2)}</code>
+🛡 <b>STOP LOSS:</b> <code>$${setup.sl.toFixed(2)}</code>
+🎯 <b>TP1:</b> <code>$${setup.tp1.toFixed(2)}</code> (+${(Math.abs(setup.tp1 - setup.bestEntry) * 10).toFixed(0)} pips)
+🎯 <b>TP2:</b> <code>$${setup.tp2.toFixed(2)}</code> (+${(Math.abs(setup.tp2 - setup.bestEntry) * 10).toFixed(0)} pips)
+🎯 <b>TP3:</b> <code>$${setup.tp3.toFixed(2)}</code> (+${(Math.abs(setup.tp3 - setup.bestEntry) * 10).toFixed(0)} pips)
+🎯 <b>TP4:</b> <code>$${setup.tp4.toFixed(2)}</code> (+${(Math.abs(setup.tp4 - setup.bestEntry) * 10).toFixed(0)} pips)
+⚖️ <b>RISK/REWARD:</b> <code>${setup.rr}</code>
+🧠 <b>CONFLUENCE:</b> <i>${setup.reason}</i>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ Click below to approve and immediately dispatch this EXACT trade to all approved Telegram users:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: "✅ APPROVE & BROADCAST TO ALL USERS", callback_data: `adm:trd:appr:${setup.id}` },
+        ],
+        [
+          { text: "❌ REJECT SETUP", callback_data: `adm:trd:rejc:${setup.id}` },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * ✅ TRADE APPROVED CONFIRMATION
+   */
+  public renderTradeApprovedConfirmation(setupId: string, recipientCount: number): string {
+    return `
+✅ <b>TRADE APPROVED & BROADCASTED</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>SETUP ID:</b> <code>${setupId}</code>
+<b>DISPATCH STATUS:</b> <b>Delivered to ${recipientCount} Approved Subscribers</b>
+<b>SYNCHRONIZATION:</b> <b>100% Exact Parity (Admin = War Room = Users)</b>
+━━━━━━━━━━━━━━━━━━━━
+<i>Trade is now actively tracked across all platforms with real-time target and trailing management.</i>
+`.trim();
+  }
+
+  /**
+   * ❌ TRADE REJECTED CONFIRMATION
+   */
+  public renderTradeRejectedConfirmation(setupId: string): string {
+    return `
+❌ <b>TRADE SETUP REJECTED</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>SETUP ID:</b> <code>${setupId}</code>
+<b>STATUS:</b> <b>Discarded by Super Admin</b>
+<b>SUBSCRIBERS:</b> <b>Zero Signals Sent</b>
+━━━━━━━━━━━━━━━━━━━━
+<i>Setup has been purged from active tracking. Engine will scan for fresh market structure.</i>
+`.trim();
+  }
+
+  /**
+   * ⚙️ SIGNAL MODE & APPROVAL MENU
+   */
+  public renderSignalApprovalModeMenu(): { text: string; keyboard: TelegramInlineKeyboard } {
+    const isAuto = this.config.autoApproveSignals !== false;
+    const text = `
+⚙️ <b>SIGNAL APPROVAL & DISPATCH POLICY</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>CURRENT POLICY:</b> <b>${isAuto ? "⚡ AUTO-APPROVE & BROADCAST (INSTANT)" : "👑 MANUAL ADMIN APPROVAL REQUIRED"}</b>
+
+• <b>AUTO-APPROVE:</b> High-conviction (Grade A+) signals generated by Harami AI and War Room are broadcasted instantly to Super Admin and all approved subscribers simultaneously.
+• <b>MANUAL APPROVAL:</b> Every generated setup is first sent to Super Admin via Telegram with <code>[✅ APPROVE]</code> and <code>[❌ REJECT]</code> buttons. No subscriber receives the signal until Admin approves.
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ Tap below to toggle approval requirement:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: isAuto ? "🔘 ⚡ AUTO-APPROVE (ACTIVE)" : "⚡ SWITCH TO AUTO-APPROVE",
+            callback_data: "adm:approval:set:auto",
+          },
+        ],
+        [
+          {
+            text: !isAuto ? "🔘 👑 MANUAL APPROVAL (ACTIVE)" : "👑 REQUIRE ADMIN APPROVAL",
+            callback_data: "adm:approval:set:manual",
+          },
+        ],
+        [
           { text: "🔙 Back to Admin", callback_data: "adm:home" },
         ],
       ],
