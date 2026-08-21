@@ -32,6 +32,9 @@ import { GoldIntelligenceView } from "./components/GoldIntelligenceView";
 import { LevelKeystoneView } from "./components/LevelKeystoneView";
 import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
 import { GmcAiWarRoomView } from "./components/warroom/GmcAiWarRoomView";
+import { KhatarnakJugaadView } from "./components/KhatarnakJugaadView";
+import { CentralSignalManagerView } from "./components/CentralSignalManagerView";
+import { useCentralSignalManagerWatcher } from "./services/useCentralSignalManagerWatcher";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
 import { GmcLandingPage } from "./components/GmcLandingPage";
@@ -340,7 +343,18 @@ export function App() {
 
   const { prices, currentPrice, isConnected, latencyMs } = useLiveData(activeAssetKey);
   const { candles, loading, appendTick } = useCandleData(activeAssetKey, timeframe);
+  const { candles: candles15m } = useCandleData(activeAssetKey, "15min");
+  const { candles: candles5m } = useCandleData(activeAssetKey, "5min");
   const { accounts, executeTabTrade, refillTabAccount, resetDemoAccounts } = useDemoAccounts();
+
+  // Central Signal Manager State & Watcher (1 Active Telegram Setup Rule)
+  const {
+    managerState: centralManagerState,
+    forceRefresh: refreshCentralManager,
+    forceCloseActiveSetup: closeCentralActiveSetup,
+    resetCooldownManually: resetCentralCooldown,
+    setConfig: updateCentralConfig,
+  } = useCentralSignalManagerWatcher(candles15m, candles5m, currentPrice, prices, activeAssetKey);
 
   // Continuously update forming candle with live real-time price
   useEffect(() => {
@@ -614,6 +628,61 @@ export function App() {
               assetKey={activeAssetKey}
             />
           </>
+        )}
+
+        {activeTab === "central_signal_manager" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["central_signal_manager"] || accounts["warroom"] || accounts["khatarnak_jugaad"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("central_signal_manager", {
+                  assetKey: activeAssetKey,
+                  type: centralManagerState.activeSetup?.direction === "SELL" ? "SELL" : "BUY",
+                  entryPrice: centralManagerState.activeSetup?.preferredEntry || currentPrice,
+                  stopLoss: centralManagerState.activeSetup?.stopLoss || currentPrice - 2.0,
+                  takeProfit: centralManagerState.activeSetup?.tp2 || currentPrice + 10.0,
+                  lotSize: 0.1,
+                  signalSource: `🏛️ CENTRAL SIGNAL MANAGER — ${centralManagerState.activeSetup?.brainName || "Supreme Orchestrator"}`,
+                })
+              }
+            />
+            <CentralSignalManagerView
+              managerState={centralManagerState}
+              onRefresh={refreshCentralManager}
+              onForceCloseActiveSetup={closeCentralActiveSetup}
+              onResetCooldownManually={resetCentralCooldown}
+              onUpdateConfig={updateCentralConfig}
+              currentPrice={currentPrice}
+              prices={prices}
+              assetKey={activeAssetKey}
+            />
+          </div>
+        )}
+
+        {activeTab === "khatarnak_jugaad" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["khatarnak_jugaad"] || accounts["gmcgold"] || accounts["warroom"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("khatarnak_jugaad", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice - 1.0,
+                  takeProfit: currentPrice + 12.0,
+                  lotSize: 0.1,
+                  signalSource: "💀 KHATARNAK JUGAAD — Market Structure & Custom Fib Sniper",
+                })
+              }
+            />
+            <KhatarnakJugaadView
+              currentPrice={currentPrice}
+              assetKey={activeAssetKey}
+              prices={prices}
+              onOpenTradeCopilot={handleOpenRiskCopilot}
+              onExecuteTrade={(tradeData) => executeTabTrade("khatarnak_jugaad", tradeData)}
+            />
+          </div>
         )}
 
         {activeTab === "landing" && (

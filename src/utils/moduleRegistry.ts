@@ -32,6 +32,26 @@ export interface ModuleRegistryItem {
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   {
+    id: "central_signal_manager",
+    label: "🏛️ CENTRAL SIGNAL MANAGER — Telegram Single Active Setup Orchestrator",
+    icon: Flame,
+    category: "Core",
+    desc: "Single active Telegram setup orchestrator synchronizing Harami AI, Khatarnak Jugaad 💀, and War Room with real-data validation, 3/3 consensus, priority ranking, 35m cooldown & audit logs.",
+    emoji: "🏛️",
+    tag: "1-ACTIVE TELEGRAM APEX",
+    tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse font-black",
+  },
+  {
+    id: "khatarnak_jugaad",
+    label: "💀 KHATARNAK JUGAAD — Custom Fibonacci & Market Structure Sniper Engine",
+    icon: Flame,
+    category: "Core",
+    desc: "Independent 15M / 5M genuine market structure (HH/HL/LH/LL) swing sniper with custom 0.62 Golden & 0.81 Green zone entries, structural $1 SL, and 1.38/1.65/2.0/2.2 profit targets.",
+    emoji: "💀",
+    tag: "KHATARNAK JUGAAD 💀",
+    tagColor: "bg-orange-500/30 text-orange-300 border-orange-400/80 shadow-[0_0_16px_rgba(249,115,22,0.6)] animate-pulse",
+  },
+  {
     id: "warroom",
     label: "⚔️ GMC AI WAR ROOM — Final Supreme Decision Center & Execution Hub",
     icon: Flame,

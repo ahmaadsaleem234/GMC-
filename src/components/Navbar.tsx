@@ -122,6 +122,36 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
+          {/* 🏛️ CENTRAL SIGNAL MANAGER APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-central-signal-manager-btn"
+            onClick={() => setActiveTab("central_signal_manager")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "central_signal_manager"
+                ? "bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 border border-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.7)] animate-pulse"
+                : "bg-amber-500/15 text-amber-300 border border-amber-500/50 hover:bg-amber-500/25"
+            }`}
+            title="Launch 🏛️ Central Signal Manager (Telegram 1-Active System)"
+          >
+            <span>🏛️</span>
+            <span>CENTRAL MANAGER</span>
+          </button>
+
+          {/* 💀 KHATARNAK JUGAAD SUPREME SHORTCUT BUTTON */}
+          <button
+            id="header-nav-khatarnak-jugaad-btn"
+            onClick={() => setActiveTab("khatarnak_jugaad")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "khatarnak_jugaad"
+                ? "bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 border border-orange-400 shadow-[0_0_14px_rgba(249,115,22,0.6)]"
+                : "bg-orange-500/10 text-orange-300 border border-orange-500/40 hover:bg-orange-500/20"
+            }`}
+            title="Launch 💀 Khatarnak Jugaad Sniper Engine"
+          >
+            <span>💀</span>
+            <span>KHATARNAK JUGAAD</span>
+          </button>
+
           {/* ⚔️ GMC AI WAR ROOM SUPREME SHORTCUT BUTTON */}
           <button
             id="header-nav-warroom-btn"

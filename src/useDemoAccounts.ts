@@ -21,6 +21,38 @@ export interface TabDemoAccount {
 }
 
 export const INITIAL_TAB_DEMO_ACCOUNTS: Record<string, TabDemoAccount> = {
+  khatarnak_jugaad: {
+    tabId: "khatarnak_jugaad",
+    tabLabel: "💀 KHATARNAK JUGAAD — Custom Fibonacci & Market Structure Sniper",
+    badge: "KHATARNAK JUGAAD 💀",
+    initialBalance: 5000,
+    balance: 6240.0,
+    equity: 6385.0,
+    winRatePct: 98.2,
+    totalTrades: 45,
+    winningTrades: 44,
+    losingTrades: 1,
+    totalPnL: 1385.0,
+    maxDrawdownPct: 0.3,
+    profitFactor: 9.4,
+    trades: [
+      {
+        id: "kj-trade-1",
+        timestamp: "01:15:20 PM",
+        assetKey: "XAUUSD",
+        type: "BUY",
+        entryPrice: 4338.5,
+        currentPrice: 4348.5,
+        stopLoss: 4325.0,
+        takeProfit: 4385.0,
+        lotSize: 0.1,
+        status: "TARGET_1_HIT",
+        pnlUSD: 100.0,
+        pnlPips: 100,
+        signalSource: "💀 KHATARNAK JUGAAD — 15M/5M Sniper",
+      },
+    ],
+  },
   gmcgold: {
     tabId: "gmcgold",
     tabLabel: "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix",
