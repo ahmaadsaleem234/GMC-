@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Sparkles,
   Compass,
+  LayoutGrid,
 } from "lucide-react";
 
 export interface ModuleRegistryItem {
@@ -31,6 +32,16 @@ export interface ModuleRegistryItem {
 }
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
+  {
+    id: "module_registry",
+    label: "📋 GMC MODULE REGISTRY — Complete AI Engine & Desk Directory",
+    icon: LayoutGrid,
+    category: "Core",
+    desc: "Central interactive registry of all 45+ GMC trading algorithms, AI brains, market data feeds, execution desks, and analytical suites with status toggles, search, filters and dependency maps.",
+    emoji: "📋",
+    tag: "MODULE DIRECTORY",
+    tagColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.4)]",
+  },
   {
     id: "central_signal_manager",
     label: "🏛️ CENTRAL SIGNAL MANAGER — Telegram Single Active Setup Orchestrator",

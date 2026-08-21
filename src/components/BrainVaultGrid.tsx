@@ -10,6 +10,7 @@ import {
   Activity,
   Zap,
   Sparkles,
+  LayoutGrid,
 } from "lucide-react";
 import { LiveGoldMarketCard } from "./LiveGoldMarketCard";
 import { LivePrice } from "../types";
@@ -54,6 +55,34 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   ];
 
   const topTools = [
+    // 📋 GMC MODULE REGISTRY — COMPLETE AI ENGINE & DESK DIRECTORY
+    {
+      id: "module_registry",
+      title: "📋 GMC MODULE REGISTRY — Complete AI Engine & Desk Directory",
+      emoji: "📋",
+      tag: "CENTRAL DIRECTORY",
+      statusLabel: "REGISTRY",
+      desc: "Central interactive directory of all 45+ GMC trading algorithms, AI brains, market feeds, execution desks, and analytical suites with live status toggles, mobile filters, search and dependency maps.",
+      useCase: "Manage, filter, configure and explore all institutional trading engines and AI algorithms.",
+      btnText: "Open Module Registry",
+      tabTarget: "module_registry",
+      highlight: true,
+      category: "PRICE_ACTION",
+    },
+    // 🏛️ CENTRAL SIGNAL MANAGER — TELEGRAM SINGLE ACTIVE SETUP SYSTEM
+    {
+      id: "central_signal_manager",
+      title: "🏛️ CENTRAL SIGNAL MANAGER — Telegram Single Active Setup System",
+      emoji: "🏛️",
+      tag: "1-ACTIVE TELEGRAM APEX",
+      statusLabel: "APEX MANAGER",
+      desc: "Single active Telegram setup orchestrator synchronizing Harami AI, Khatarnak Jugaad 💀, and War Room with real-data validation, 3/3 consensus, priority ranking, 35m cooldown & audit logs.",
+      useCase: "Guarantees strict single active setup rule across Telegram broadcast feeds.",
+      btnText: "Open Signal Manager",
+      tabTarget: "central_signal_manager",
+      highlight: true,
+      category: "SIGNALS",
+    },
     // ⚡ GMC TRADING — MULTI-TIMEFRAME REJECTION & CONFIRMATION ENGINE
     {
       id: "gmctrading",
@@ -837,6 +866,46 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
 
       {/* LIVE GOLD MARKET CARD (ONLY MARKET WIDGET ABOVE INTELLIGENCE MODULES) */}
       <LiveGoldMarketCard prices={prices} currentPrice={currentPrice} latencyMs={latencyMs} />
+
+      {/* 📋 PROMINENT GMC MODULE REGISTRY ACCESS BANNER */}
+      <div
+        id="dashboard-module-registry-banner"
+        className="bg-gradient-to-r from-[#0b141d] via-[#0e1b26] to-[#0b141d] border border-cyan-500/40 rounded-2xl p-4 sm:p-6 shadow-[0_0_24px_rgba(6,182,212,0.15)] relative overflow-hidden"
+      >
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.3)]">
+              <LayoutGrid className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  CENTRAL DIRECTORY
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  45+ GMC Trading Algorithms &amp; AI Desks
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white font-mono uppercase tracking-tight mt-1">
+                GMC Interactive Module Registry
+              </h2>
+              <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                Browse, search, filter, enable/disable, and inspect full architecture metadata, timeframes, risk tiers, and consensus dependencies across all GMC AI modules with touch-optimized mobile navigation.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="dashboard-open-registry-btn"
+            onClick={() => onSelectTab("module_registry")}
+            className="w-full md:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs uppercase tracking-wider font-mono flex items-center justify-center gap-2 shadow-[0_0_16px_rgba(6,182,212,0.4)] active:scale-95 transition-all cursor-pointer shrink-0"
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>Launch Module Registry</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
 
       {/* ⭐ INTELLIGENCE MODULES SECTION */}
       <div className="pt-4 space-y-6">

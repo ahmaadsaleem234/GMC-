@@ -324,6 +324,25 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
         {activeSetup ? (
           <div className="mt-5 space-y-5">
+            {/* 3 AI Lockout Notification Strip */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold">🔒 SINGLE ACTIVE TRADE LOCK:</span>
+                <span className="text-amber-200">
+                  {activeSetup.brainName} is active. Other 2 AI brains are strictly locked from generating active Telegram signals until this trade closes.
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
+                {(["HARAMI_AI", "WAR_ROOM", "KHATARNAK_JUGAAD"] as AiBrainSource[])
+                  .filter((b) => b !== activeSetup.brainSource)
+                  .map((b) => (
+                    <span key={b} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-slate-400">
+                      🚫 {b === "HARAMI_AI" ? "Harami AI" : b === "WAR_ROOM" ? "War Room" : "Khatarnak Jugaad"}: LOCKED
+                    </span>
+                  ))}
+              </div>
+            </div>
+
             {/* Top Detail Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#090D16] p-3.5 rounded-xl border border-slate-800 font-mono text-xs">
               <div>
@@ -457,6 +476,73 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
               </div>
             </div>
 
+            {/* Telegram Formal Message Preview Box */}
+            <div className="bg-[#0A0E17] border border-cyan-500/30 rounded-xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-wider">
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Telegram Formal Message Preview (1-Active Broadcast)</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 rounded font-mono">
+                  HTML / Markdown Format
+                </span>
+              </div>
+              <div className="bg-[#06080F] border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed select-all">
+                {activeSetup.brainSource === "KHATARNAK_JUGAAD" && (
+                  <>
+                    <span className="text-orange-400 font-bold">💀 KHATARNAK JUGAAD</span>
+                    {"\n\n"}
+                    <span className="text-white font-bold">{activeSetup.assetKey} • {activeSetup.timeframe} • {activeSetup.direction}</span>
+                    {"\n\n"}
+                    Entry 1: <span className="text-emerald-400">{(activeSetup.entry1Golden || (activeSetup.direction === "BUY" ? activeSetup.entryZoneHigh : activeSetup.entryZoneLow)).toFixed(2)}</span> — 0.62 Golden{"\n"}
+                    Entry 2: <span className="text-emerald-400">{(activeSetup.entry2Green || (activeSetup.direction === "BUY" ? activeSetup.entryZoneLow : activeSetup.entryZoneHigh)).toFixed(2)}</span> — 0.81 Green{"\n\n"}
+                    SL: <span className="text-rose-400">{activeSetup.stopLoss.toFixed(2)}</span>{"\n\n"}
+                    TP1: <span className="text-cyan-400">{activeSetup.tp1.toFixed(2)}</span>{"\n"}
+                    TP2: <span className="text-cyan-400">{activeSetup.tp2.toFixed(2)}</span>{"\n"}
+                    TP3: <span className="text-cyan-400">{activeSetup.tp3.toFixed(2)}</span>{"\n\n"}
+                    R:R: <span className="text-emerald-300">{activeSetup.rrRatioString.replace(/^R:R:\s*/i, "")}</span>{"\n"}
+                    Score: <span className="text-amber-400">{activeSetup.setupScore}/100</span>{"\n\n"}
+                    Status: <span className="text-emerald-400 font-bold">ACTIVE</span>{"\n\n"}
+                    💬 <span className="text-amber-200 italic">“{activeSetup.signatureLine || "Jugaad chala, scene bana 💀"}”</span>
+                  </>
+                )}
+                {activeSetup.brainSource === "HARAMI_AI" && (
+                  <>
+                    <span className="text-purple-400 font-bold">🤖 HARAMI AI</span>
+                    {"\n\n"}
+                    <span className="text-white font-bold">{activeSetup.assetKey} • {activeSetup.timeframe} • {activeSetup.direction}</span>
+                    {"\n\n"}
+                    Entry Zone: <span className="text-emerald-400">{Math.min(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)} — {Math.max(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)}</span>{"\n\n"}
+                    SL: <span className="text-rose-400">{activeSetup.stopLoss.toFixed(2)}</span>{"\n\n"}
+                    TP1: <span className="text-cyan-400">{activeSetup.tp1.toFixed(2)}</span>{"\n"}
+                    TP2: <span className="text-cyan-400">{activeSetup.tp2.toFixed(2)}</span>{"\n"}
+                    TP3: <span className="text-cyan-400">{activeSetup.tp3.toFixed(2)}</span>{"\n\n"}
+                    R:R: <span className="text-emerald-300">{activeSetup.rrRatioString.replace(/^R:R:\s*/i, "")}</span>{"\n"}
+                    Confidence: <span className="text-purple-300">{activeSetup.marketConfidence}%</span>{"\n\n"}
+                    Status: <span className="text-emerald-400 font-bold">ACTIVE</span>{"\n\n"}
+                    💬 <span className="text-amber-200 italic">“{activeSetup.signatureLine || "Setup clear, execution clean."}”</span>
+                  </>
+                )}
+                {activeSetup.brainSource === "WAR_ROOM" && (
+                  <>
+                    <span className="text-amber-400 font-bold">🛡️ WAR ROOM</span>
+                    {"\n\n"}
+                    <span className="text-white font-bold">{activeSetup.assetKey} • {activeSetup.timeframe} • {activeSetup.direction}</span>
+                    {"\n\n"}
+                    Execution Zone: <span className="text-emerald-400">{Math.min(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)} — {Math.max(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)}</span>{"\n\n"}
+                    SL: <span className="text-rose-400">{activeSetup.stopLoss.toFixed(2)}</span>{"\n\n"}
+                    TP1: <span className="text-cyan-400">{activeSetup.tp1.toFixed(2)}</span>{"\n"}
+                    TP2: <span className="text-cyan-400">{activeSetup.tp2.toFixed(2)}</span>{"\n"}
+                    TP3: <span className="text-cyan-400">{activeSetup.tp3.toFixed(2)}</span>{"\n\n"}
+                    R:R: <span className="text-emerald-300">{activeSetup.rrRatioString.replace(/^R:R:\s*/i, "")}</span>{"\n"}
+                    Setup Score: <span className="text-amber-400">{activeSetup.setupScore}/100</span>{"\n\n"}
+                    Status: <span className="text-emerald-400 font-bold">ACTIVE</span>{"\n\n"}
+                    💬 <span className="text-amber-200 italic">“{activeSetup.signatureLine || "Plan ready. Risk controlled. Execute."}”</span>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
               <div className="flex items-center gap-2">
@@ -489,13 +575,13 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </div>
             <div className="text-slate-200 font-bold text-sm">
               {cooldown.isActive
-                ? `COOLDOWN ACTIVE — NEXT SIGNAL IN ${cooldown.remainingFormatted}`
-                : "NO ACTIVE SETUP — WAITING FOR HIGH QUALITY (70+ SCORE) SETUP"}
+                ? `30-MINUTE COOLDOWN ACTIVE — NEXT SIGNAL IN ${cooldown.remainingFormatted}`
+                : "NO VALID SETUP — WAITING (QUALITY > QUANTITY)"}
             </div>
             <p className="text-xs text-slate-400 max-w-md mx-auto font-sans">
               {cooldown.isActive
-                ? "The strict 35-minute cooldown is currently active following the previous trade closure. No new active Telegram trade signal will be dispatched until cooldown elapses."
-                : "All 3 AI Trading Brains are actively scanning and competing in real time. A trade will only activate once an AI scores 70+ and passes all market structure & Fib 2.6 confirmation filters."}
+                ? `The strict 30-minute cooldown is currently active. Next setup available after ${cooldown.nextAvailableTimeFormatted}. No new Telegram signal will be generated during this period.`
+                : "All 3 AI Trading Brains (Harami AI, War Room, Khatarnak Jugaad 💀) are continuously verifying live price, market structure, and Fib 2.6 alignment. Weak or unverified setups are never forced."}
             </p>
           </div>
         )}
@@ -507,10 +593,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-amber-400" />
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              AI Brain Competition & Evaluation Matrix
+              3 AI Brain Competition & 9-Point Quality Verification
             </h3>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Minimum Activation Score: {managerState.minScoreThreshold}/100</span>
+          <span className="text-xs text-slate-400 font-mono">Min Quality Score: {managerState.minScoreThreshold}/100</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -596,6 +682,38 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                       </div>
                     </div>
                   </div>
+
+                  {/* 9-Point Quality Verification Indicator */}
+                  {candidate.qualityAudit && (
+                    <div className="mb-3 p-2 bg-[#0B0F17] rounded-xl border border-slate-800 text-[10px] font-mono">
+                      <div className="flex items-center justify-between text-slate-400 mb-1">
+                        <span className="font-sans font-semibold">9-Point Verification:</span>
+                        <span className="text-emerald-400 font-bold">
+                          {candidate.qualityAudit.overallPassed ? "9/9 VERIFIED ✅" : "FILTERED ⏳"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 text-[9px] text-slate-400">
+                        <span className={candidate.qualityAudit.realTimePriceVerified ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ Real-Price
+                        </span>
+                        <span className={candidate.qualityAudit.marketStructurePassed ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ Structure
+                        </span>
+                        <span className={candidate.qualityAudit.fibAlignmentPassed ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ Fib 2.6
+                        </span>
+                        <span className={candidate.qualityAudit.entryConfirmationPassed ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ Entry Gate
+                        </span>
+                        <span className={candidate.qualityAudit.momentumPassed ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ Momentum
+                        </span>
+                        <span className={candidate.qualityAudit.riskRewardPassed ? "text-emerald-400" : "text-rose-400"}>
+                          ✓ R:R Valid
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Level Details */}
                   <div className="space-y-1.5 text-xs font-mono bg-[#090D16] p-3 rounded-xl border border-slate-800/80">

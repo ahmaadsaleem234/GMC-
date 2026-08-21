@@ -1,6 +1,6 @@
 {
   "name": "GMC AI Brain Trading Dashboard",
-  "description": "Institutional XAUUSD trading dashboard featuring Advanced Central Signal Manager with strict Single Active Telegram Setup rule, multi-brain synchronization (Harami AI, Khatarnak Jugaad 💀, War Room), custom Fib 2.6 engine, 35m cooldown protection, and traceable decision audit ledger.",
+  "description": "Institutional XAUUSD trading platform featuring Central Signal Manager with Telegram 1-Active Setup enforcement, Mobile-First Interactive GMC Module Registry with live filters & search, Khatarnak Jugaad Fib sniper, War Room AI consensus, and real-time market feeds.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -122,6 +122,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
+          {/* 📋 GMC MODULE REGISTRY APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-module-registry-btn"
+            onClick={() => setActiveTab("module_registry")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "module_registry"
+                ? "bg-gradient-to-r from-cyan-500 via-teal-400 to-cyan-400 text-slate-950 border border-cyan-300 shadow-[0_0_16px_rgba(6,182,212,0.7)]"
+                : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/25"
+            }`}
+            title="Open GMC Module Registry (Complete Directory)"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">MODULE</span> REGISTRY
+          </button>
+
           {/* 🏛️ CENTRAL SIGNAL MANAGER APEX SHORTCUT BUTTON */}
           <button
             id="header-nav-central-signal-manager-btn"
@@ -269,23 +284,37 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Live Search Input Bar */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-[#F1CC6B] absolute left-3.5 top-3" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search modules..."
-                className="w-full bg-[#111419] border border-[#292E35] focus:border-[#F1CC6B] rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-[#646C77] outline-none transition-all"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3.5 top-2.5 text-[#646C77] hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            <div className="space-y-2">
+              <button
+                id="drawer-open-full-registry-cta"
+                onClick={() => {
+                  setActiveTab("module_registry");
+                  setIsNavDrawerOpen(false);
+                }}
+                className="w-full py-2.5 px-3 bg-gradient-to-r from-cyan-500/20 via-teal-500/20 to-cyan-500/20 hover:from-cyan-500/30 hover:to-cyan-500/30 border border-cyan-500/50 rounded-xl text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
+              >
+                <LayoutGrid className="w-4 h-4 text-cyan-400" />
+                <span>📋 OPEN FULL INTERACTIVE MODULE REGISTRY ({visibleNavItems.length} ENGINES)</span>
+              </button>
+
+              <div className="relative">
+                <Search className="w-4 h-4 text-[#F1CC6B] absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search modules..."
+                  className="w-full bg-[#111419] border border-[#292E35] focus:border-[#F1CC6B] rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-[#646C77] outline-none transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3.5 top-2.5 text-[#646C77] hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Category Filter Pills */}
@@ -391,6 +420,92 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       )}
+
+      {/* MOBILE BOTTOM QUICK NAVIGATION BAR (iPhone & Android Optimized) */}
+      <div
+        id="mobile-sticky-bottom-nav"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080a0e]/95 backdrop-blur-md border-t border-[#232932] px-2 py-1.5 flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.6)]"
+      >
+        <button
+          id="mobile-nav-home-btn"
+          onClick={onGoHome || (() => setActiveTab("vault"))}
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] px-2 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === "vault" || activeTab === "landing"
+              ? "text-amber-400 font-bold bg-amber-500/15"
+              : "text-slate-400 hover:text-white"
+          }`}
+          title="Home Dashboard"
+        >
+          <Home className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5 font-medium">Home</span>
+        </button>
+
+        <button
+          id="mobile-nav-module-registry-btn"
+          onClick={() => setActiveTab("module_registry")}
+          className={`flex flex-col items-center justify-center min-w-[64px] min-h-[44px] px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === "module_registry"
+              ? "text-cyan-300 font-black bg-cyan-500/20 border border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.4)]"
+              : "text-cyan-400 hover:text-cyan-200"
+          }`}
+          title="Open GMC Module Registry"
+        >
+          <LayoutGrid className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5 font-bold uppercase tracking-tight">Registry</span>
+        </button>
+
+        <button
+          id="mobile-nav-central-signal-manager-btn"
+          onClick={() => setActiveTab("central_signal_manager")}
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] px-2 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === "central_signal_manager"
+              ? "text-amber-400 font-bold bg-amber-500/15 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+              : "text-slate-400 hover:text-white"
+          }`}
+          title="Central Signal Manager"
+        >
+          <span className="text-sm leading-none">🏛️</span>
+          <span className="text-[10px] mt-0.5 font-medium">Central</span>
+        </button>
+
+        <button
+          id="mobile-nav-khatarnak-btn"
+          onClick={() => setActiveTab("khatarnak_jugaad")}
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] px-2 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === "khatarnak_jugaad"
+              ? "text-orange-400 font-bold bg-orange-500/15 border border-orange-500/40"
+              : "text-slate-400 hover:text-white"
+          }`}
+          title="Khatarnak Jugaad Sniper"
+        >
+          <span className="text-sm leading-none">💀</span>
+          <span className="text-[10px] mt-0.5 font-medium">Jugaad</span>
+        </button>
+
+        <button
+          id="mobile-nav-warroom-btn"
+          onClick={() => setActiveTab("warroom")}
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] px-2 py-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === "warroom"
+              ? "text-amber-400 font-bold bg-amber-500/15 border border-amber-500/40"
+              : "text-slate-400 hover:text-white"
+          }`}
+          title="GMC War Room"
+        >
+          <span className="text-sm leading-none">⚔️</span>
+          <span className="text-[10px] mt-0.5 font-medium">War Room</span>
+        </button>
+
+        <button
+          id="mobile-nav-drawer-menu-btn"
+          onClick={() => setIsNavDrawerOpen(true)}
+          className="flex flex-col items-center justify-center min-w-[50px] min-h-[44px] px-2 py-1 rounded-xl text-slate-400 hover:text-white transition-all cursor-pointer"
+          title="Open All Modules Menu"
+        >
+          <Menu className="w-4 h-4 text-amber-400" />
+          <span className="text-[10px] mt-0.5 font-medium">Menu</span>
+        </button>
+      </div>
     </header>
   );
 };

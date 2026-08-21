@@ -34,6 +34,7 @@ import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
 import { GmcAiWarRoomView } from "./components/warroom/GmcAiWarRoomView";
 import { KhatarnakJugaadView } from "./components/KhatarnakJugaadView";
 import { CentralSignalManagerView } from "./components/CentralSignalManagerView";
+import { ModuleRegistryView } from "./components/ModuleRegistryView";
 import { useCentralSignalManagerWatcher } from "./services/useCentralSignalManagerWatcher";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
@@ -628,6 +629,18 @@ export function App() {
               assetKey={activeAssetKey}
             />
           </>
+        )}
+
+        {(activeTab === "module_registry" || activeTab === "registry") && (
+          <div className="space-y-4">
+            <ModuleRegistryView
+              onSelectTab={(tabId) => setActiveTab(tabId)}
+              activeTab={activeTab}
+              prices={prices}
+              currentPrice={currentPrice}
+              latencyMs={latencyMs}
+            />
+          </div>
         )}
 
         {activeTab === "central_signal_manager" && (

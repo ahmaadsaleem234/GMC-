@@ -71,14 +71,45 @@ export function useCentralSignalManagerWatcher(
         dispatchCentralLifecycleEventToTelegram(currentActive, "TP3_HIT", currentPrice);
       }
       if (!prevActive.isFinalTpHit && currentActive.isFinalTpHit) {
-        dispatchCentralLifecycleEventToTelegram(currentActive, "FINAL_TP_HIT", currentPrice);
+        dispatchCentralLifecycleEventToTelegram(
+          currentActive,
+          "FINAL_TP_HIT",
+          currentPrice,
+          updated.cooldown.nextAvailableTimeFormatted
+        );
       }
       if (!prevActive.isSlHit && currentActive.isSlHit) {
         if (currentActive.isTp1Hit) {
-          dispatchCentralLifecycleEventToTelegram(currentActive, "TP_THEN_SL_HIT", currentPrice);
+          dispatchCentralLifecycleEventToTelegram(
+            currentActive,
+            "TP_THEN_SL_HIT",
+            currentPrice,
+            updated.cooldown.nextAvailableTimeFormatted
+          );
         } else {
-          dispatchCentralLifecycleEventToTelegram(currentActive, "SL_HIT", currentPrice);
+          dispatchCentralLifecycleEventToTelegram(
+            currentActive,
+            "SL_HIT",
+            currentPrice,
+            updated.cooldown.nextAvailableTimeFormatted
+          );
         }
+      }
+      if (!prevActive.isInvalidated && currentActive.isInvalidated) {
+        dispatchCentralLifecycleEventToTelegram(
+          currentActive,
+          "INVALIDATED",
+          currentPrice,
+          updated.cooldown.nextAvailableTimeFormatted
+        );
+      }
+      if (!prevActive.isExpired && currentActive.isExpired) {
+        dispatchCentralLifecycleEventToTelegram(
+          currentActive,
+          "EXPIRED",
+          currentPrice,
+          updated.cooldown.nextAvailableTimeFormatted
+        );
       }
     }
 

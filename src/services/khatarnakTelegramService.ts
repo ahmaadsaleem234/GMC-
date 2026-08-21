@@ -131,32 +131,29 @@ export function clearDispatchedEventHistory(): void {
  * SETUP ID: KJ-XXXX
  */
 export function formatNewSetupTelegramMessage(setup: KhatarnakJugaadSetup): string {
-  const isBuy = setup.signalType === "BUY";
-  const directionEmoji = isBuy ? "BUY 🟢" : "SELL 🔴";
-  const entryEmoji = isBuy ? "🟢" : "🔴";
   const asset = setup.assetKey || "XAUUSD";
+  const rr = setup.rrRatioString.replace(/^R:R:\s*/i, "");
 
   const message = [
     `💀 <b>KHATARNAK JUGAAD</b>`,
     ``,
-    `<b>${asset} • ${setup.timeframe} • ${directionEmoji}</b>`,
+    `<b>${asset} • ${setup.timeframe} • ${setup.signalType}</b>`,
     ``,
-    `${entryEmoji} <b>Entry:</b> <code>${setup.entryFormatted}</code>`,
-    `🛑 <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code>`,
+    `Entry 1: <code>${setup.entry1Golden.toFixed(2)}</code> — 0.62 Golden`,
+    `Entry 2: <code>${setup.entry2Green.toFixed(2)}</code> — 0.81 Green`,
     ``,
-    `🎯 <b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code>`,
-    `🎯 <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code>`,
-    `🎯 <b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code>`,
-    `🏆 <b>TP4 (Final):</b> <code>${setup.tp4Final.toFixed(2)}</code>`,
+    `SL: <code>${setup.stopLoss.toFixed(2)}</code>`,
     ``,
-    `📊 <b>R:R:</b> <code>${setup.rrRatioString}</code>`,
-    `🔥 <b>Score:</b> <code>${setup.score}/100</code>`,
+    `TP1: <code>${setup.tp1.toFixed(2)}</code>`,
+    `TP2: <code>${setup.tp2.toFixed(2)}</code>`,
+    `TP3: <code>${setup.tp3.toFixed(2)}</code>`,
     ``,
-    `🧠 <b>Reason:</b> <i>${setup.shortReason}</i>`,
+    `R:R: <code>${rr}</code>`,
+    `Score: <code>${setup.score}/100</code>`,
+    ``,
+    `Status: <b>ACTIVE</b>`,
     ``,
     `💬 <i>“${setup.funnyLine}”</i>`,
-    ``,
-    `<b>SETUP ID:</b> <code>${setup.id}</code>`,
   ].join("\n");
 
   return message;

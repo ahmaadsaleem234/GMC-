@@ -155,13 +155,10 @@ export const FUNNY_JUGAAD_LINES = [
   "Jugaad chala, scene bana 💀",
   "Zone touch, kaam khatam 😈",
   "Jugaad lagao, profit uthao 💀",
-  "Zone aya? Ab scene dekho 😎",
-  "Jugaad ON, tension GONE 💀",
-  "Market phansa, Jugaad hansa 💀",
-  "Entry mili, ab sabr karo 🥷",
-  "Setup bana, scene bana 🔥",
-  "Zone mila, ab khel khula 😈",
-  "Jugaad ready, market steady 😂",
+  "Zone aya? Ab scene dekho.",
+  "Plan simple, execution dangerous 💀",
+  "Market ne zone diya, jugaad ne kaam kiya.",
+  "Entry mili? Ab tamasha dekho 😈",
 ];
 
 let lastPickedIndex = -1;
