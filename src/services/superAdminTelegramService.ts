@@ -242,27 +242,28 @@ export class SuperAdminTelegramService {
   ): { text: string; keyboard: TelegramInlineKeyboard } {
     const statusIcon =
       this.config.masterStatus === "RUNNING"
-        ? "🟢 ONLINE"
+        ? "🟢 ONLINE & BROADCASTING"
         : this.config.masterStatus === "PAUSED"
         ? "⏸️ PAUSED"
         : this.config.masterStatus === "MAINTENANCE"
         ? "🔇 MAINTENANCE"
-        : "🚨 KILL SWITCH ACTIVE";
+        : "🚨 KILL SWITCH (HALTED)";
 
+    const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
     const haramiState = this.config.haramiEnabled ? "🟢 ON (≥" + this.config.haramiMinConfidence + "%)" : "🔴 OFF";
     const warRoomState = this.config.warRoomEnabled ? "🟢 ON (≥" + this.config.warRoomMinScore + "%)" : "🔴 OFF";
 
     const text = `
 <b>👑 SUPER ADMIN CONTROL CENTER</b>
 ━━━━━━━━━━━━━━━━━━━━
-<b>🤖 SYSTEM:</b> <b>${statusIcon}</b>
+<b>🤖 BROADCAST:</b> <b>${statusIcon}</b>
 <b>🔥 Harami AI:</b> <b>${haramiState}</b>
 <b>⚔️ War Room:</b> <b>${warRoomState}</b>
 <b>📊 Active Trades:</b> <code>${activeTradesCount}</code>
-<b>👥 Active Users:</b> <code>${approvedUsersCount}</code> (${pendingUsersCount} Pending)
+<b>👥 Subscribers:</b> <code>${approvedUsersCount} Active</code> (${pendingUsersCount} Pending)
 <b>📈 Live Gold:</b> <code>$${liveGoldPrice.toFixed(2)}</code>
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Complete 1-Tap Control over Signals, Trades, Users & Risk.</i>
+<i>⚡ Complete 1-Tap Control: Users, Approvals, Bots, Trades, Deliveries & Risk.</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
@@ -274,6 +275,13 @@ export class SuperAdminTelegramService {
         [
           { text: `📊 Trades (${activeTradesCount})`, callback_data: "adm:trades:menu" },
           { text: `👥 Users (${totalUsersCount})`, callback_data: "adm:users:menu" },
+        ],
+        [
+          { text: "📤 Trade Delivery", callback_data: "adm:delivery:menu" },
+          {
+            text: isKillSwitch ? "▶️ Resume Broadcast" : "🛑 Emergency Stop",
+            callback_data: isKillSwitch ? "adm:master:set:RUNNING" : "adm:master:confirm:KILL_SWITCH",
+          },
         ],
         [
           { text: "❤️ Health Panel", callback_data: "adm:health:menu" },
@@ -584,7 +592,43 @@ This will immediately impact all automated signals across all connected subscrib
   }
 
   /**
-   * SINGLE USER DETAIL CARD
+   * 🔔 DIRECT USER ACCESS REQUEST MESSAGE WITH ONE-TAP ACTION BUTTONS
+   */
+  public renderUserAccessRequest(user: any): { text: string; keyboard: TelegramInlineKeyboard } {
+    const text = `
+🔔 <b>NEW TELEGRAM BOT ACCESS REQUEST</b>
+━━━━━━━━━━━━━━━━━━━
+<b>👤 User:</b> <b>${user.firstName || "Trader"} ${user.lastName || ""}</b> (${user.username || "No @username"})
+<b>🆔 Telegram ID:</b> <code>${user.userId}</code>
+<b>🕒 Requested:</b> <code>${new Date(user.joinedAt || Date.now()).toLocaleString()}</code>
+<b>🔒 Current Status:</b> ⏳ <code>PENDING APPROVAL</code>
+
+<i>⚡ Tap an action below to approve with preset duration or manage this user:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: "✅ APPROVE (Lifetime)", callback_data: `adm:req:approve:${user.userId}` },
+          { text: "❌ REJECT", callback_data: `adm:req:reject:${user.userId}` },
+          { text: "🚫 BLOCK", callback_data: `adm:req:block:${user.userId}` },
+        ],
+        [
+          { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
+          { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+          { text: "⚡ 30 Days", callback_data: `adm:usr:grant:${user.userId}:30` },
+        ],
+        [
+          { text: "👤 Configure Bot & Access", callback_data: `adm:user:view:${user.userId}` },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * SINGLE USER DETAIL CARD (WITH BOT SELECTION & DURATION MANAGEMENT)
    */
   public renderUserCard(user: any): { text: string; keyboard: TelegramInlineKeyboard } {
     const statusEmoji =
@@ -602,30 +646,44 @@ This will immediately impact all automated signals across all connected subscrib
       ? new Date(user.expiresAt).toISOString().replace("T", " ").substring(0, 16) + " UTC"
       : "♾️ Lifetime";
 
+    const botAccessDisplay =
+      user.botAccess === "harami"
+        ? "🔥 HARAMI AI ONLY"
+        : user.botAccess === "war_room"
+        ? "⚔️ WAR ROOM ONLY"
+        : user.botAccess === "khatarnak"
+        ? "⚡ KHATARNAK JUGAAD ONLY"
+        : "🤖 ALL BOTS (Harami + War Room + Khatarnak)";
+
     const text = `
-<b>👤 USER PROFILE & ACCESS</b>
+<b>👤 USER PROFILE & ACCESS CONTROL</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>Name:</b> <b>${user.firstName || "Trader"} ${user.lastName || ""}</b>
 <b>Username:</b> <code>${user.username || "None"}</code>
 <b>Telegram ID:</b> <code>${user.userId}</code>
 <b>Chat ID:</b> <code>${user.chatId}</code>
 <b>Status:</b> <b>${statusEmoji}</b>
+<b>Bot Access:</b> <code>${botAccessDisplay}</code>
 <b>Access Expiry:</b> <code>${expiryStr}</code>
 <b>Signals Received:</b> <code>${user.totalSignalsReceived || 0}</code>
 <b>Joined:</b> <code>${new Date(user.joinedAt).toLocaleDateString()}</code>
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Grant, extend or revoke subscription duration:</i>
+<i>⚡ Select Bot Access, Grant Duration, or Change User Status:</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
       inline_keyboard: [
         [
-          { text: "➕ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
-          { text: "➕ 3 Days", callback_data: `adm:usr:grant:${user.userId}:3` },
-          { text: "➕ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+          { text: "🤖 ALL BOTS", callback_data: `adm:usr:bot:${user.userId}:all` },
+          { text: "🔥 Harami AI", callback_data: `adm:usr:bot:${user.userId}:harami` },
         ],
         [
-          { text: "➕ 15 Days", callback_data: `adm:usr:grant:${user.userId}:15` },
+          { text: "⚔️ War Room", callback_data: `adm:usr:bot:${user.userId}:war_room` },
+          { text: "⚡ Khatarnak", callback_data: `adm:usr:bot:${user.userId}:khatarnak` },
+        ],
+        [
+          { text: "➕ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
+          { text: "➕ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
           { text: "➕ 30 Days", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "♾️ Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` },
         ],
@@ -633,10 +691,96 @@ This will immediately impact all automated signals across all connected subscrib
           user.status === "blocked"
             ? { text: "🔓 Unblock User", callback_data: `adm:usr:unblock:${user.userId}` }
             : { text: "🚫 Block User", callback_data: `adm:usr:block:${user.userId}` },
-          { text: "❌ Remove Access", callback_data: `adm:usr:revoke:${user.userId}` },
+          { text: "❌ Revoke Access", callback_data: `adm:usr:revoke:${user.userId}` },
         ],
         [
+          { text: "📤 Delivery Status", callback_data: `adm:delivery:menu` },
           { text: "🔙 Back to Users", callback_data: "adm:users:menu" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * 📤 TRADE DELIVERY CENTER MENU
+   */
+  public renderDeliveryCenterMenu(deliveryStats: {
+    totalSignals: number;
+    activeSubscribers: number;
+    successRate: number;
+    recentDeliveries: Array<{
+      id: string;
+      signalId: string;
+      engine: string;
+      timestampUtc: string;
+      recipientsCount: number;
+      successCount: number;
+      status: "DELIVERED" | "PARTIAL" | "FAILED";
+    }>;
+    failedDeliveries: Array<{
+      timestampUtc: string;
+      userId: string;
+      reason: string;
+    }>;
+    isKillSwitch: boolean;
+  }): { text: string; keyboard: TelegramInlineKeyboard } {
+    let recentRows = "";
+    if (deliveryStats.recentDeliveries && deliveryStats.recentDeliveries.length > 0) {
+      recentRows = deliveryStats.recentDeliveries
+        .slice(0, 5)
+        .map(
+          (d) =>
+            `• <b>#${d.signalId}</b> (<code>${d.engine}</code>)\n  └ <code>${d.timestampUtc.substring(11, 16)} UTC</code> | Sent: <code>${d.successCount}/${d.recipientsCount}</code> | ${d.status === "DELIVERED" ? "🟢 OK" : d.status === "PARTIAL" ? "🟡 PARTIAL" : "🔴 FAILED"}`
+        )
+        .join("\n");
+    } else {
+      recentRows = "<i>No broadcast dispatches recorded yet.</i>";
+    }
+
+    let failedRows = "";
+    if (deliveryStats.failedDeliveries && deliveryStats.failedDeliveries.length > 0) {
+      failedRows = `\n\n⚠️ <b>RECENT DELIVERY FAILURES:</b>\n` +
+        deliveryStats.failedDeliveries
+          .slice(0, 3)
+          .map((f) => `• User <code>${f.userId}</code> (${f.timestampUtc.substring(11, 16)} UTC): ${f.reason}`)
+          .join("\n");
+    }
+
+    const broadcastState = deliveryStats.isKillSwitch
+      ? "🚨 KILL SWITCH ACTIVE (BROADCAST HALTED)"
+      : "🟢 BROADCAST ONLINE (AUTO-DISPATCHING)";
+
+    const text = `
+<b>📤 TRADE DELIVERY & DISPATCH MONITOR</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>BROADCAST STATUS:</b> <b>${broadcastState}</b>
+<b>ACTIVE SUBSCRIBERS:</b> <code>${deliveryStats.activeSubscribers} connected</code>
+<b>TOTAL SIGNALS DISPATCHED:</b> <code>${deliveryStats.totalSignals}</code>
+<b>DELIVERY SUCCESS RATE:</b> <code>${deliveryStats.successRate.toFixed(1)}%</code>
+
+<b>RECENT DISPATCH LOGS (LAST 5):</b>
+${recentRows}${failedRows}
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ All approved users receive exact trade signals and updates simultaneously.</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: deliveryStats.isKillSwitch ? "▶️ RESUME BROADCAST" : "🛑 EMERGENCY KILL SWITCH",
+            callback_data: deliveryStats.isKillSwitch ? "adm:master:set:RUNNING" : "adm:master:confirm:KILL_SWITCH",
+          },
+        ],
+        [
+          { text: "🔄 Refresh Delivery Log", callback_data: "adm:delivery:menu" },
+          { text: "👥 Active Subscribers", callback_data: "adm:users:list:active" },
+        ],
+        [
+          { text: "🧪 Test Broadcast Dispatch", callback_data: "adm:test:menu" },
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
         ],
       ],
     };
