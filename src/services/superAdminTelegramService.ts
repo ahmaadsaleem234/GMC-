@@ -22,6 +22,7 @@ import path from "path";
 export interface SuperAdminConfig {
   superAdminId: string;
   masterStatus: "RUNNING" | "PAUSED" | "MAINTENANCE" | "KILL_SWITCH";
+  tradeSyncPaused?: boolean;
   haramiEnabled: boolean;
   haramiMinConfidence: number;
   warRoomEnabled: boolean;
@@ -77,6 +78,7 @@ const SUPER_ADMIN_LOGS_FILE = path.join(process.cwd(), "super_admin_audit_logs.j
 const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   superAdminId: "5218548758",
   masterStatus: "RUNNING",
+  tradeSyncPaused: false,
   haramiEnabled: true,
   haramiMinConfidence: 88.0,
   warRoomEnabled: true,
@@ -190,13 +192,81 @@ export class SuperAdminTelegramService {
 
   /**
    * STRICT SUPER ADMIN VERIFICATION GATE
-   * Single level only. Compares exact numeric Telegram ID.
+   * Single level only. Compares exact numeric Telegram ID against configured & default Super Admin IDs.
    */
   public isSuperAdmin(userId: string | number): boolean {
     if (!userId) return false;
     const cleanUser = String(userId).replace(/[^0-9]/g, "");
+    if (!cleanUser) return false;
     const cleanMaster = this.getSuperAdminId().replace(/[^0-9]/g, "");
-    return cleanUser === cleanMaster;
+    const knownAdmins = [
+      cleanMaster,
+      "5218548758",
+      process.env.TELEGRAM_SUPER_ADMIN_ID,
+      process.env.TELEGRAM_TARGET_CHAT_ID,
+    ]
+      .filter(Boolean)
+      .map((s) => String(s).replace(/[^0-9]/g, ""))
+      .filter((s) => s.length > 0);
+    return knownAdmins.includes(cleanUser);
+  }
+
+  /**
+   * 👤 USER REQUESTS & PENDING APPROVALS LIST
+   */
+  public renderPendingRequestsMenu(pendingUsers: any[]): { text: string; keyboard: TelegramInlineKeyboard } {
+    if (!pendingUsers || pendingUsers.length === 0) {
+      const text = `
+<b>👤 USER APPROVAL REQUESTS</b>
+━━━━━━━━━━━━━━━━━━━━
+✅ <b>No Pending Requests</b>
+All subscriber registration requests have been reviewed and processed.
+
+<b>STATUS:</b> <code>All user queues clear</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ When a new user launches the bot, an interactive 1-tap approval alert will appear here immediately.</i>
+`.trim();
+
+      const keyboard: TelegramInlineKeyboard = {
+        inline_keyboard: [
+          [
+            { text: "👥 View All Users", callback_data: "adm:users:menu" },
+            { text: "👑 Control Center", callback_data: "adm:home" },
+          ],
+        ],
+      };
+
+      return { text, keyboard };
+    }
+
+    const text = `
+<b>👤 PENDING USER ACCESS REQUESTS (${pendingUsers.length})</b>
+━━━━━━━━━━━━━━━━━━━━
+The following user(s) are waiting for your approval to receive live trade signals:
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ Tap an action below to instantly approve, set duration, or reject:</i>
+`.trim();
+
+    const buttons: TelegramInlineButton[][] = [];
+
+    for (const u of pendingUsers.slice(0, 5)) {
+      const name = `${u.firstName || "Trader"} ${u.lastName || ""}`.trim();
+      buttons.push([
+        { text: `👤 ${name} (${u.userId})`, callback_data: `adm:user:view:${u.userId}` },
+      ]);
+      buttons.push([
+        { text: `✅ Approve (Life)`, callback_data: `adm:req:approve:${u.userId}` },
+        { text: `⚡ 7 Days`, callback_data: `adm:usr:grant:${u.userId}:7` },
+        { text: `❌ Reject`, callback_data: `adm:req:reject:${u.userId}` },
+      ]);
+    }
+
+    buttons.push([
+      { text: "👥 All Users", callback_data: "adm:users:menu" },
+      { text: "🔙 Back to Admin", callback_data: "adm:home" },
+    ]);
+
+    return { text, keyboard: { inline_keyboard: buttons } };
   }
 
   /**
@@ -242,16 +312,20 @@ export class SuperAdminTelegramService {
     pendingUsersCount: number,
     liveGoldPrice: number
   ): { text: string; keyboard: TelegramInlineKeyboard } {
+    const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
+    const isSyncPaused = this.config.tradeSyncPaused === true || this.config.masterStatus === "PAUSED";
+
     const statusIcon =
       this.config.masterStatus === "RUNNING"
-        ? "🟢 ONLINE & BROADCASTING"
+        ? isSyncPaused
+          ? "⏸️ SYNC PAUSED (MASTER ONLY)"
+          : "🟢 ONLINE & SYNCHRONIZING"
         : this.config.masterStatus === "PAUSED"
         ? "⏸️ PAUSED"
         : this.config.masterStatus === "MAINTENANCE"
         ? "🔇 MAINTENANCE"
         : "🚨 KILL SWITCH (HALTED)";
 
-    const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
     const haramiState = this.config.haramiEnabled ? "🟢 ON (≥" + this.config.haramiMinConfidence + "%)" : "🔴 OFF";
     const warRoomState = this.config.warRoomEnabled ? "🟢 ON (≥" + this.config.warRoomMinScore + "%)" : "🔴 OFF";
     const khatarnakState = this.config.khatarnakEnabled !== false ? "🟢 ON" : "🔴 OFF";
@@ -259,22 +333,26 @@ export class SuperAdminTelegramService {
     const text = `
 <b>👑 SUPER ADMIN CONTROL CENTER</b>
 ━━━━━━━━━━━━━━━━━━━━
-<b>🤖 BROADCAST:</b> <b>${statusIcon}</b>
+<b>📡 MASTER SYNC:</b> <b>${statusIcon}</b>
 <b>🔥 Harami AI:</b> <b>${haramiState}</b>
 <b>⚔️ War Room:</b> <b>${warRoomState}</b>
 <b>⚡ Khatarnak Jugaad:</b> <b>${khatarnakState}</b>
 <b>📊 Active Trades:</b> <code>${activeTradesCount}</code>
-<b>👥 Subscribers:</b> <code>${approvedUsersCount} Active</code> (${pendingUsersCount} Pending)
+<b>👥 Approved Users:</b> <code>${approvedUsersCount} Active</code> (${pendingUsersCount} Pending)
 <b>📈 Live Gold:</b> <code>$${liveGoldPrice.toFixed(2)}</code>
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Complete 1-Tap Control: Users, Approvals, Bots, Trades, Deliveries & Risk.</i>
+<i>⚡ 1-Tap Control: Master Trade Sync, User Access, Bots, Risk & Live Trades.</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
       inline_keyboard: [
         [
+          { text: "📡 Master Trade Sync", callback_data: "adm:sync:menu" },
           { text: "🤖 Bot Access Hub", callback_data: "adm:bots:menu" },
-          { text: `👥 Users (${totalUsersCount})`, callback_data: "adm:users:menu" },
+        ],
+        [
+          { text: `👥 Approved Users (${approvedUsersCount})`, callback_data: "adm:users:list:active" },
+          { text: "📤 Broadcast Status", callback_data: "adm:sync:status" },
         ],
         [
           { text: `🔥 Harami (${this.config.haramiEnabled ? "ON" : "OFF"})`, callback_data: "adm:harami:menu" },
@@ -287,9 +365,18 @@ export class SuperAdminTelegramService {
         ],
         [
           {
-            text: isKillSwitch ? "▶️ Resume All Signals" : "🛑 Stop All Signals (Emergency)",
-            callback_data: isKillSwitch ? "adm:master:set:RUNNING" : "adm:master:confirm:KILL_SWITCH",
+            text: isKillSwitch
+              ? "▶️ Resume All Signals"
+              : isSyncPaused
+              ? "▶️ Resume Sync"
+              : "🛑 Pause Sync",
+            callback_data: isKillSwitch
+              ? "adm:master:set:RUNNING"
+              : isSyncPaused
+              ? "adm:sync:resume"
+              : "adm:sync:pause",
           },
+          { text: "🔄 Retry Failed", callback_data: "adm:sync:retry" },
         ],
         [
           { text: "❤️ Health Panel", callback_data: "adm:health:menu" },
@@ -792,6 +879,149 @@ This will immediately impact all automated signals across all connected subscrib
     };
 
     return { text, keyboard };
+  }
+
+  /**
+   * 📡 MASTER TRADE SYNC CONTROL CENTER MENU
+   */
+  public renderMasterTradeSyncMenu(stats: {
+    tradeSyncPaused: boolean;
+    masterStatus: string;
+    approvedUsersCount: number;
+    lastMasterTrade?: {
+      tradeId: string;
+      engine: string;
+      approvedUsers: number;
+      delivered: number;
+      failed: number;
+      status: "SYNCED" | "PARTIAL" | "FAILED" | "PAUSED";
+      timestampUtc: string;
+      failedUserIds?: string[];
+    } | null;
+    totalSyncedTrades: number;
+    totalDelivered: number;
+    totalFailed: number;
+    successRate: number;
+  }): { text: string; keyboard: TelegramInlineKeyboard } {
+    const isKillSwitch = stats.masterStatus === "KILL_SWITCH";
+    const isPaused = stats.tradeSyncPaused || stats.masterStatus === "PAUSED";
+
+    const syncStatusText = isKillSwitch
+      ? "🚨 KILL SWITCH ACTIVE (HALTED)"
+      : isPaused
+      ? "⏸️ SYNC PAUSED (SUPER ADMIN ONLY)"
+      : "🟢 ONLINE & SYNCHRONIZED";
+
+    let lastTradeBlock = "";
+    if (stats.lastMasterTrade) {
+      const t = stats.lastMasterTrade;
+      const statusEmoji = t.status === "SYNCED" ? "🟢" : t.status === "PARTIAL" ? "🟡" : "🔴";
+      lastTradeBlock = `
+<b>LATEST MASTER TRADE:</b>
+• <b>Trade ID:</b> <code>${t.tradeId}</code>
+• <b>Bot:</b> <code>${t.engine}</code>
+• 👥 <b>Approved Users:</b> <code>${t.approvedUsers}</code>
+• ✅ <b>Delivered:</b> <code>${t.delivered}</code>
+• ❌ <b>Failed:</b> <code>${t.failed}</code>
+• ⏱️ <b>Status:</b> ${statusEmoji} <b>${t.status}</b>
+• 🕒 <b>Synced At:</b> <code>${t.timestampUtc.substring(11, 16)} UTC</code>`;
+    } else {
+      lastTradeBlock = `
+<b>LATEST MASTER TRADE:</b>
+<i>No active trade dispatched yet in current session.</i>`;
+    }
+
+    const text = `
+<b>📡 MASTER TRADE SYNCHRONIZATION</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>MASTER SYNC STATUS:</b> <b>${syncStatusText}</b>
+<b>SINGLE SOURCE OF TRUTH:</b> <code>STRICTLY ENFORCED</code>
+<b>APPROVED SUBSCRIBERS:</b> <code>${stats.approvedUsersCount} Active</code>
+${lastTradeBlock}
+
+<b>LIFETIME DELIVERY METRICS:</b>
+• 📊 <b>Total Master Signals:</b> <code>${stats.totalSyncedTrades}</code>
+• ✅ <b>Delivered:</b> <code>${stats.totalDelivered}</code>
+• ❌ <b>Failed:</b> <code>${stats.totalFailed}</code>
+• 📈 <b>Success Rate:</b> <code>${stats.successRate.toFixed(1)}%</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ All approved users receive the exact same trade ID & updates without duplicates.</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: isPaused ? "▶️ Resume Sync" : "🛑 Pause Sync",
+            callback_data: isPaused ? "adm:sync:resume" : "adm:sync:pause",
+          },
+          { text: "🔄 Retry Failed", callback_data: "adm:sync:retry" },
+        ],
+        [
+          { text: `👥 Approved Users (${stats.approvedUsersCount})`, callback_data: "adm:users:list:active" },
+          { text: "📤 Broadcast Status", callback_data: "adm:sync:status" },
+        ],
+        [
+          { text: `✅ Delivered (${stats.totalDelivered})`, callback_data: "adm:delivery:menu" },
+          { text: `❌ Failed (${stats.totalFailed})`, callback_data: "adm:sync:failed" },
+        ],
+        [
+          { text: "🔄 Refresh Sync", callback_data: "adm:sync:menu" },
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * 📡 Format Master Trade Delivery Receipt for Super Admin
+   */
+  public formatMasterTradeReceipt(tradeInfo: {
+    tradeId: string;
+    engine: string;
+    approvedUsers: number;
+    delivered: number;
+    failed: number;
+    status: string;
+  }): { text: string; keyboard: TelegramInlineKeyboard } {
+    const text = `
+📡 <b>MASTER TRADE</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Trade ID:</b> <code>${tradeInfo.tradeId}</code>
+<b>Bot:</b> <code>${tradeInfo.engine}</code>
+<b>👥 Approved Users:</b> <code>${tradeInfo.approvedUsers}</code>
+<b>✅ Delivered:</b> <code>${tradeInfo.delivered}</code>
+<b>❌ Failed:</b> <code>${tradeInfo.failed}</code>
+<b>⏱️ Status:</b> <b>${tradeInfo.status}</b>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ Synced to all approved users with identical trade ID.</i>
+`.trim();
+
+    const buttons: TelegramInlineButton[][] = [];
+    const row1: TelegramInlineButton[] = [];
+
+    if (tradeInfo.failed > 0) {
+      row1.push({ text: "🔄 Retry Failed", callback_data: `adm:sync:retry:${tradeInfo.tradeId}` });
+    }
+
+    const isPaused = this.config.tradeSyncPaused || this.config.masterStatus === "PAUSED";
+    row1.push({
+      text: isPaused ? "▶️ Resume Sync" : "🛑 Pause Sync",
+      callback_data: isPaused ? "adm:sync:resume" : "adm:sync:pause",
+    });
+
+    buttons.push(row1);
+    buttons.push([
+      { text: "📡 Master Trade Sync", callback_data: "adm:sync:menu" },
+      { text: "👥 Approved Users", callback_data: "adm:users:list:active" },
+    ]);
+    buttons.push([
+      { text: "👑 Admin Panel", callback_data: "adm:home" },
+    ]);
+
+    return { text, keyboard: { inline_keyboard: buttons } };
   }
 
   /**
