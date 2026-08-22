@@ -221,8 +221,8 @@ export async function dispatchCentralWinningSetupToTelegram(
     message = formatWarRoomTelegramMessage(setup);
   }
 
-  const ok = await sendTelegramMessage(message);
-  if (ok) {
+  const ok = await sendTelegramMessage(message, eventKey);
+  if (ok.success) {
     recordSentEvent(eventKey);
     return { success: true, message: "Broadcasted successfully to Telegram." };
   }
@@ -441,8 +441,8 @@ export async function dispatchCentralLifecycleEventToTelegram(
   }
 
   const message = `${statusHeader}\n\n${bodyLines.join("\n")}`;
-  const ok = await sendTelegramMessage(message);
-  if (ok) {
+  const ok = await sendTelegramMessage(message, eventKey);
+  if (ok.success) {
     recordSentEvent(eventKey);
     return { success: true, message: `Dispatched ${event} alert.` };
   }

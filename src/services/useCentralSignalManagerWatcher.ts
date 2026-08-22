@@ -42,77 +42,9 @@ export function useCentralSignalManagerWatcher(
     );
     setManagerState(updated);
 
-    // Auto Broadcast checks
-    if (!updated.autoBroadcastToTelegram || isBroadcastingRef.current) return;
-
+    // CRITICAL: Browser tabs are READ-ONLY state visualizers and MUST NEVER act as signal triggers.
+    // Client-side auto-broadcasting is disabled to prevent duplicate signals on tab load, page refresh, or multi-tab usage.
     const currentActive = updated.activeSetup;
-    const prevActive = prevActiveSetupRef.current;
-
-    // 1. New Active Setup Activated
-    if (currentActive && (!prevActive || prevActive.setupId !== currentActive.setupId)) {
-      isBroadcastingRef.current = true;
-      dispatchCentralWinningSetupToTelegram(currentActive).finally(() => {
-        isBroadcastingRef.current = false;
-      });
-    }
-
-    // 2. Lifecycle transitions
-    if (currentActive && prevActive && prevActive.setupId === currentActive.setupId) {
-      if (!prevActive.isEntryTriggered && currentActive.isEntryTriggered) {
-        dispatchCentralLifecycleEventToTelegram(currentActive, "ENTRY_HIT", currentPrice);
-      }
-      if (!prevActive.isTp1Hit && currentActive.isTp1Hit) {
-        dispatchCentralLifecycleEventToTelegram(currentActive, "TP1_HIT", currentPrice);
-      }
-      if (!prevActive.isTp2Hit && currentActive.isTp2Hit) {
-        dispatchCentralLifecycleEventToTelegram(currentActive, "TP2_HIT", currentPrice);
-      }
-      if (!prevActive.isTp3Hit && currentActive.isTp3Hit) {
-        dispatchCentralLifecycleEventToTelegram(currentActive, "TP3_HIT", currentPrice);
-      }
-      if (!prevActive.isFinalTpHit && currentActive.isFinalTpHit) {
-        dispatchCentralLifecycleEventToTelegram(
-          currentActive,
-          "FINAL_TP_HIT",
-          currentPrice,
-          updated.cooldown.nextAvailableTimeFormatted
-        );
-      }
-      if (!prevActive.isSlHit && currentActive.isSlHit) {
-        if (currentActive.isTp1Hit) {
-          dispatchCentralLifecycleEventToTelegram(
-            currentActive,
-            "TP_THEN_SL_HIT",
-            currentPrice,
-            updated.cooldown.nextAvailableTimeFormatted
-          );
-        } else {
-          dispatchCentralLifecycleEventToTelegram(
-            currentActive,
-            "SL_HIT",
-            currentPrice,
-            updated.cooldown.nextAvailableTimeFormatted
-          );
-        }
-      }
-      if (!prevActive.isInvalidated && currentActive.isInvalidated) {
-        dispatchCentralLifecycleEventToTelegram(
-          currentActive,
-          "INVALIDATED",
-          currentPrice,
-          updated.cooldown.nextAvailableTimeFormatted
-        );
-      }
-      if (!prevActive.isExpired && currentActive.isExpired) {
-        dispatchCentralLifecycleEventToTelegram(
-          currentActive,
-          "EXPIRED",
-          currentPrice,
-          updated.cooldown.nextAvailableTimeFormatted
-        );
-      }
-    }
-
     prevActiveSetupRef.current = currentActive;
   }, [candles15m, candles5m, currentPrice, prices, assetKey]);
 

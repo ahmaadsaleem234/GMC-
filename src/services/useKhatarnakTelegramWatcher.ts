@@ -24,7 +24,9 @@ export function useKhatarnakTelegramWatcher(
   setup5m: KhatarnakJugaadSetup | null,
   options: KhatarnakWatcherOptions
 ) {
-  const { autoBroadcastEnabled = true, enable15M = true, enable5M = true, currentPrice } = options;
+  // CRITICAL ARCHITECTURAL SAFETY: Client-side watcher MUST NEVER auto-dispatch signals to Telegram.
+  // Tab opens, renders, and page reloads are strictly read-only.
+  const { autoBroadcastEnabled = false, enable15M = false, enable5M = false, currentPrice } = options;
 
   // Track processing state to avoid overlapping async calls
   const isProcessing15M = useRef(false);

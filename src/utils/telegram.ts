@@ -73,14 +73,33 @@ export function saveTelegramConfig(config: TelegramConfig): void {
   }
 }
 
-// Track sent messages to prevent duplicates / spam
-const sentAlertCache = new Set<string>();
+// Track sent messages to prevent duplicates / spam (persisted in localStorage)
+const STORAGE_SENT_ALERTS_KEY = "gmc_telegram_sent_alert_ids_v1";
+
+function getClientSentAlertCache(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_SENT_ALERTS_KEY);
+    if (raw) {
+      return new Set(JSON.parse(raw));
+    }
+  } catch (e) {}
+  return new Set<string>();
+}
+
+function recordClientSentAlert(alertId: string) {
+  try {
+    const cache = getClientSentAlertCache();
+    cache.add(alertId);
+    const arr = Array.from(cache).slice(-500);
+    localStorage.setItem(STORAGE_SENT_ALERTS_KEY, JSON.stringify(arr));
+  } catch (e) {}
+}
 
 export async function sendTelegramMessage(
   messageText: string,
   alertId?: string,
   overrideConfig?: { botToken?: string; chatId?: string }
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; duplicateSuppressed?: boolean }> {
   try {
     const config = getTelegramConfig();
 
@@ -92,23 +111,20 @@ export async function sendTelegramMessage(
     }
 
     if (alertId) {
-      if (sentAlertCache.has(alertId)) {
-        return { success: true, message: "Alert already dispatched (duplicate suppressed)." };
-      }
-      sentAlertCache.add(alertId);
-      if (sentAlertCache.size > 200) {
-        const first = sentAlertCache.values().next().value;
-        if (first) sentAlertCache.delete(first);
+      const cache = getClientSentAlertCache();
+      if (cache.has(alertId)) {
+        return { success: true, duplicateSuppressed: true, message: "Alert already dispatched (duplicate suppressed)." };
       }
     }
 
-    // Method 1: Try Server Proxy Route /api/telegram/send first (prevents CORS & mobile fetch quirks on external domains)
+    // Method 1: Server Proxy Route /api/telegram/send with Idempotency Protection
     try {
       const response = await fetch("/api/telegram/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: messageText,
+          alertId: alertId || undefined,
           botToken: token,
           chatId: chatId,
         }),
@@ -118,6 +134,10 @@ export async function sendTelegramMessage(
       if (contentType.includes("application/json")) {
         const data = await response.json();
         if (data.ok) {
+          if (alertId) recordClientSentAlert(alertId);
+          if (data.duplicateSuppressed) {
+            return { success: true, duplicateSuppressed: true, message: "Duplicate signal suppressed by server idempotency guard." };
+          }
           return { success: true, message: "✅ Telegram signal dispatched successfully to channel!" };
         }
         if (data.error) {
@@ -128,7 +148,7 @@ export async function sendTelegramMessage(
       console.warn("Server proxy Telegram send failed, trying direct browser API...", serverErr);
     }
 
-    // Method 2: Direct Telegram Bot API Call
+    // Method 2: Direct Telegram Bot API Call fallback (only if server unreachable)
     try {
       const directUrl = `https://api.telegram.org/bot${token}/sendMessage`;
       const directRes = await fetch(directUrl, {
@@ -146,6 +166,7 @@ export async function sendTelegramMessage(
       if (contentType.includes("application/json")) {
         const directData = await directRes.json();
         if (directData.ok) {
+          if (alertId) recordClientSentAlert(alertId);
           return { success: true, message: "✅ Telegram signal dispatched successfully to channel!" };
         } else if (directData.description) {
           return { success: false, message: `Telegram Error: ${directData.description}` };

@@ -85,13 +85,9 @@ export const KhatarnakJugaadView: React.FC<KhatarnakJugaadViewProps> = ({
   const prevStatus15m = useRef<string>("");
   const prevStatus5m = useRef<string>("");
 
-  // Automated background Telegram alert watcher for 15M & 5M setups
-  useKhatarnakTelegramWatcher(setup15m, setup5m, {
-    autoBroadcastEnabled: true,
-    enable15M: true,
-    enable5M: true,
-    currentPrice,
-  });
+  // Read-only tab: Telegram watcher is completely disabled for client-side auto-dispatch.
+  // Trades/events must NEVER be triggered by opening or refreshing website tabs.
+  // Manual dispatch is available via explicit user button click only.
 
   // Save history on change
   useEffect(() => {

@@ -1,13 +1,27 @@
 {
+  "935236586": {
+    "userId": "935236586",
+    "username": "@AIBOTSBLUEPRINTERS",
+    "firstName": "SHEHZAD",
+    "lastName": "",
+    "chatId": "935236586",
+    "status": "pending",
+    "joinedAt": "2026-08-22T13:58:02.241Z",
+    "lastActive": "2026-08-22T13:58:02.241Z",
+    "totalSignalsReceived": 0,
+    "decisionAt": "2026-08-22T15:01:38.960Z",
+    "languageCode": "en"
+  },
   "5218548758": {
     "userId": "5218548758",
-    "username": "@admin_master",
-    "firstName": "Master",
-    "lastName": "Admin",
+    "username": "@ahmaadsaleem32",
+    "firstName": "Ahmad",
+    "lastName": "Saleem",
     "chatId": "5218548758",
     "status": "approved",
     "joinedAt": "2026-08-10T17:48:52.858Z",
-    "lastActive": "2026-08-10T17:48:52.858Z",
-    "totalSignalsReceived": 1
+    "lastActive": "2026-08-22T13:04:30.276Z",
+    "totalSignalsReceived": 1,
+    "languageCode": "en"
   }
 }
