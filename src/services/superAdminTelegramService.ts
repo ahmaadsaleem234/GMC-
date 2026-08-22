@@ -26,6 +26,7 @@ export interface SuperAdminConfig {
   haramiMinConfidence: number;
   warRoomEnabled: boolean;
   warRoomMinScore: number;
+  khatarnakEnabled: boolean;
   autoApproveSignals: boolean;
   allowedMarkets: {
     XAUUSD: boolean;
@@ -80,6 +81,7 @@ const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   haramiMinConfidence: 88.0,
   warRoomEnabled: true,
   warRoomMinScore: 90.0,
+  khatarnakEnabled: true,
   autoApproveSignals: true,
   allowedMarkets: {
     XAUUSD: true,
@@ -252,6 +254,7 @@ export class SuperAdminTelegramService {
     const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
     const haramiState = this.config.haramiEnabled ? "🟢 ON (≥" + this.config.haramiMinConfidence + "%)" : "🔴 OFF";
     const warRoomState = this.config.warRoomEnabled ? "🟢 ON (≥" + this.config.warRoomMinScore + "%)" : "🔴 OFF";
+    const khatarnakState = this.config.khatarnakEnabled !== false ? "🟢 ON" : "🔴 OFF";
 
     const text = `
 <b>👑 SUPER ADMIN CONTROL CENTER</b>
@@ -259,6 +262,7 @@ export class SuperAdminTelegramService {
 <b>🤖 BROADCAST:</b> <b>${statusIcon}</b>
 <b>🔥 Harami AI:</b> <b>${haramiState}</b>
 <b>⚔️ War Room:</b> <b>${warRoomState}</b>
+<b>⚡ Khatarnak Jugaad:</b> <b>${khatarnakState}</b>
 <b>📊 Active Trades:</b> <code>${activeTradesCount}</code>
 <b>👥 Subscribers:</b> <code>${approvedUsersCount} Active</code> (${pendingUsersCount} Pending)
 <b>📈 Live Gold:</b> <code>$${liveGoldPrice.toFixed(2)}</code>
@@ -269,17 +273,21 @@ export class SuperAdminTelegramService {
     const keyboard: TelegramInlineKeyboard = {
       inline_keyboard: [
         [
-          { text: "🔥 Harami AI", callback_data: "adm:harami:menu" },
-          { text: "⚔️ War Room", callback_data: "adm:warroom:menu" },
-        ],
-        [
-          { text: `📊 Trades (${activeTradesCount})`, callback_data: "adm:trades:menu" },
+          { text: "🤖 Bot Access Hub", callback_data: "adm:bots:menu" },
           { text: `👥 Users (${totalUsersCount})`, callback_data: "adm:users:menu" },
         ],
         [
+          { text: `🔥 Harami (${this.config.haramiEnabled ? "ON" : "OFF"})`, callback_data: "adm:harami:menu" },
+          { text: `⚔️ War Room (${this.config.warRoomEnabled ? "ON" : "OFF"})`, callback_data: "adm:warroom:menu" },
+          { text: `⚡ Khatarnak (${this.config.khatarnakEnabled !== false ? "ON" : "OFF"})`, callback_data: "adm:khatarnak:menu" },
+        ],
+        [
+          { text: `📊 Active Trades (${activeTradesCount})`, callback_data: "adm:trades:menu" },
           { text: "📤 Trade Delivery", callback_data: "adm:delivery:menu" },
+        ],
+        [
           {
-            text: isKillSwitch ? "▶️ Resume Broadcast" : "🛑 Emergency Stop",
+            text: isKillSwitch ? "▶️ Resume All Signals" : "🛑 Stop All Signals (Emergency)",
             callback_data: isKillSwitch ? "adm:master:set:RUNNING" : "adm:master:confirm:KILL_SWITCH",
           },
         ],
@@ -302,6 +310,88 @@ export class SuperAdminTelegramService {
         [
           { text: "🧾 Logs", callback_data: "adm:logs:menu" },
           { text: "🚨 Master Control", callback_data: "adm:master:menu" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * 🤖 BOT ACCESS HUB & EMERGENCY CONTROL
+   */
+  public renderBotsMenu(): { text: string; keyboard: TelegramInlineKeyboard } {
+    const haramiOn = this.config.haramiEnabled;
+    const warRoomOn = this.config.warRoomEnabled;
+    const khatarnakOn = this.config.khatarnakEnabled !== false;
+    const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
+
+    const text = `
+<b>🤖 BOT ACCESS & EMERGENCY CONTROLS</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>GLOBAL BROADCAST:</b> <b>${isKillSwitch ? "🚨 STOPPED (KILL SWITCH)" : "🟢 ONLINE & ACTIVE"}</b>
+
+<b>INDIVIDUAL BOT STATUSES:</b>
+• 🔥 <b>Harami AI (30-Min Cycles):</b> <b>${haramiOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
+• ⚔️ <b>War Room (7-Gate A+):</b> <b>${warRoomOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
+• ⚡ <b>Khatarnak Jugaad (Scalp):</b> <b>${khatarnakOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ 1-Tap toggle individual bots or manage emergency global broadcast:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: isKillSwitch ? "▶️ RESUME ALL SIGNALS" : "🛑 STOP ALL SIGNALS",
+            callback_data: isKillSwitch ? "adm:master:set:RUNNING" : "adm:master:confirm:KILL_SWITCH",
+          },
+        ],
+        [
+          { text: `🔥 Harami AI: ${haramiOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:harami" },
+          { text: `⚔️ War Room: ${warRoomOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:war_room" },
+        ],
+        [
+          { text: `⚡ Khatarnak Jugaad: ${khatarnakOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:khatarnak" },
+        ],
+        [
+          { text: "👥 Per-User Bot Access", callback_data: "adm:users:menu" },
+          { text: "📤 Delivery Monitor", callback_data: "adm:delivery:menu" },
+        ],
+        [
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * ⚡ KHATARNAK JUGAAD ENGINE CONTROL
+   */
+  public renderKhatarnakControlMenu(): { text: string; keyboard: TelegramInlineKeyboard } {
+    const enabled = this.config.khatarnakEnabled !== false;
+
+    const text = `
+<b>⚡ KHATARNAK JUGAAD ENGINE CONTROL</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>ENGINE STATUS:</b> <b>${enabled ? "🟢 ENABLED (HIGH SPEED SCALP)" : "🔴 DISABLED"}</b>
+<b>STRATEGY TYPE:</b> <code>Rapid Dynamic Liquidity Scalper</code>
+<b>CONFLUENCE:</b> <code>Asian Sweep + Micro Structure Breakout</code>
+<b>PRIORITY:</b> <code>Aggressive High-Frequency Signal Engine</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ 1-Tap Toggle Khatarnak Jugaad broadcast:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: enabled ? "🔴 TURN OFF KHATARNAK" : "🟢 TURN ON KHATARNAK", callback_data: "adm:khatarnak:toggle" },
+        ],
+        [
+          { text: "👥 Assign to Users", callback_data: "adm:users:menu" },
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
         ],
       ],
     };
@@ -581,7 +671,8 @@ This will immediately impact all automated signals across all connected subscrib
         { text: `🔴 Expired (${expired})`, callback_data: "adm:users:list:expired" },
       ],
       [
-        { text: "📋 View All Users", callback_data: "adm:users:list:all" },
+        { text: `🚫 Blocked Users (${blocked})`, callback_data: "adm:users:list:blocked" },
+        { text: `📋 All Users (${total})`, callback_data: "adm:users:list:all" },
       ],
       [
         { text: "🔙 Back to Admin", callback_data: "adm:home" },

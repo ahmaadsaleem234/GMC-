@@ -1105,6 +1105,47 @@ async function startServer() {
       return;
     }
 
+    if (data === "adm:bots:menu") {
+      const menu = superAdminService.renderBotsMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data.startsWith("adm:bot:toggle:")) {
+      const botKey = data.replace("adm:bot:toggle:", "");
+      const cfg = superAdminService.getConfig();
+      if (botKey === "harami") {
+        cfg.haramiEnabled = !cfg.haramiEnabled;
+        superAdminService.logAction("BOT_TOGGLED", `Harami AI toggled to ${cfg.haramiEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (botKey === "war_room") {
+        cfg.warRoomEnabled = !cfg.warRoomEnabled;
+        superAdminService.logAction("BOT_TOGGLED", `War Room toggled to ${cfg.warRoomEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (botKey === "khatarnak") {
+        cfg.khatarnakEnabled = cfg.khatarnakEnabled === false ? true : false;
+        superAdminService.logAction("BOT_TOGGLED", `Khatarnak Jugaad toggled to ${cfg.khatarnakEnabled ? "ON" : "OFF"}`, cbUserId);
+      }
+      superAdminService.saveConfig();
+      const menu = superAdminService.renderBotsMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:khatarnak:menu") {
+      const menu = superAdminService.renderKhatarnakControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:khatarnak:toggle") {
+      const cfg = superAdminService.getConfig();
+      cfg.khatarnakEnabled = cfg.khatarnakEnabled === false ? true : false;
+      superAdminService.saveConfig();
+      superAdminService.logAction("KHATARNAK_TOGGLED", `Khatarnak Jugaad set to ${cfg.khatarnakEnabled ? "ON" : "OFF"}`, cbUserId);
+      const menu = superAdminService.renderKhatarnakControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
     if (data === "adm:harami:menu") {
       const activeSummary = serverActiveTrade
         ? `${serverActiveTrade.direction} @ $${serverActiveTrade.entry.toFixed(2)} (${serverActiveTrade.status})`
@@ -1313,6 +1354,7 @@ async function startServer() {
       if (filter === "pending") filtered = usersList.filter((u) => u.status === "pending");
       else if (filter === "active") filtered = usersList.filter((u) => u.status === "approved" || u.status === "trial");
       else if (filter === "expired") filtered = usersList.filter((u) => u.status === "expired");
+      else if (filter === "blocked") filtered = usersList.filter((u) => u.status === "blocked");
 
       const buttons: TelegramInlineButton[][] = filtered.slice(0, 10).map((u) => [
         {
@@ -2220,12 +2262,37 @@ ${dir === "BUY" ? "🟢" : "🔻"} <b>XAUUSD | ${dir}</b>
       return;
     }
 
+    if (data === "adm:delivery:menu") {
+      const menu = superAdminService.renderDeliveryCenterMenu(getDeliveryMetricsForMenu());
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
     if (data === "adm:strategies:menu") {
       const summaries = tradeStateManager.getVersionedPerformanceSummaries();
       const menu = superAdminService.renderStrategiesMenu(summaries);
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
       return;
     }
+  }
+
+  function getDeliveryMetricsForMenu() {
+    const usersList = Object.values(telegramUsersStore);
+    const activeSubscribers = usersList.filter((u) => u.status === "approved" || u.status === "trial").length;
+    const isKillSwitch = superAdminService.getConfig().masterStatus === "KILL_SWITCH";
+    const recentDeliveries = serverDeliveryLogs.slice(0, 5);
+    const failedDeliveries = serverDeliveryFailures.slice(0, 5);
+    const totalSignals = serverDeliveryLogs.length;
+    const totalSuccess = serverDeliveryLogs.filter((d) => d.status === "DELIVERED").length;
+    const successRate = totalSignals > 0 ? (totalSuccess / totalSignals) * 100 : 100.0;
+    return {
+      totalSignals,
+      activeSubscribers,
+      successRate,
+      recentDeliveries,
+      failedDeliveries,
+      isKillSwitch,
+    };
   }
 
   async function startTelegramPollingLoop() {
@@ -2675,6 +2742,57 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
 
                   await sendSingleTelegramMessage(chatId, dash.text, undefined, dash.keyboard);
                   continue;
+                } else if (textLower.startsWith("/bots") || textLower.startsWith("/botcontrol")) {
+                  if (!superAdminService.isSuperAdmin(userId) && !isMasterAdmin) {
+                    await sendSingleTelegramMessage(chatId, `⛔ <b>ACCESS DENIED — SUPER ADMIN ONLY</b>`);
+                    continue;
+                  }
+                  const menu = superAdminService.renderBotsMenu();
+                  await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                  continue;
+                } else if (textLower.startsWith("/users") || textLower.startsWith("/subscribers")) {
+                  if (!superAdminService.isSuperAdmin(userId) && !isMasterAdmin) {
+                    await sendSingleTelegramMessage(chatId, `⛔ <b>ACCESS DENIED — SUPER ADMIN ONLY</b>`);
+                    continue;
+                  }
+                  const usersList = Object.values(telegramUsersStore);
+                  const menu = superAdminService.renderUsersMenu(usersList);
+                  await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                  continue;
+                } else if (textLower.startsWith("/delivery") || textLower.startsWith("/signalslog")) {
+                  if (!superAdminService.isSuperAdmin(userId) && !isMasterAdmin) {
+                    await sendSingleTelegramMessage(chatId, `⛔ <b>ACCESS DENIED — SUPER ADMIN ONLY</b>`);
+                    continue;
+                  }
+                  const menu = superAdminService.renderDeliveryCenterMenu(getDeliveryMetricsForMenu());
+                  await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                  continue;
+                } else if (textLower.startsWith("/stop") || textLower.startsWith("/kill") || textLower.startsWith("/pause")) {
+                  if (!superAdminService.isSuperAdmin(userId) && !isMasterAdmin) {
+                    await sendSingleTelegramMessage(chatId, `⛔ <b>ACCESS DENIED — SUPER ADMIN ONLY</b>`);
+                    continue;
+                  }
+                  superAdminService.getConfig().masterStatus = "KILL_SWITCH";
+                  superAdminService.saveConfig();
+                  superAdminService.logAction("KILL_SWITCH_ENGAGED", `Emergency signal halt invoked by ${userId}`, userId);
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `🚨 <b>EMERGENCY KILL SWITCH ACTIVATED</b>\n━━━━━━━━━━━━━━━━━━━━\nAll automated signal broadcasts have been HALTED immediately across all connected bots & subscribers.\n\n<i>To resume, send /resume or open /admin.</i>`
+                  );
+                  continue;
+                } else if (textLower.startsWith("/resume") || textLower.startsWith("/startsignals")) {
+                  if (!superAdminService.isSuperAdmin(userId) && !isMasterAdmin) {
+                    await sendSingleTelegramMessage(chatId, `⛔ <b>ACCESS DENIED — SUPER ADMIN ONLY</b>`);
+                    continue;
+                  }
+                  superAdminService.getConfig().masterStatus = "RUNNING";
+                  superAdminService.saveConfig();
+                  superAdminService.logAction("BROADCAST_RESUMED", `Signal broadcast resumed by ${userId}`, userId);
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `🟢 <b>SIGNAL BROADCAST RESUMED</b>\n━━━━━━━━━━━━━━━━━━━━\nMaster signal generator is now ONLINE and broadcasting live trades to all approved subscribers.`
+                  );
+                  continue;
                 }
 
                 if (replyText) {
@@ -3007,51 +3125,25 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
     customPhotoBuffer?: Buffer,
     replyMarkup?: TelegramInlineKeyboard
   ): Promise<boolean> {
-    try {
-      const token = await resolveWorkingTelegramToken();
-      if (!token) return false;
-      const chatId = cleanServerTelegramInput(targetChatId);
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const token = await resolveWorkingTelegramToken();
+        if (!token) return false;
+        const chatId = cleanServerTelegramInput(targetChatId);
 
-      // If custom generated chart photo buffer is provided
-      if (customPhotoBuffer) {
-        try {
-          const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
-          const formData = new FormData();
-          formData.append("chat_id", String(chatId));
-          formData.append("photo", blob, "gmc_chart_signal.jpg");
-          formData.append("caption", text);
-          formData.append("parse_mode", "HTML");
-          if (replyMarkup) {
-            formData.append("reply_markup", JSON.stringify(replyMarkup));
-          }
-
-          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-            method: "POST",
-            body: formData,
-          });
-          const photoData = await photoRes.json();
-          if (photoData.ok) {
-            return true;
-          }
-        } catch (e) {
-          console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back:", e);
-        }
-      }
-
-      // If no replyMarkup is passed, we can try photo with logo
-      if (!replyMarkup) {
-        const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
-        const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
-        const logoPath = fs.existsSync(hImg) ? hImg : dImg;
-        if (fs.existsSync(logoPath)) {
+        // If custom generated chart photo buffer is provided
+        if (customPhotoBuffer) {
           try {
-            const fileBuffer = fs.readFileSync(logoPath);
-            const blob = new Blob([fileBuffer], { type: "image/jpeg" });
+            const blob = new Blob([customPhotoBuffer], { type: "image/jpeg" });
             const formData = new FormData();
             formData.append("chat_id", String(chatId));
-            formData.append("photo", blob, "harami_ai_logo.jpg");
+            formData.append("photo", blob, "gmc_chart_signal.jpg");
             formData.append("caption", text);
             formData.append("parse_mode", "HTML");
+            if (replyMarkup) {
+              formData.append("reply_markup", JSON.stringify(replyMarkup));
+            }
 
             const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
               method: "POST",
@@ -3062,32 +3154,72 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
               return true;
             }
           } catch (e) {
-            // Fall back to text message
+            console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back to text:", e);
           }
         }
-      }
 
-      const bodyPayload: any = {
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      };
-      if (replyMarkup) {
-        bodyPayload.reply_markup = replyMarkup;
-      }
+        // If no replyMarkup is passed, we can try photo with logo
+        if (!replyMarkup) {
+          const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
+          const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
+          const logoPath = fs.existsSync(hImg) ? hImg : dImg;
+          if (fs.existsSync(logoPath)) {
+            try {
+              const fileBuffer = fs.readFileSync(logoPath);
+              const blob = new Blob([fileBuffer], { type: "image/jpeg" });
+              const formData = new FormData();
+              formData.append("chat_id", String(chatId));
+              formData.append("photo", blob, "harami_ai_logo.jpg");
+              formData.append("caption", text);
+              formData.append("parse_mode", "HTML");
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-      });
-      const data = await res.json();
-      return !!data.ok;
-    } catch (err) {
-      console.error("[SINGLE TELEGRAM MSG ERROR]:", err);
-      return false;
+              const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+                method: "POST",
+                body: formData,
+              });
+              const photoData = await photoRes.json();
+              if (photoData.ok) {
+                return true;
+              }
+            } catch (e) {
+              // Fall back to text message
+            }
+          }
+        }
+
+        const bodyPayload: any = {
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        };
+        if (replyMarkup) {
+          bodyPayload.reply_markup = replyMarkup;
+        }
+
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyPayload),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          return true;
+        }
+        // If error is 429 or network, wait briefly and retry
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        }
+      } catch (err) {
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        } else {
+          console.error("[SINGLE TELEGRAM MSG ERROR (FINAL RETRY FAILED)]:", err);
+          return false;
+        }
+      }
     }
+    return false;
   }
 
   // Register Trade State Manager admin notification callback for arbitration & safety alerts
