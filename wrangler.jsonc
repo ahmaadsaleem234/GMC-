@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gmc-telegram-bot-backend",
+  "main": "worker.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "TELEGRAM_TARGET_CHAT_ID": "5218548758"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

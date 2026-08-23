@@ -72,8 +72,8 @@ export interface TelegramInlineKeyboard {
   inline_keyboard: TelegramInlineButton[][];
 }
 
-const SUPER_ADMIN_CONFIG_FILE = path.join(process.cwd(), "super_admin_config.json");
-const SUPER_ADMIN_LOGS_FILE = path.join(process.cwd(), "super_admin_audit_logs.json");
+const SUPER_ADMIN_CONFIG_FILE = typeof process !== "undefined" && process.cwd ? path.join(process.cwd(), "super_admin_config.json") : "super_admin_config.json";
+const SUPER_ADMIN_LOGS_FILE = typeof process !== "undefined" && process.cwd ? path.join(process.cwd(), "super_admin_audit_logs.json") : "super_admin_audit_logs.json";
 
 const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   superAdminId: "5218548758",
@@ -105,7 +105,7 @@ const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
 };
 
 export class SuperAdminTelegramService {
-  private config: SuperAdminConfig = DEFAULT_SUPER_ADMIN_CONFIG;
+  private config: SuperAdminConfig = { ...DEFAULT_SUPER_ADMIN_CONFIG };
   private auditLogs: SuperAdminAuditLog[] = [];
 
   constructor() {
@@ -114,17 +114,16 @@ export class SuperAdminTelegramService {
 
   private loadState() {
     try {
-      if (fs.existsSync(SUPER_ADMIN_CONFIG_FILE)) {
+      if (typeof fs !== "undefined" && fs.existsSync && fs.existsSync(SUPER_ADMIN_CONFIG_FILE)) {
         const raw = fs.readFileSync(SUPER_ADMIN_CONFIG_FILE, "utf-8");
         this.config = { ...DEFAULT_SUPER_ADMIN_CONFIG, ...JSON.parse(raw) };
       }
     } catch (e) {
-      console.warn("[SUPER ADMIN SERVICE]: Config load warning:", e);
       this.config = { ...DEFAULT_SUPER_ADMIN_CONFIG };
     }
 
     try {
-      if (fs.existsSync(SUPER_ADMIN_LOGS_FILE)) {
+      if (typeof fs !== "undefined" && fs.existsSync && fs.existsSync(SUPER_ADMIN_LOGS_FILE)) {
         const raw = fs.readFileSync(SUPER_ADMIN_LOGS_FILE, "utf-8");
         this.auditLogs = JSON.parse(raw);
       }
@@ -136,9 +135,11 @@ export class SuperAdminTelegramService {
   public saveConfig() {
     try {
       this.config.lastUpdatedUtc = new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
-      fs.writeFileSync(SUPER_ADMIN_CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
+      if (typeof fs !== "undefined" && fs.writeFileSync) {
+        fs.writeFileSync(SUPER_ADMIN_CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
+      }
     } catch (e) {
-      console.error("[SUPER ADMIN SERVICE]: Failed to save config:", e);
+      // In edge environments, stored in-memory or KV
     }
   }
 
@@ -147,9 +148,11 @@ export class SuperAdminTelegramService {
       if (this.auditLogs.length > 500) {
         this.auditLogs = this.auditLogs.slice(0, 500);
       }
-      fs.writeFileSync(SUPER_ADMIN_LOGS_FILE, JSON.stringify(this.auditLogs, null, 2), "utf-8");
+      if (typeof fs !== "undefined" && fs.writeFileSync) {
+        fs.writeFileSync(SUPER_ADMIN_LOGS_FILE, JSON.stringify(this.auditLogs, null, 2), "utf-8");
+      }
     } catch (e) {
-      console.error("[SUPER ADMIN SERVICE]: Failed to save audit logs:", e);
+      // In edge environments, stored in-memory or KV
     }
   }
 

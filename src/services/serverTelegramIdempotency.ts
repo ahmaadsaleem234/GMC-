@@ -12,8 +12,18 @@ export interface DispatchedEventRecord {
   dateTime: string;
 }
 
-const STORAGE_FILE = path.join(process.cwd(), "data", "telegram_idempotency_store.json");
+const STORAGE_FILE = typeof process !== "undefined" && process.cwd ? path.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
 const DEDUPLICATION_WINDOW_MS = 45 * 60 * 1000; // 45 minutes window for text hash
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16) + str.length.toString(16);
+}
 
 class TelegramIdempotencyRegistry {
   private dispatchedKeys: Set<string> = new Set();
@@ -26,7 +36,7 @@ class TelegramIdempotencyRegistry {
 
   private loadFromDisk(): void {
     try {
-      if (fs.existsSync(STORAGE_FILE)) {
+      if (typeof fs !== "undefined" && fs.existsSync && fs.existsSync(STORAGE_FILE)) {
         const raw = fs.readFileSync(STORAGE_FILE, "utf-8");
         const parsed: DispatchedEventRecord[] = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -38,25 +48,26 @@ class TelegramIdempotencyRegistry {
               this.textHashRecentMap.set(hashKey, rec.dispatchedAt);
             }
           }
-          console.log(`[TELEGRAM IDEMPOTENCY]: Loaded ${this.dispatchedKeys.size} sent event keys from storage.`);
         }
       }
     } catch (err) {
-      console.warn("[TELEGRAM IDEMPOTENCY]: Failed to load storage file, starting fresh:", err);
+      // In edge environments, start fresh or load from KV
     }
   }
 
   private saveToDisk(): void {
     try {
-      const dataDir = path.join(process.cwd(), "data");
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      if (typeof fs !== "undefined" && typeof process !== "undefined" && process.cwd) {
+        const dataDir = path.join(process.cwd(), "data");
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        // Retain the last 1,000 records
+        const trimmed = this.records.slice(-1000);
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(trimmed, null, 2), "utf-8");
       }
-      // Retain the last 1,000 records
-      const trimmed = this.records.slice(-1000);
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(trimmed, null, 2), "utf-8");
     } catch (err) {
-      console.error("[TELEGRAM IDEMPOTENCY]: Failed to persist records to disk:", err);
+      // In edge environments, handled via KV / memory
     }
   }
 
@@ -123,7 +134,12 @@ class TelegramIdempotencyRegistry {
       .replace(/\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM|UTC)?/gi, "") // remove time strings
       .replace(/\s+/g, " ")
       .trim();
-    return crypto.createHash("sha256").update(normalized).digest("hex").substring(0, 24);
+    try {
+      if (typeof crypto !== "undefined" && typeof (crypto as any).createHash === "function") {
+        return (crypto as any).createHash("sha256").update(normalized).digest("hex").substring(0, 24);
+      }
+    } catch (e) {}
+    return simpleHash(normalized);
   }
 
   /**

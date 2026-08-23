@@ -1,0 +1,12 @@
+name = "gmc-telegram-bot-backend"
+main = "worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+TELEGRAM_TARGET_CHAT_ID = "5218548758"
+
+# Optional Cloudflare KV persistence namespace (uncomment if using KV):
+# [[kv_namespaces]]
+# binding = "TELEGRAM_KV"
+# id = "<YOUR_KV_NAMESPACE_ID>"

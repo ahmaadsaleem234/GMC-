@@ -6378,6 +6378,118 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   });
 
   // -------------------------------------------------------------
+  // TELEGRAM WEBHOOK ENDPOINTS (Cloudflare Worker & Express Hybrid)
+  // -------------------------------------------------------------
+
+  app.post("/api/telegram/webhook", async (req, res) => {
+    try {
+      const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
+      const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+      if (configuredSecret && secretHeader !== configuredSecret) {
+        return res.status(403).json({ ok: false, error: "Invalid webhook secret token" });
+      }
+
+      const update = req.body;
+      if (update && update.callback_query) {
+        await handleTelegramAdminCallback(update.callback_query);
+        return res.json({ ok: true });
+      }
+      if (update && (update.message || update.channel_post)) {
+        const msg = update.message || update.channel_post;
+        if (msg.text) {
+          // Process message through standard handler
+          const chatId = String(msg.chat.id);
+          const userId = String(msg.from?.id || chatId);
+          const token = cachedValidTelegramToken || process.env.TELEGRAM_BOT_TOKEN;
+          if (token) {
+            // Register or update user
+            let user = telegramUsersStore[userId] || Object.values(telegramUsersStore).find((u) => u.chatId === chatId);
+            const nowIso = new Date().toISOString();
+            if (!user) {
+              const isSuperAdmin = superAdminService.isSuperAdmin(userId) || userId === serverTargetChatId || userId === "5218548758";
+              user = {
+                userId,
+                username: msg.from?.username ? `@${msg.from.username}` : "",
+                firstName: msg.from?.first_name || "Trader",
+                lastName: msg.from?.last_name || "",
+                chatId,
+                status: isSuperAdmin ? "approved" : "pending",
+                planType: isSuperAdmin ? "lifetime" : undefined,
+                botAccess: isSuperAdmin ? "all" : undefined,
+                joinedAt: nowIso,
+                lastActive: nowIso,
+                totalSignalsReceived: 0,
+                decisionAt: isSuperAdmin ? nowIso : null,
+              };
+              telegramUsersStore[userId] = user;
+              saveTelegramUsers();
+            }
+          }
+        }
+        return res.json({ ok: true });
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.all(["/api/telegram/set-webhook", "/set-webhook"], async (req, res) => {
+    try {
+      const token = cachedValidTelegramToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ ok: false, error: "TELEGRAM_BOT_TOKEN not configured" });
+      }
+      const host = req.headers.host || "localhost:3000";
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const defaultUrl = `${protocol}://${host}/api/telegram/webhook`;
+      const webhookUrl = req.body?.url || req.query?.url || defaultUrl;
+
+      const telegramUrl = new URL(`https://api.telegram.org/bot${token}/setWebhook`);
+      telegramUrl.searchParams.set("url", String(webhookUrl));
+      telegramUrl.searchParams.set("allowed_updates", JSON.stringify(["message", "edited_message", "channel_post", "callback_query"]));
+      telegramUrl.searchParams.set("drop_pending_updates", "true");
+      if (process.env.TELEGRAM_WEBHOOK_SECRET) {
+        telegramUrl.searchParams.set("secret_token", process.env.TELEGRAM_WEBHOOK_SECRET);
+      }
+
+      const tgRes = await fetch(telegramUrl.toString(), { method: "POST" });
+      const tgData = await tgRes.json();
+      res.json({ ok: true, configuredWebhookUrl: webhookUrl, telegramResponse: tgData });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.get("/api/telegram/webhook-info", async (req, res) => {
+    try {
+      const token = cachedValidTelegramToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ ok: false, error: "TELEGRAM_BOT_TOKEN not configured" });
+      }
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+      const tgData = await tgRes.json();
+      res.json({ ok: true, webhookInfo: tgData });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/telegram/delete-webhook", async (req, res) => {
+    try {
+      const token = cachedValidTelegramToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ ok: false, error: "TELEGRAM_BOT_TOKEN not configured" });
+      }
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`, { method: "POST" });
+      const tgData = await tgRes.json();
+      res.json({ ok: true, result: tgData });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------
   // ADMIN TELEGRAM BOT USER MANAGEMENT ENDPOINTS
   // -------------------------------------------------------------
 
