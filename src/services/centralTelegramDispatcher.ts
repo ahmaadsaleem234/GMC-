@@ -20,15 +20,18 @@ import {
   ActiveCentralSetup,
   AiBrainSource,
   getRandomSignatureLine,
+  centralSignalManager,
 } from "./centralSignalManager";
 
 const SENT_ALERTS_KEY = "central_telegram_sent_events_v1";
 
 function getSentEvents(): Set<string> {
   try {
-    const raw = localStorage.getItem(SENT_ALERTS_KEY);
-    if (raw) {
-      return new Set(JSON.parse(raw));
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(SENT_ALERTS_KEY);
+      if (raw) {
+        return new Set(JSON.parse(raw));
+      }
     }
   } catch (e) {
     // Ignore storage parse errors
@@ -41,7 +44,9 @@ function recordSentEvent(eventKey: string) {
     const events = getSentEvents();
     events.add(eventKey);
     const arr = Array.from(events).slice(-300);
-    localStorage.setItem(SENT_ALERTS_KEY, JSON.stringify(arr));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(SENT_ALERTS_KEY, JSON.stringify(arr));
+    }
   } catch (e) {
     // Ignore storage write errors
   }
@@ -447,4 +452,17 @@ export async function dispatchCentralLifecycleEventToTelegram(
     return { success: true, message: `Dispatched ${event} alert.` };
   }
   return { success: false, message: "Delivery failed." };
+}
+
+// Automatically subscribe to Central Signal Manager setup promotions for instant auto-dispatch
+if (typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
+  centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
+    try {
+      if (centralSignalManager.isAutoBroadcastEnabled()) {
+        await dispatchCentralWinningSetupToTelegram(setup);
+      }
+    } catch (e) {
+      console.warn("[CENTRAL TELEGRAM AUTO DISPATCH ERROR]:", e);
+    }
+  });
 }

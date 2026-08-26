@@ -442,6 +442,22 @@ export class CentralSignalManagerEngine {
   private cooldownMinutesConfig: CooldownDurationMinutes = 30;
   private autoBroadcastToTelegram: boolean = true;
   private isInitialized = false;
+  private onSetupPromotedListeners: Set<(setup: ActiveCentralSetup) => void> = new Set();
+
+  public onSetupPromoted(listener: (setup: ActiveCentralSetup) => void) {
+    this.onSetupPromotedListeners.add(listener);
+    return () => this.onSetupPromotedListeners.delete(listener);
+  }
+
+  private notifySetupPromoted(setup: ActiveCentralSetup) {
+    this.onSetupPromotedListeners.forEach((listener) => {
+      try {
+        listener(setup);
+      } catch (err) {
+        console.error("Error in onSetupPromoted listener", err);
+      }
+    });
+  }
 
   constructor() {
     this.restoreFromStorage();
@@ -450,54 +466,56 @@ export class CentralSignalManagerEngine {
   private restoreFromStorage() {
     if (this.isInitialized) return;
     try {
-      const storedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
-      if (storedActive) {
-        this.activeSetup = JSON.parse(storedActive);
-      }
-
-      const storedCooldown = localStorage.getItem(STORAGE_KEY_COOLDOWN);
-      if (storedCooldown) {
-        const cd: CooldownState = JSON.parse(storedCooldown);
-        const now = Date.now();
-        if (cd.expiresAt && cd.expiresAt > now) {
-          const remainingSec = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
-          const mins = Math.floor(remainingSec / 60);
-          const secs = remainingSec % 60;
-          this.cooldown = {
-            ...cd,
-            isActive: true,
-            remainingSeconds: remainingSec,
-            remainingFormatted: `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`,
-          };
-        } else {
-          this.cooldown = {
-            isActive: false,
-            durationMinutes: this.cooldownMinutesConfig,
-            startedAt: null,
-            expiresAt: null,
-            remainingSeconds: 0,
-            remainingFormatted: "00:00",
-            nextAvailableTimeFormatted: "Available Now",
-          };
+      if (typeof localStorage !== "undefined") {
+        const storedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
+        if (storedActive) {
+          this.activeSetup = JSON.parse(storedActive);
         }
-      }
 
-      const storedLogs = localStorage.getItem(STORAGE_KEY_AUDIT);
-      if (storedLogs) {
-        this.auditLogs = JSON.parse(storedLogs);
-      }
+        const storedCooldown = localStorage.getItem(STORAGE_KEY_COOLDOWN);
+        if (storedCooldown) {
+          const cd: CooldownState = JSON.parse(storedCooldown);
+          const now = Date.now();
+          if (cd.expiresAt && cd.expiresAt > now) {
+            const remainingSec = Math.max(0, Math.floor((cd.expiresAt - now) / 1000));
+            const mins = Math.floor(remainingSec / 60);
+            const secs = remainingSec % 60;
+            this.cooldown = {
+              ...cd,
+              isActive: true,
+              remainingSeconds: remainingSec,
+              remainingFormatted: `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`,
+            };
+          } else {
+            this.cooldown = {
+              isActive: false,
+              durationMinutes: this.cooldownMinutesConfig,
+              startedAt: null,
+              expiresAt: null,
+              remainingSeconds: 0,
+              remainingFormatted: "00:00",
+              nextAvailableTimeFormatted: "Available Now",
+            };
+          }
+        }
 
-      const storedStats = localStorage.getItem(STORAGE_KEY_STATS);
-      if (storedStats) {
-        this.aiStats = JSON.parse(storedStats);
-      }
+        const storedLogs = localStorage.getItem(STORAGE_KEY_AUDIT);
+        if (storedLogs) {
+          this.auditLogs = JSON.parse(storedLogs);
+        }
 
-      const storedConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
-      if (storedConfig) {
-        const cfg = JSON.parse(storedConfig);
-        if (cfg.minScoreThreshold) this.minScoreThreshold = cfg.minScoreThreshold;
-        if (cfg.cooldownMinutesConfig) this.cooldownMinutesConfig = cfg.cooldownMinutesConfig;
-        if (cfg.autoBroadcastToTelegram !== undefined) this.autoBroadcastToTelegram = cfg.autoBroadcastToTelegram;
+        const storedStats = localStorage.getItem(STORAGE_KEY_STATS);
+        if (storedStats) {
+          this.aiStats = JSON.parse(storedStats);
+        }
+
+        const storedConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
+        if (storedConfig) {
+          const cfg = JSON.parse(storedConfig);
+          if (cfg.minScoreThreshold) this.minScoreThreshold = cfg.minScoreThreshold;
+          if (cfg.cooldownMinutesConfig) this.cooldownMinutesConfig = cfg.cooldownMinutesConfig;
+          if (cfg.autoBroadcastToTelegram !== undefined) this.autoBroadcastToTelegram = cfg.autoBroadcastToTelegram;
+        }
       }
 
       this.isInitialized = true;
@@ -508,23 +526,25 @@ export class CentralSignalManagerEngine {
 
   private saveToStorage() {
     try {
-      if (this.activeSetup) {
-        localStorage.setItem(STORAGE_KEY_ACTIVE, JSON.stringify(this.activeSetup));
-      } else {
-        localStorage.removeItem(STORAGE_KEY_ACTIVE);
-      }
+      if (typeof localStorage !== "undefined") {
+        if (this.activeSetup) {
+          localStorage.setItem(STORAGE_KEY_ACTIVE, JSON.stringify(this.activeSetup));
+        } else {
+          localStorage.removeItem(STORAGE_KEY_ACTIVE);
+        }
 
-      localStorage.setItem(STORAGE_KEY_COOLDOWN, JSON.stringify(this.cooldown));
-      localStorage.setItem(STORAGE_KEY_AUDIT, JSON.stringify(this.auditLogs.slice(0, 100)));
-      localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(this.aiStats));
-      localStorage.setItem(
-        STORAGE_KEY_CONFIG,
-        JSON.stringify({
-          minScoreThreshold: this.minScoreThreshold,
-          cooldownMinutesConfig: this.cooldownMinutesConfig,
-          autoBroadcastToTelegram: this.autoBroadcastToTelegram,
-        })
-      );
+        localStorage.setItem(STORAGE_KEY_COOLDOWN, JSON.stringify(this.cooldown));
+        localStorage.setItem(STORAGE_KEY_AUDIT, JSON.stringify(this.auditLogs.slice(0, 100)));
+        localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(this.aiStats));
+        localStorage.setItem(
+          STORAGE_KEY_CONFIG,
+          JSON.stringify({
+            minScoreThreshold: this.minScoreThreshold,
+            cooldownMinutesConfig: this.cooldownMinutesConfig,
+            autoBroadcastToTelegram: this.autoBroadcastToTelegram,
+          })
+        );
+      }
     } catch (e) {
       console.error("CentralSignalManagerEngine save error", e);
     }
@@ -548,6 +568,18 @@ export class CentralSignalManagerEngine {
   public getCooldown(): CooldownState {
     this.updateCooldownTicker();
     return { ...this.cooldown };
+  }
+
+  public isAutoBroadcastEnabled(): boolean {
+    return this.autoBroadcastToTelegram;
+  }
+
+  public getConfig() {
+    return {
+      minScoreThreshold: this.minScoreThreshold,
+      cooldownMinutesConfig: this.cooldownMinutesConfig,
+      autoBroadcastToTelegram: this.autoBroadcastToTelegram,
+    };
   }
 
   private updateCooldownTicker() {
@@ -808,6 +840,7 @@ export class CentralSignalManagerEngine {
     );
 
     this.saveToStorage();
+    this.notifySetupPromoted(newActive);
 
     return {
       allowed: true,

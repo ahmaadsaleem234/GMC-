@@ -36,10 +36,12 @@ const ALERT_LOGS_STORAGE_KEY = "kj_telegram_alert_logs_v2";
  */
 export function getDispatchedEventKeys(): Set<string> {
   try {
-    const raw = localStorage.getItem(DISPATCHED_EVENTS_STORAGE_KEY);
-    if (raw) {
-      const parsed: string[] = JSON.parse(raw);
-      return new Set(parsed);
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(DISPATCHED_EVENTS_STORAGE_KEY);
+      if (raw) {
+        const parsed: string[] = JSON.parse(raw);
+        return new Set(parsed);
+      }
     }
   } catch (e) {
     console.error("Failed to load dispatched event keys", e);
@@ -55,7 +57,9 @@ export function recordDispatchedEventKey(setupId: string, event: JugaadTelegramE
     const keys = getDispatchedEventKeys();
     keys.add(`${setupId}::${event}`);
     const array = Array.from(keys).slice(-500);
-    localStorage.setItem(DISPATCHED_EVENTS_STORAGE_KEY, JSON.stringify(array));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(DISPATCHED_EVENTS_STORAGE_KEY, JSON.stringify(array));
+    }
   } catch (e) {
     console.error("Failed to save dispatched event key", e);
   }
@@ -74,9 +78,11 @@ export function isEventAlreadyDispatched(setupId: string, event: JugaadTelegramE
  */
 export function getRecentAlertLogs(): DispatchedJugaadAlert[] {
   try {
-    const raw = localStorage.getItem(ALERT_LOGS_STORAGE_KEY);
-    if (raw) {
-      return JSON.parse(raw);
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(ALERT_LOGS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
     }
   } catch (e) {
     console.error("Failed to load alert logs", e);
@@ -91,7 +97,9 @@ export function saveAlertLog(log: DispatchedJugaadAlert): void {
   try {
     const prev = getRecentAlertLogs();
     const updated = [log, ...prev].slice(0, 100);
-    localStorage.setItem(ALERT_LOGS_STORAGE_KEY, JSON.stringify(updated));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(ALERT_LOGS_STORAGE_KEY, JSON.stringify(updated));
+    }
   } catch (e) {
     console.error("Failed to save alert log", e);
   }
@@ -102,8 +110,10 @@ export function saveAlertLog(log: DispatchedJugaadAlert): void {
  */
 export function clearDispatchedEventHistory(): void {
   try {
-    localStorage.removeItem(DISPATCHED_EVENTS_STORAGE_KEY);
-    localStorage.removeItem(ALERT_LOGS_STORAGE_KEY);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(DISPATCHED_EVENTS_STORAGE_KEY);
+      localStorage.removeItem(ALERT_LOGS_STORAGE_KEY);
+    }
   } catch (e) {}
 }
 

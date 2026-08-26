@@ -17,6 +17,7 @@
     "@napi-rs/canvas": "^1.0.3",
     "@tailwindcss/vite": "^4.1.14",
     "@types/d3": "^7.4.3",
+    "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^5.0.4",
     "d3": "^7.9.0",
     "dotenv": "^17.2.3",
@@ -27,6 +28,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
+    "three": "^0.185.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
