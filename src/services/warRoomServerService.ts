@@ -60,6 +60,7 @@ import {
   LiveAlertNotification,
   LifecycleEventType,
 } from "../types/setupLifecycle.js";
+import { centralSignalManager } from "./centralSignalManager.js";
 
 // Valid Historical Trade Database (Authentic Historical Setups with Stored Evidence)
 const INITIAL_HISTORICAL_DATABASE: LockedWarRoomSetup[] = [
@@ -1509,6 +1510,12 @@ class WarRoomServerService {
     // 4. Dispatch Telegram Message if Auto-Publish is Enabled
     const effectiveSendTelegram = sendTelegramFn || this.telegramSender;
     if (this.config.telegramAutoPublish && effectiveSendTelegram) {
+      // STRICT SOURCE GATEKEEPING CHECK
+      if (!centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
+        console.warn(`[WAR ROOM GATEKEEPER]: Dropped Telegram alert for ${setup.setupId} because War Room is DISABLED by Admin.`);
+        return alert;
+      }
+
       try {
         let telegramText = "";
         if (eventType === "CANDIDATE_CREATED" || eventType === "LEVELS_FROZEN") {
@@ -1610,6 +1617,38 @@ class WarRoomServerService {
     }
 
     const setupId = `GMC-WAR-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(this.database.length + 1).padStart(3, "0")}`;
+
+    // STRICT CENTRAL GATEKEEPER CHECK: 1 Active Setup Lock & Source Eligibility
+    const gatekeeperResult = centralSignalManager.promoteWarRoomSetup({
+      setupId,
+      symbol: "XAUUSD",
+      direction,
+      entryLow: entryZone[0],
+      entryHigh: entryZone[1],
+      bestEntry,
+      stopLoss,
+      tp1,
+      tp2,
+      tp3,
+      tp4,
+      rrRatioString: riskToReward,
+      setupScore: 92,
+      confidence: 91.5,
+      reason: `War Room Supreme ${direction} Institutional Setup`,
+    });
+
+    if (!gatekeeperResult.allowed) {
+      console.warn(`[WAR ROOM GATEKEEPER]: Setup ${setupId} REJECTED by Central Gatekeeper: ${gatekeeperResult.message}`);
+      this.addAuditLog(
+        "LIFECYCLE",
+        "SETUP_REJECTED_BY_GATEKEEPER",
+        gatekeeperResult.message,
+        bestEntry,
+        90,
+        "WARNING"
+      );
+      return (this.activeSetup || null) as any;
+    }
 
     const newSetup: LockedWarRoomSetup = {
       setupId,

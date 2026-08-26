@@ -206,6 +206,59 @@ export function formatWarRoomTelegramMessage(setup: ActiveCentralSetup): string 
 }
 
 /**
+ * Format the exact PRECISION HUNTER AI Telegram setup message:
+ * 
+ * 🎯 PRECISION HUNTER AI V2
+ * 
+ * XAUUSD • 15M/5M/1M • BUY
+ * 
+ * 0.62 Golden: 2884.20
+ * 0.81 Green:  2882.50
+ * 
+ * SL: 2876.00 (Structure Invalidation)
+ * 
+ * TP1: 2892.00
+ * TP2: 2898.50
+ * TP3: 2906.00
+ * 
+ * R:R: 1:3.2
+ * Score: 94/100 (9/9 Verified)
+ * 
+ * Status: ACTIVE
+ * 
+ * 💬 [ONE RANDOM SIGNATURE LINE]
+ */
+export function formatPrecisionHunterTelegramMessage(setup: ActiveCentralSetup): string {
+  const isBuy = setup.direction === "BUY";
+  const e1 = setup.entry1Golden || (isBuy ? setup.entryZoneHigh : setup.entryZoneLow);
+  const e2 = setup.entry2Green || (isBuy ? setup.entryZoneLow : setup.entryZoneHigh);
+  const sig = setup.signatureLine || getRandomSignatureLine("PRECISION_HUNTER");
+  const rr = setup.rrRatioString.replace(/^R:R:\s*/i, "");
+
+  return [
+    `🎯 <b>PRECISION HUNTER AI V2</b>`,
+    ``,
+    `<b>${setup.assetKey} • 15M/5M/1M • ${setup.direction}</b>`,
+    ``,
+    `0.62 Golden: <code>${e1.toFixed(2)}</code>`,
+    `0.81 Green:  <code>${e2.toFixed(2)}</code>`,
+    ``,
+    `SL: <code>${setup.stopLoss.toFixed(2)}</code> (Structure Invalidation)`,
+    ``,
+    `TP1: <code>${setup.tp1.toFixed(2)}</code>`,
+    `TP2: <code>${setup.tp2.toFixed(2)}</code>`,
+    `TP3: <code>${setup.tp3.toFixed(2)}</code>`,
+    ``,
+    `R:R: <code>${rr}</code>`,
+    `Score: <code>${setup.setupScore}/100 (9/9 Confluence Verified)</code>`,
+    ``,
+    `Status: <b>ACTIVE</b>`,
+    ``,
+    `💬 <i>“${sig}”</i>`,
+  ].join("\n");
+}
+
+/**
  * Dispatch a brand-new winning active setup to Telegram
  */
 export async function dispatchCentralWinningSetupToTelegram(
@@ -218,7 +271,9 @@ export async function dispatchCentralWinningSetupToTelegram(
   }
 
   let message = "";
-  if (setup.brainSource === "KHATARNAK_JUGAAD") {
+  if (setup.brainSource === "PRECISION_HUNTER") {
+    message = formatPrecisionHunterTelegramMessage(setup);
+  } else if (setup.brainSource === "KHATARNAK_JUGAAD") {
     message = formatKhatarnakJugaadTelegramMessage(setup);
   } else if (setup.brainSource === "HARAMI_AI") {
     message = formatHaramiAiTelegramMessage(setup);

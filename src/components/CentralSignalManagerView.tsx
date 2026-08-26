@@ -84,6 +84,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
   const [cfgMinScore, setCfgMinScore] = useState<number>(managerState.minScoreThreshold);
   const [cfgCooldown, setCfgCooldown] = useState<CooldownDurationMinutes>(managerState.cooldownMinutesConfig);
   const [cfgAutoBroadcast, setCfgAutoBroadcast] = useState<boolean>(managerState.autoBroadcastToTelegram);
+  const [cfgPrecisionHunter, setCfgPrecisionHunter] = useState<boolean>(managerState.precisionHunterEnabled ?? true);
   const [cfgHarami, setCfgHarami] = useState<boolean>(managerState.haramiEnabled ?? true);
   const [cfgKhatarnak, setCfgKhatarnak] = useState<boolean>(managerState.khatarnakEnabled ?? true);
   const [cfgWarRoom, setCfgWarRoom] = useState<boolean>(managerState.warRoomEnabled ?? true);
@@ -97,6 +98,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
     cooldown,
     leaderboard,
     auditLogs,
+    precisionHunterEnabled = true,
     haramiEnabled = true,
     khatarnakEnabled = true,
     warRoomEnabled = true,
@@ -104,6 +106,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
   const handleToggleAiSource = (source: AiBrainSource, currentEnabled: boolean) => {
     const nextEnabled = !currentEnabled;
+    if (source === "PRECISION_HUNTER") setCfgPrecisionHunter(nextEnabled);
     if (source === "HARAMI_AI") setCfgHarami(nextEnabled);
     if (source === "KHATARNAK_JUGAAD") setCfgKhatarnak(nextEnabled);
     if (source === "WAR_ROOM") setCfgWarRoom(nextEnabled);
@@ -125,6 +128,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
   const handleSaveConfig = () => {
     onUpdateConfig(cfgMinScore, cfgCooldown, cfgAutoBroadcast);
+    if (cfgPrecisionHunter !== precisionHunterEnabled) handleToggleAiSource("PRECISION_HUNTER", precisionHunterEnabled);
     if (cfgHarami !== haramiEnabled) handleToggleAiSource("HARAMI_AI", haramiEnabled);
     if (cfgKhatarnak !== khatarnakEnabled) handleToggleAiSource("KHATARNAK_JUGAAD", khatarnakEnabled);
     if (cfgWarRoom !== warRoomEnabled) handleToggleAiSource("WAR_ROOM", warRoomEnabled);
@@ -181,7 +185,8 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Multi-Brain Synchronization: <span className="text-purple-300 font-bold">Harami AI</span> •{" "}
+                Multi-Brain Synchronization: <span className="text-emerald-400 font-bold">Precision Hunter 🎯</span> •{" "}
+                <span className="text-purple-300 font-bold">Harami AI</span> •{" "}
                 <span className="text-orange-400 font-bold">Khatarnak Jugaad 💀</span> •{" "}
                 <span className="text-amber-300 font-bold">War Room</span>
               </p>
@@ -312,7 +317,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
           </div>
         </div>
 
-        {/* 🎛️ INDEPENDENT 3-AI SOURCE ON/OFF CONTROLS BAR */}
+        {/* 🎛️ INDEPENDENT 4-AI SOURCE ON/OFF CONTROLS BAR */}
         <div className="mt-4 pt-4 border-t border-slate-800/80">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
@@ -326,8 +331,38 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs">
-            {/* 1. Harami AI Toggle */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
+            {/* 1. Precision Hunter AI Toggle */}
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                precisionHunterEnabled
+                  ? "bg-emerald-950/20 border-emerald-500/40 shadow-sm"
+                  : "bg-slate-900/40 border-slate-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🎯</span>
+                <div>
+                  <div className="font-bold text-white text-xs">Precision Hunter</div>
+                  <div className="text-[10px] text-emerald-300">
+                    {precisionHunterEnabled ? "🟢 ACTIVE SOURCE" : "🔴 DISABLED"}
+                  </div>
+                </div>
+              </div>
+              <button
+                id="csm-toggle-precision-hunter-btn"
+                onClick={() => handleToggleAiSource("PRECISION_HUNTER", precisionHunterEnabled)}
+                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                  precisionHunterEnabled
+                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                }`}
+              >
+                {precisionHunterEnabled ? "ON" : "OFF"}
+              </button>
+            </div>
+
+            {/* 2. Harami AI Toggle */}
             <div
               className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
                 haramiEnabled
@@ -357,7 +392,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
               </button>
             </div>
 
-            {/* 2. Khatarnak Jugaad Toggle */}
+            {/* 3. Khatarnak Jugaad Toggle */}
             <div
               className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
                 khatarnakEnabled
@@ -387,7 +422,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
               </button>
             </div>
 
-            {/* 3. War Room Supreme Toggle */}
+            {/* 4. War Room Supreme Toggle */}
             <div
               className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
                 warRoomEnabled
@@ -628,6 +663,26 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 </span>
               </div>
               <div className="bg-[#06080F] border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed select-all">
+                {activeSetup.brainSource === "PRECISION_HUNTER" && (
+                  <>
+                    <span className="text-emerald-400 font-bold">🎯 PRECISION HUNTER AI V2</span>
+                    {"\n\n"}
+                    <span className="text-white font-bold">{activeSetup.assetKey} • {activeSetup.timeframe} • {activeSetup.direction}</span>
+                    {"\n\n"}
+                    Entry Zone: <span className="text-emerald-400">{Math.min(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)} — {Math.max(activeSetup.entryZoneLow, activeSetup.entryZoneHigh).toFixed(2)}</span>{"\n"}
+                    {activeSetup.entry1Golden && <>Entry 1 (0.62 Fib): <span className="text-emerald-400">{activeSetup.entry1Golden.toFixed(2)}</span>{"\n"}</>}
+                    {activeSetup.entry2Green && <>Entry 2 (0.81 Fib): <span className="text-emerald-400">{activeSetup.entry2Green.toFixed(2)}</span>{"\n"}</>}
+                    {"\n"}
+                    SL: <span className="text-rose-400">{activeSetup.stopLoss.toFixed(2)}</span> (Structure Invalidation){"\n\n"}
+                    TP1: <span className="text-cyan-400">{activeSetup.tp1.toFixed(2)}</span>{"\n"}
+                    TP2: <span className="text-cyan-400">{activeSetup.tp2.toFixed(2)}</span>{"\n"}
+                    TP3: <span className="text-cyan-400">{activeSetup.tp3.toFixed(2)}</span>{"\n\n"}
+                    R:R: <span className="text-emerald-300">{activeSetup.rrRatioString.replace(/^R:R:\s*/i, "")}</span>{"\n"}
+                    Precision Score: <span className="text-amber-400">{activeSetup.setupScore}/100</span>{"\n\n"}
+                    Status: <span className="text-emerald-400 font-bold">ACTIVE</span>{"\n\n"}
+                    💬 <span className="text-emerald-200 italic">“{activeSetup.signatureLine || "Precision over frequency. Strict 0-6 trades/day ceiling."}”</span>
+                  </>
+                )}
                 {activeSetup.brainSource === "KHATARNAK_JUGAAD" && (
                   <>
                     <span className="text-orange-400 font-bold">💀 KHATARNAK JUGAAD</span>
@@ -721,30 +776,36 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             <p className="text-xs text-slate-400 max-w-md mx-auto font-sans">
               {cooldown.isActive
                 ? `The strict 30-minute cooldown is currently active. Next setup available after ${cooldown.nextAvailableTimeFormatted}. No new Telegram signal will be generated during this period.`
-                : "All 3 AI Trading Brains (Harami AI, War Room, Khatarnak Jugaad 💀) are continuously verifying live price, market structure, and Fib 2.6 alignment. Weak or unverified setups are never forced."}
+                : "All 4 AI Trading Brains (Precision Hunter 🎯, Harami AI, War Room, Khatarnak Jugaad 💀) are continuously verifying live price, market structure, and Fib 2.6 alignment. Weak or unverified setups are never forced."}
             </p>
           </div>
         )}
       </div>
 
-      {/* 3. AI BRAIN COMPETITION MATRIX (HARAMI AI vs KHATARNAK JUGAAD vs WAR ROOM) */}
+      {/* 3. AI BRAIN COMPETITION MATRIX (PRECISION HUNTER vs KHATARNAK JUGAAD vs WAR ROOM vs HARAMI AI) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-amber-400" />
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              3 AI Brain Competition & 9-Point Quality Verification
+              4 AI Brain Competition & 9-Point Quality Verification
             </h3>
           </div>
           <span className="text-xs text-slate-400 font-mono">Min Quality Score: {managerState.minScoreThreshold}/100</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {(["KHATARNAK_JUGAAD", "WAR_ROOM", "HARAMI_AI"] as AiBrainSource[]).map((source) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {(["PRECISION_HUNTER", "KHATARNAK_JUGAAD", "WAR_ROOM", "HARAMI_AI"] as AiBrainSource[]).map((source) => {
             const candidate: AiCandidateEvaluation = candidates[source];
             const isWinner = activeSetup?.brainSource === source;
             const isSourceEnabled =
-              source === "HARAMI_AI" ? haramiEnabled : source === "KHATARNAK_JUGAAD" ? khatarnakEnabled : warRoomEnabled;
+              source === "PRECISION_HUNTER"
+                ? precisionHunterEnabled
+                : source === "HARAMI_AI"
+                ? haramiEnabled
+                : source === "KHATARNAK_JUGAAD"
+                ? khatarnakEnabled
+                : warRoomEnabled;
 
             return (
               <div
@@ -1177,6 +1238,25 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   Independent AI Sources ON / OFF
                 </div>
                 
+                {/* Precision Hunter AI */}
+                <div className="flex items-center justify-between p-2.5 bg-[#0B0F17] rounded-xl border border-emerald-500/30">
+                  <div className="flex items-center gap-2">
+                    <span>🎯</span>
+                    <div>
+                      <div className="font-bold text-white text-xs">Precision Hunter AI V2</div>
+                      <div className="text-[10px] text-emerald-300">15M/5M/1M precision signal engine</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCfgPrecisionHunter(!cfgPrecisionHunter)}
+                    className={`px-3 py-1 rounded-lg font-mono font-bold text-xs ${
+                      cfgPrecisionHunter ? "bg-emerald-500 text-slate-950" : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                    }`}
+                  >
+                    {cfgPrecisionHunter ? "ENABLED" : "MUTED"}
+                  </button>
+                </div>
+
                 {/* Harami AI */}
                 <div className="flex items-center justify-between p-2.5 bg-[#0B0F17] rounded-xl border border-purple-500/30">
                   <div className="flex items-center gap-2">

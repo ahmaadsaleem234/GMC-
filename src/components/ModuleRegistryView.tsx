@@ -68,7 +68,17 @@ const EXTENDED_MODULE_METADATA: Record<string, Partial<ModuleMetadata>> = {
     telegramSupport: true,
     aiEngineVersion: "GMC Apex Orchestrator v4.2",
     executionMode: "Semi-Auto Copilot",
-    useCase: "Strict 1-Active Telegram setup rule coordinator. Prioritizes best setup among Harami, Khatarnak, and War Room.",
+    useCase: "Strict 1-Active Telegram setup rule coordinator. Prioritizes best setup among Precision Hunter, Harami, Khatarnak, and War Room.",
+  },
+  precision_hunter: {
+    timeframes: ["15M", "5M", "1M"],
+    dependencies: ["15M Macro Structure Engine", "5M Confirmation Scanner", "1M Precision Entry Gate", "Liquidity Sweep & Reclaim", "Fib 0.62–0.81 Golden Zone"],
+    riskTier: "Conservative",
+    dataFeeds: ["Live Multi-TF Candles", "Live Order Book Depth", "Dynamic Invalidation Levels"],
+    telegramSupport: true,
+    aiEngineVersion: "Precision Hunter V2 Multi-TF Brain",
+    executionMode: "Semi-Auto Copilot",
+    useCase: "Institutional precision brain maximizing quality over quantity (0-6 trades/day target). NO VALID SETUP = NO TRADE.",
   },
   khatarnak_jugaad: {
     timeframes: ["15M", "5M", "1M"],

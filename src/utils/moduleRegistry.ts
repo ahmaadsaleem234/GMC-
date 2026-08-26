@@ -18,6 +18,7 @@ import {
   Sparkles,
   Compass,
   LayoutGrid,
+  Crosshair,
 } from "lucide-react";
 
 export interface ModuleRegistryItem {
@@ -47,10 +48,20 @@ export const MODULE_REGISTRY: ModuleRegistryItem[] = [
     label: "🏛️ CENTRAL SIGNAL MANAGER — Telegram Single Active Setup Orchestrator",
     icon: Flame,
     category: "Core",
-    desc: "Single active Telegram setup orchestrator synchronizing Harami AI, Khatarnak Jugaad 💀, and War Room with real-data validation, 3/3 consensus, priority ranking, 35m cooldown & audit logs.",
+    desc: "Single active Telegram setup orchestrator synchronizing Precision Hunter AI 🎯, Harami AI, Khatarnak Jugaad 💀, and War Room with real-data validation, 4-brain consensus, priority ranking, 35m cooldown & audit logs.",
     emoji: "🏛️",
     tag: "1-ACTIVE TELEGRAM APEX",
     tagColor: "bg-amber-400/30 text-amber-300 border-amber-400/80 shadow-[0_0_16px_rgba(234,179,8,0.6)] animate-pulse font-black",
+  },
+  {
+    id: "precision_hunter",
+    label: "🎯 PRECISION HUNTER AI V2 — Multi-TF Precision Signal Engine",
+    icon: Crosshair,
+    category: "Core",
+    desc: "Institutional multi-timeframe precision brain (15M Macro Structure → 5M Confirmation → 1M Precision Trigger). Focuses on Liquidity Sweeps, Golden Fib (0.62–0.81), Invalidation SL & 0–6 high-quality trades/day maximum.",
+    emoji: "🎯",
+    tag: "PRECISION HUNTER V2",
+    tagColor: "bg-emerald-500/30 text-emerald-300 border-emerald-400/80 shadow-[0_0_16px_rgba(16,185,129,0.6)] animate-pulse font-black",
   },
   {
     id: "khatarnak_jugaad",

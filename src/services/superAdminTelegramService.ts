@@ -38,6 +38,7 @@ export interface SuperAdminConfig {
   warRoomEnabled: boolean;
   warRoomMinScore: number;
   khatarnakEnabled: boolean;
+  precisionHunterEnabled?: boolean;
   autoApproveSignals: boolean;
   allowedMarkets: {
     XAUUSD: boolean;
@@ -94,6 +95,7 @@ const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   warRoomEnabled: true,
   warRoomMinScore: 90.0,
   khatarnakEnabled: true,
+  precisionHunterEnabled: true,
   autoApproveSignals: true,
   allowedMarkets: {
     XAUUSD: true,
@@ -424,6 +426,7 @@ The following user(s) are waiting for your approval to receive live trade signal
     const haramiOn = this.config.haramiEnabled;
     const warRoomOn = this.config.warRoomEnabled;
     const khatarnakOn = this.config.khatarnakEnabled !== false;
+    const precisionHunterOn = this.config.precisionHunterEnabled !== false;
     const isKillSwitch = this.config.masterStatus === "KILL_SWITCH";
 
     const text = `
@@ -432,6 +435,7 @@ The following user(s) are waiting for your approval to receive live trade signal
 <b>GLOBAL BROADCAST:</b> <b>${isKillSwitch ? "🚨 STOPPED (KILL SWITCH)" : "🟢 ONLINE & ACTIVE"}</b>
 
 <b>INDIVIDUAL BOT STATUSES:</b>
+• 🎯 <b>Precision Hunter AI (Multi-TF):</b> <b>${precisionHunterOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
 • 🔥 <b>Harami AI (30-Min Cycles):</b> <b>${haramiOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
 • ⚔️ <b>War Room (7-Gate A+):</b> <b>${warRoomOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
 • ⚡ <b>Khatarnak Jugaad (Scalp):</b> <b>${khatarnakOn ? "🟢 RUNNING" : "🔴 STOPPED"}</b>
@@ -448,6 +452,9 @@ The following user(s) are waiting for your approval to receive live trade signal
           },
         ],
         [
+          { text: `🎯 Precision Hunter: ${precisionHunterOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:precision_hunter" },
+        ],
+        [
           { text: `🔥 Harami AI: ${haramiOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:harami" },
           { text: `⚔️ War Room: ${warRoomOn ? "🟢 ON" : "🔴 OFF"}`, callback_data: "adm:bot:toggle:war_room" },
         ],
@@ -459,6 +466,38 @@ The following user(s) are waiting for your approval to receive live trade signal
           { text: "📤 Delivery Monitor", callback_data: "adm:delivery:menu" },
         ],
         [
+          { text: "🔙 Back to Admin", callback_data: "adm:home" },
+        ],
+      ],
+    };
+
+    return { text, keyboard };
+  }
+
+  /**
+   * 🎯 PRECISION HUNTER AI ENGINE CONTROL
+   */
+  public renderPrecisionHunterControlMenu(): { text: string; keyboard: TelegramInlineKeyboard } {
+    const enabled = this.config.precisionHunterEnabled !== false;
+
+    const text = `
+<b>🎯 PRECISION HUNTER AI ENGINE CONTROL</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>ENGINE STATUS:</b> <b>${enabled ? "🟢 ENABLED (INSTITUTIONAL PRECISION)" : "🔴 DISABLED"}</b>
+<b>STRATEGY TYPE:</b> <code>15M/5M/1M Multi-TF Golden Confluence Engine</code>
+<b>CONFLUENCE:</b> <code>Macro Trend + Golden Fib + Liquidity Sweep & Reclaim</code>
+<b>PHILOSOPHY:</b> <code>Precision > Frequency (0–6 High-Quality Trades/Day)</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ 1-Tap Toggle Precision Hunter AI broadcast:</i>
+`.trim();
+
+    const keyboard: TelegramInlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: enabled ? "🔴 TURN OFF PRECISION HUNTER" : "🟢 TURN ON PRECISION HUNTER", callback_data: "adm:precision_hunter:toggle" },
+        ],
+        [
+          { text: "👥 Assign to Users", callback_data: "adm:users:menu" },
           { text: "🔙 Back to Admin", callback_data: "adm:home" },
         ],
       ],

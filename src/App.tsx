@@ -34,6 +34,7 @@ import { TradeExecutionMapView } from "./components/TradeExecutionMapView";
 import { GmcAiWarRoomView } from "./components/warroom/GmcAiWarRoomView";
 import { KhatarnakJugaadView } from "./components/KhatarnakJugaadView";
 import { CentralSignalManagerView } from "./components/CentralSignalManagerView";
+import { PrecisionHunterView } from "./components/PrecisionHunterView";
 import { ModuleRegistryView } from "./components/ModuleRegistryView";
 import { useCentralSignalManagerWatcher } from "./services/useCentralSignalManagerWatcher";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
@@ -640,6 +641,32 @@ export function App() {
               prices={prices}
               currentPrice={currentPrice}
               latencyMs={latencyMs}
+            />
+          </div>
+        )}
+
+        {activeTab === "precision_hunter" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["precision_hunter"] || accounts["central_signal_manager"] || accounts["warroom"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("precision_hunter", {
+                  assetKey: activeAssetKey,
+                  type: centralManagerState.candidates["PRECISION_HUNTER"]?.direction || "BUY",
+                  entryPrice: centralManagerState.candidates["PRECISION_HUNTER"]?.entryPrice || currentPrice,
+                  stopLoss: centralManagerState.candidates["PRECISION_HUNTER"]?.stopLoss || currentPrice - 3.5,
+                  takeProfit: centralManagerState.candidates["PRECISION_HUNTER"]?.tp2 || currentPrice + 12.0,
+                  lotSize: 0.1,
+                  signalSource: "🎯 PRECISION HUNTER AI V2 — Institutional Multi-TF Engine",
+                })
+              }
+            />
+            <PrecisionHunterView
+              currentPrice={currentPrice}
+              prices={prices}
+              latencyMs={latencyMs}
+              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+              onOpenCentralManager={() => setActiveTab("central_signal_manager")}
             />
           </div>
         )}

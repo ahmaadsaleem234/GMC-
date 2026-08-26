@@ -1303,7 +1303,11 @@ async function startServer() {
     if (data.startsWith("adm:bot:toggle:")) {
       const botKey = data.replace("adm:bot:toggle:", "");
       const cfg = superAdminService.getConfig();
-      if (botKey === "harami") {
+      if (botKey === "precision_hunter") {
+        cfg.precisionHunterEnabled = cfg.precisionHunterEnabled === false ? true : false;
+        centralSignalManager.setAiSourceEnabled("PRECISION_HUNTER", cfg.precisionHunterEnabled);
+        superAdminService.logAction("BOT_TOGGLED", `Precision Hunter AI toggled to ${cfg.precisionHunterEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (botKey === "harami") {
         cfg.haramiEnabled = !cfg.haramiEnabled;
         centralSignalManager.setAiSourceEnabled("HARAMI_AI", cfg.haramiEnabled);
         superAdminService.logAction("BOT_TOGGLED", `Harami AI toggled to ${cfg.haramiEnabled ? "ON" : "OFF"}`, cbUserId);
@@ -1318,6 +1322,23 @@ async function startServer() {
       }
       superAdminService.saveConfig();
       const menu = superAdminService.renderBotsMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:precision_hunter:menu") {
+      const menu = superAdminService.renderPrecisionHunterControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:precision_hunter:toggle") {
+      const cfg = superAdminService.getConfig();
+      cfg.precisionHunterEnabled = cfg.precisionHunterEnabled === false ? true : false;
+      centralSignalManager.setAiSourceEnabled("PRECISION_HUNTER", cfg.precisionHunterEnabled);
+      superAdminService.saveConfig();
+      superAdminService.logAction("PRECISION_HUNTER_TOGGLED", `Precision Hunter AI set to ${cfg.precisionHunterEnabled ? "ON" : "OFF"}`, cbUserId);
+      const menu = superAdminService.renderPrecisionHunterControlMenu();
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
       return;
     }
@@ -4088,6 +4109,19 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       botLabel = "Khatarnak Jugaad / Harami AI / War Room";
     }
 
+    // STRICT SOURCE GATEKEEPING (Admin Orchestrator Enforcement)
+    const sourceEngineMap: Record<string, AiBrainSource> = {
+      WAR_ROOM: "WAR_ROOM",
+      KHATARNAK: "KHATARNAK_JUGAAD",
+      HARAMI_AI: "HARAMI_AI",
+    };
+    const mappedSource = sourceEngineMap[signalEngine];
+    if (mappedSource && !centralSignalManager.isAiSourceEnabled(mappedSource)) {
+      console.warn(`[CENTRAL GATEKEEPER STRICT ENFORCEMENT]: Dropped Telegram broadcast. Source '${botLabel}' is DISABLED in Central Orchestrator.`);
+      serverTelegramDeliveryStatus = "Idle";
+      return false;
+    }
+
     // Live Mode: Audit and dispatch to ALL registered users according to persistent authorization state
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
@@ -4853,6 +4887,50 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const entryLow = isBuy ? Number((entry - 0.8).toFixed(2)) : Number((entry - 0.5).toFixed(2));
           const entryHigh = isBuy ? Number((entry + 0.5).toFixed(2)) : Number((entry + 0.8).toFixed(2));
 
+          const signalId = `HRM-${Math.floor(1000 + Math.random() * 9000)}`;
+          const reasonForEntry = generateDynamicReason(direction, now);
+          const risk = Math.abs(entry - sl);
+          const reward = Math.abs(tp1 - entry);
+          const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
+
+          // ----------------------------------------------------
+          // STRICT CENTRAL GATEKEEPER: SOURCE & 1 ACTIVE SETUP LOCK
+          // ----------------------------------------------------
+          const gatekeeperCheck = centralSignalManager.registerOrBroadcastSetup("HARAMI_AI", {
+            setupId: signalId,
+            assetKey: "XAUUSD",
+            timeframe: "15M",
+            direction,
+            entryZoneLow: entryLow,
+            entryZoneHigh: entryHigh,
+            preferredEntry: entry,
+            stopLoss: sl,
+            tp1,
+            tp2,
+            tp3,
+            finalTp: tp4,
+            rrRatioString: calculatedRR,
+            setupScore: Math.round(confidence),
+            marketConfidence: Math.round(confidence),
+            selectionReason: reasonForEntry,
+          });
+
+          if (!gatekeeperCheck.allowed) {
+            console.log(`[CENTRAL GATEKEEPER BLOCKED HARAMI SETUP]: ${gatekeeperCheck.message}`);
+            serverCurrentDecision = `WAIT — ${gatekeeperCheck.reason}`;
+            serverAnalysisLogs.unshift({
+              cycleId: `cycle-${now}`,
+              timestampUtc: nowUtc,
+              livePrice: currentPrice,
+              marketDataStatus: serverMarketDataStatus,
+              confidence,
+              setupResult: "GATEKEEPER BLOCKED",
+              telegramDeliveryStatus: "Blocked by Central Orchestrator",
+              reason: gatekeeperCheck.message,
+            });
+            return;
+          }
+
           // ----------------------------------------------------
           // STRICT SAFETY GATE: PRE-SIGNAL ADMISSION VALIDATION
           // ----------------------------------------------------
@@ -4894,15 +4972,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             return;
           }
 
-          const reasonForEntry = generateDynamicReason(direction, now);
-
           // Check if current price is inside execution zone
           const isAlreadyInZone = isBuy
             ? tick.ask <= entryHigh && tick.ask >= entryLow - 1.0
             : tick.bid >= entryLow && tick.bid <= entryHigh + 1.0;
 
           const initialStatus = isAlreadyInZone ? "ENTRY_CONFIRMED" : "WAITING_FOR_ENTRY";
-          const signalId = `HRM-${Math.floor(1000 + Math.random() * 9000)}`;
 
           // Register in centralized Trade State Manager (Single Source of Truth)
           const registeredTrade = tradeStateManager.registerNewTrade({
@@ -4982,10 +5057,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           serverLastSignalTime = now;
           serverLastDispatchedSignal = { direction, entry, timestamp: now };
           registerDispatchedSignal(serverActiveTrade.id, "HARAMI_AI", direction, entry);
-
-          const risk = Math.abs(entry - sl);
-          const reward = Math.abs(tp1 - entry);
-          const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
 
           const signalText = formatHaramiSignalMessage({
             signalId,
@@ -5823,123 +5894,136 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         await executeServerSignalEngineTick();
         const goldTick = fcsMarketService.getLiveTick("XAUUSD");
         if (goldTick?.price) {
-          if (!warRoomServerService.getActiveSetup()) {
-            await warRoomServerService.generateWarRoomState().catch(() => null);
+          // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated)
+          if (centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
+            if (!warRoomServerService.getActiveSetup()) {
+              await warRoomServerService.generateWarRoomState().catch(() => null);
+            }
+            await warRoomServerService.tickMonitoring(goldTick.price, async (msg) => {
+              return await sendServerTelegramMessage(msg);
+            });
           }
-          await warRoomServerService.tickMonitoring(goldTick.price, async (msg) => {
-            return await sendServerTelegramMessage(msg);
-          });
 
-          // 💀 KHATARNAK JUGAAD 1M INSTITUTIONAL 2.6 ENGINE REALTIME DISPATCHER
-          const rawCandles = fcsMarketService.getCandles("XAUUSD", "1m");
-          const candles1m = rawCandles && rawCandles.length >= 10 
-            ? rawCandles 
-            : fcsMarketService.getCandles("XAUUSD", "5m");
+          // 💀 KHATARNAK JUGAAD 1M INSTITUTIONAL 2.6 ENGINE REALTIME DISPATCHER (Source-gated)
+          if (centralSignalManager.isAiSourceEnabled("KHATARNAK_JUGAAD")) {
+            const rawCandles = fcsMarketService.getCandles("XAUUSD", "1m");
+            const candles1m = rawCandles && rawCandles.length >= 10 
+              ? rawCandles 
+              : fcsMarketService.getCandles("XAUUSD", "5m");
 
-          if (candles1m && candles1m.length >= 10) {
-            const formattedCandles = candles1m.map((c) => ({
-              time: typeof c.timestamp === "number" ? c.timestamp : Math.floor(new Date(c.datetime || Date.now()).getTime() / 1000),
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              volume: c.volume || 100,
-            }));
+            if (candles1m && candles1m.length >= 10) {
+              const formattedCandles = candles1m.map((c) => ({
+                time: typeof c.timestamp === "number" ? c.timestamp : Math.floor(new Date(c.datetime || Date.now()).getTime() / 1000),
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume || 100,
+              }));
 
-            if (!serverActiveKhatarnakSetup) {
-              const evaluatedSetup = calculateKhatarnakJugaadSetup(
-                formattedCandles as any,
-                goldTick.price,
-                "1M"
-              );
+              if (!serverActiveKhatarnakSetup) {
+                const evaluatedSetup = calculateKhatarnakJugaadSetup(
+                  formattedCandles as any,
+                  goldTick.price,
+                  "1M"
+                );
 
-              if (
-                evaluatedSetup.hasValidSetup &&
-                evaluatedSetup.score >= 80 &&
-                (evaluatedSetup.isRejectionConfirmed || evaluatedSetup.isChochConfirmed || evaluatedSetup.isEntryTriggered)
-              ) {
-                const isDupe = checkSignalDuplicate("KHATARNAK_JUGAAD", "SELL", evaluatedSetup.bestSellEntry);
-                if (!isDupe) {
-                  serverActiveKhatarnakSetup = evaluatedSetup;
-                  serverKhatarnakState = evaluatedSetup.isEntryTriggered ? "ACTIVE_RUNNING" : "PENDING_ENTRY";
-                  const kjMsg = formatNewSetupTelegramMessage(evaluatedSetup);
-                  if (mt5Config.telegramSignalsEnabled) {
-                    await sendServerTelegramMessage(kjMsg, undefined, undefined, `${evaluatedSetup.id}_NEW_SETUP`);
-                    superAdminService.logAction(
-                      "KHATARNAK_AUTO_DISPATCH",
-                      `Khatarnak Jugaad Setup #${evaluatedSetup.id} (SELL @ $${evaluatedSetup.bestSellEntry.toFixed(2)}) automatically dispatched to Telegram subscribers.`,
-                      "SYSTEM"
-                    );
-                  }
-                }
-              }
-            } else {
-              // Active Khatarnak Setup Lifecycle Monitoring: Entry, TP1, TP2, Final TP, SL
-              const setup = serverActiveKhatarnakSetup;
-              const px = goldTick.price;
-
-              if (serverKhatarnakState === "PENDING_ENTRY") {
-                const inZone = px <= setup.bestSellEntry || (px >= setup.sellZoneLow && px <= setup.sellZoneHigh + 1.0);
-                if (inZone) {
-                  serverKhatarnakState = "ACTIVE_RUNNING";
-                  const eventKey = `${setup.id}::ENTRY_HIT`;
-                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
-                    serverKhatarnakLifecycleEvents.add(eventKey);
-                    const entryMsg = formatStatusUpdateTelegramMessage(setup, "ENTRY_HIT", px);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(entryMsg, undefined, undefined, eventKey);
+                if (
+                  evaluatedSetup.hasValidSetup &&
+                  evaluatedSetup.score >= 80 &&
+                  (evaluatedSetup.isRejectionConfirmed || evaluatedSetup.isChochConfirmed || evaluatedSetup.isEntryTriggered)
+                ) {
+                  const isDupe = checkSignalDuplicate("KHATARNAK_JUGAAD", "SELL", evaluatedSetup.bestSellEntry);
+                  if (!isDupe) {
+                    // STRICT CENTRAL GATEKEEPER CHECK: 1 Active Setup Lock
+                    const promotion = centralSignalManager.promoteKhatarnakJugaadSetup(evaluatedSetup);
+                    if (promotion.allowed) {
+                      serverActiveKhatarnakSetup = evaluatedSetup;
+                      serverKhatarnakState = evaluatedSetup.isEntryTriggered ? "ACTIVE_RUNNING" : "PENDING_ENTRY";
+                      const kjMsg = formatNewSetupTelegramMessage(evaluatedSetup);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(kjMsg, undefined, undefined, `${evaluatedSetup.id}_NEW_SETUP`);
+                        superAdminService.logAction(
+                          "KHATARNAK_AUTO_DISPATCH",
+                          `Khatarnak Jugaad Setup #${evaluatedSetup.id} (SELL @ $${evaluatedSetup.bestSellEntry.toFixed(2)}) automatically dispatched to Telegram subscribers.`,
+                          "SYSTEM"
+                        );
+                      }
+                    } else {
+                      console.log(`[KHATARNAK GATEKEEPER]: Setup #${evaluatedSetup.id} blocked: ${promotion.message}`);
                     }
                   }
                 }
-              }
+              } else {
+                // Active Khatarnak Setup Lifecycle Monitoring: Entry, TP1, TP2, Final TP, SL
+                const setup = serverActiveKhatarnakSetup;
+                const px = goldTick.price;
 
-              if (serverKhatarnakState === "ACTIVE_RUNNING") {
-                // TP1 Hit
-                if (px <= setup.tp1) {
-                  const eventKey = `${setup.id}::TP1_HIT`;
-                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
-                    serverKhatarnakLifecycleEvents.add(eventKey);
-                    const tp1Msg = formatStatusUpdateTelegramMessage(setup, "TP1_HIT", px);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(tp1Msg, undefined, undefined, eventKey);
+                if (serverKhatarnakState === "PENDING_ENTRY") {
+                  const inZone = px <= setup.bestSellEntry || (px >= setup.sellZoneLow && px <= setup.sellZoneHigh + 1.0);
+                  if (inZone) {
+                    serverKhatarnakState = "ACTIVE_RUNNING";
+                    const eventKey = `${setup.id}::ENTRY_HIT`;
+                    if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                      serverKhatarnakLifecycleEvents.add(eventKey);
+                      const entryMsg = formatStatusUpdateTelegramMessage(setup, "ENTRY_HIT", px);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(entryMsg, undefined, undefined, eventKey);
+                      }
                     }
                   }
                 }
-                // TP2 Hit
-                if (px <= setup.tp2) {
-                  const eventKey = `${setup.id}::TP2_HIT`;
-                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
-                    serverKhatarnakLifecycleEvents.add(eventKey);
-                    const tp2Msg = formatStatusUpdateTelegramMessage(setup, "TP2_HIT", px);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(tp2Msg, undefined, undefined, eventKey);
+
+                if (serverKhatarnakState === "ACTIVE_RUNNING") {
+                  // TP1 Hit
+                  if (px <= setup.tp1) {
+                    const eventKey = `${setup.id}::TP1_HIT`;
+                    if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                      serverKhatarnakLifecycleEvents.add(eventKey);
+                      const tp1Msg = formatStatusUpdateTelegramMessage(setup, "TP1_HIT", px);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(tp1Msg, undefined, undefined, eventKey);
+                      }
                     }
                   }
-                }
-                // Final TP Hit
-                if (px <= setup.tp3) {
-                  const eventKey = `${setup.id}::FINAL_TP_HIT`;
-                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
-                    serverKhatarnakLifecycleEvents.add(eventKey);
-                    const finalMsg = formatStatusUpdateTelegramMessage(setup, "FINAL_TP_HIT", px);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(finalMsg, undefined, undefined, eventKey);
+                  // TP2 Hit
+                  if (px <= setup.tp2) {
+                    const eventKey = `${setup.id}::TP2_HIT`;
+                    if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                      serverKhatarnakLifecycleEvents.add(eventKey);
+                      const tp2Msg = formatStatusUpdateTelegramMessage(setup, "TP2_HIT", px);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(tp2Msg, undefined, undefined, eventKey);
+                      }
                     }
-                    serverActiveKhatarnakSetup = null;
-                    serverKhatarnakState = "SEARCHING";
                   }
-                }
-                // SL Hit
-                if (serverActiveKhatarnakSetup && px >= setup.stopLoss) {
-                  const eventKey = `${setup.id}::SL_HIT`;
-                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
-                    serverKhatarnakLifecycleEvents.add(eventKey);
-                    const slMsg = formatStatusUpdateTelegramMessage(setup, "SL_HIT", px);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(slMsg, undefined, undefined, eventKey);
+                  // Final TP Hit
+                  if (px <= setup.tp3) {
+                    const eventKey = `${setup.id}::FINAL_TP_HIT`;
+                    if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                      serverKhatarnakLifecycleEvents.add(eventKey);
+                      const finalMsg = formatStatusUpdateTelegramMessage(setup, "FINAL_TP_HIT", px);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(finalMsg, undefined, undefined, eventKey);
+                      }
+                      centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} reached Final TP at $${px}`, px);
+                      serverActiveKhatarnakSetup = null;
+                      serverKhatarnakState = "SEARCHING";
                     }
-                    serverActiveKhatarnakSetup = null;
-                    serverKhatarnakState = "SEARCHING";
+                  }
+                  // SL Hit
+                  if (serverActiveKhatarnakSetup && px >= setup.stopLoss) {
+                    const eventKey = `${setup.id}::SL_HIT`;
+                    if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                      serverKhatarnakLifecycleEvents.add(eventKey);
+                      const slMsg = formatStatusUpdateTelegramMessage(setup, "SL_HIT", px);
+                      if (mt5Config.telegramSignalsEnabled) {
+                        await sendServerTelegramMessage(slMsg, undefined, undefined, eventKey);
+                      }
+                      centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} hit Stop Loss at $${px}`, px);
+                      serverActiveKhatarnakSetup = null;
+                      serverKhatarnakState = "SEARCHING";
+                    }
                   }
                 }
               }
@@ -7419,7 +7503,7 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
     }
   });
 
-  // 2. Toggle AI Source ON / OFF (Harami AI, Khatarnak Jugaad, War Room)
+  // 2. Toggle AI Source ON / OFF (Harami AI, Khatarnak Jugaad, War Room, Precision Hunter)
   app.post("/api/central-signal-manager/toggle-ai", (req, res) => {
     try {
       const { source, enabled } = req.body || {};
@@ -7441,6 +7525,8 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
         cfg.khatarnakEnabled = isEnabled;
       } else if (brainSource === "WAR_ROOM") {
         cfg.warRoomEnabled = isEnabled;
+      } else if (brainSource === "PRECISION_HUNTER") {
+        cfg.precisionHunterEnabled = isEnabled;
       }
       superAdminService.saveConfig();
       superAdminService.logAction("AI_SOURCE_TOGGLED", `${brainSource} set to ${isEnabled ? "ON" : "OFF"} via Web Dashboard`, "SUPER_ADMIN");
@@ -7459,7 +7545,7 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
   // 3. Update Engine Config
   app.post("/api/central-signal-manager/config", (req, res) => {
     try {
-      const { minScoreThreshold, cooldownMinutes, autoBroadcastToTelegram, haramiEnabled, khatarnakEnabled, warRoomEnabled } = req.body || {};
+      const { minScoreThreshold, cooldownMinutes, autoBroadcastToTelegram, haramiEnabled, khatarnakEnabled, warRoomEnabled, precisionHunterEnabled } = req.body || {};
       const current = centralSignalManager.getState();
       
       centralSignalManager.setConfig(
@@ -7470,6 +7556,7 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
           haramiEnabled,
           khatarnakEnabled,
           warRoomEnabled,
+          precisionHunterEnabled,
         }
       );
       
