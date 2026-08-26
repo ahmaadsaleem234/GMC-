@@ -38,6 +38,7 @@ import { multiFeedPriceService } from "./src/services/multiFeedPriceService.js";
 import { anomalyDetectionEngine } from "./src/services/anomalyDetectionEngine.js";
 import { tradeStateManager } from "./src/services/tradeStateManager.js";
 import { serverTelegramIdempotency } from "./src/services/serverTelegramIdempotency.js";
+import { centralSignalManager, AiBrainSource } from "./src/services/centralSignalManager.js";
 
 // Black Shark Command V1 default live signal payload
 const BLACK_SHARK_DATA = {
@@ -958,9 +959,10 @@ async function startServer() {
     const durStr = String(duration || "").toLowerCase().trim();
     const now = Date.now();
 
-    if (durStr === "1" || durStr === "1_day" || durStr === "1d" || durStr === "1 day" || durStr === "day") {
-      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
-      const exp = base + 1 * 86400000;
+    // 1 Day = 24 hours (86,400,000 ms)
+    if (durStr === "1" || durStr === "1_day" || durStr === "1d" || durStr === "1 day" || durStr === "day" || durStr === "24h" || durStr === "24 hours") {
+      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
+      const exp = base + 86400000;
       return {
         expiresAt: exp,
         expiresAtIso: new Date(exp).toISOString(),
@@ -968,8 +970,9 @@ async function startServer() {
         durationLabel: "1 Day (24 Hours)",
       };
     }
-    if (durStr === "7" || durStr === "7_days" || durStr === "7d" || durStr === "7 days" || durStr === "week" || durStr === "1_week") {
-      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+    // 7 Days = 7 days (604,800,000 ms)
+    if (durStr === "7" || durStr === "7_days" || durStr === "7d" || durStr === "7 days" || durStr === "week" || durStr === "1_week" || durStr === "1 week") {
+      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = base + 7 * 86400000;
       return {
         expiresAt: exp,
@@ -978,6 +981,7 @@ async function startServer() {
         durationLabel: "7 Days (1 Week)",
       };
     }
+    // 1 Month = 30 days (2,592,000,000 ms)
     if (
       durStr === "30" ||
       durStr === "1_month" ||
@@ -988,7 +992,7 @@ async function startServer() {
       durStr === "month" ||
       durStr === "30 days"
     ) {
-      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = base + 30 * 86400000;
       return {
         expiresAt: exp,
@@ -997,7 +1001,8 @@ async function startServer() {
         durationLabel: "1 Month (30 Days)",
       };
     }
-    if (durStr === "lifetime" || durStr === "life" || durStr === "permanent" || durStr === "null" || durStr === "0" || durStr === "") {
+    // Lifetime = No expiry (Permanent)
+    if (durStr === "lifetime" || durStr === "life" || durStr === "permanent" || durStr === "null" || durStr === "0" || durStr === "" || durStr === "none") {
       return {
         expiresAt: null,
         expiresAtIso: null,
@@ -1008,7 +1013,7 @@ async function startServer() {
 
     const numDays = parseFloat(durStr);
     if (!isNaN(numDays) && numDays > 0) {
-      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = Math.round(base + numDays * 86400000);
       return {
         expiresAt: exp,
@@ -1062,7 +1067,26 @@ async function startServer() {
   function loadTelegramUsers() {
     try {
       if (fs.existsSync(TELEGRAM_USERS_FILE)) {
-        telegramUsersStore = JSON.parse(fs.readFileSync(TELEGRAM_USERS_FILE, "utf-8"));
+        const raw = JSON.parse(fs.readFileSync(TELEGRAM_USERS_FILE, "utf-8"));
+        const normalized: Record<string, TelegramBotUser> = {};
+        if (raw && typeof raw === "object") {
+          for (const [key, val] of Object.entries(raw)) {
+            if (val && typeof val === "object") {
+              const u = val as TelegramBotUser;
+              const uid = cleanServerTelegramInput(u.userId || key);
+              if (uid) {
+                u.userId = uid;
+                u.chatId = cleanServerTelegramInput(u.chatId) || uid;
+                if (u.approvalDuration === "lifetime" || u.planType === "lifetime") {
+                  u.expiresAt = null;
+                  u.expiresAtIso = null;
+                }
+                normalized[uid] = u;
+              }
+            }
+          }
+        }
+        telegramUsersStore = normalized;
       }
     } catch (e) {
       telegramUsersStore = {};
@@ -1132,8 +1156,13 @@ async function startServer() {
     let changed = false;
     for (const [key, user] of Object.entries(telegramUsersStore)) {
       if (user.status === "approved" || user.status === "trial") {
-        // 1. Expired check
-        if (user.expiresAt && now >= user.expiresAt) {
+        // Lifetime access never expires
+        if (user.approvalDuration === "lifetime" || user.planType === "lifetime" || !user.expiresAt) {
+          continue;
+        }
+
+        // Strict numeric check: only expire if typeof user.expiresAt is a valid number and now >= user.expiresAt
+        if (typeof user.expiresAt === "number" && user.expiresAt > 0 && now >= user.expiresAt) {
           user.status = "expired";
           user.expiresAtIso = new Date(user.expiresAt).toISOString();
           changed = true;
@@ -1157,8 +1186,8 @@ async function startServer() {
             `🔔 <b>USER ACCESS EXPIRED</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>User:</b> ${user.firstName} ${user.lastName || ""} (${user.username || user.userId})\n<b>Expired at:</b> <code>${new Date(user.expiresAt).toLocaleString()}</code>\n\n<i>Access revoked automatically.</i>`
           ).catch(() => {});
         }
-        // 2. 24-hour warning check
-        else if (user.expiresAt && now >= user.expiresAt - 24 * 3600 * 1000 && !user.expiryNotified) {
+        // 24-hour warning check
+        else if (typeof user.expiresAt === "number" && user.expiresAt > 0 && now >= user.expiresAt - 24 * 3600 * 1000 && !user.expiryNotified) {
           user.expiryNotified = true;
           changed = true;
           sendSingleTelegramMessage(
@@ -1276,12 +1305,15 @@ async function startServer() {
       const cfg = superAdminService.getConfig();
       if (botKey === "harami") {
         cfg.haramiEnabled = !cfg.haramiEnabled;
+        centralSignalManager.setAiSourceEnabled("HARAMI_AI", cfg.haramiEnabled);
         superAdminService.logAction("BOT_TOGGLED", `Harami AI toggled to ${cfg.haramiEnabled ? "ON" : "OFF"}`, cbUserId);
       } else if (botKey === "war_room") {
         cfg.warRoomEnabled = !cfg.warRoomEnabled;
+        centralSignalManager.setAiSourceEnabled("WAR_ROOM", cfg.warRoomEnabled);
         superAdminService.logAction("BOT_TOGGLED", `War Room toggled to ${cfg.warRoomEnabled ? "ON" : "OFF"}`, cbUserId);
       } else if (botKey === "khatarnak") {
         cfg.khatarnakEnabled = cfg.khatarnakEnabled === false ? true : false;
+        centralSignalManager.setAiSourceEnabled("KHATARNAK_JUGAAD", cfg.khatarnakEnabled);
         superAdminService.logAction("BOT_TOGGLED", `Khatarnak Jugaad toggled to ${cfg.khatarnakEnabled ? "ON" : "OFF"}`, cbUserId);
       }
       superAdminService.saveConfig();
@@ -1299,6 +1331,7 @@ async function startServer() {
     if (data === "adm:khatarnak:toggle") {
       const cfg = superAdminService.getConfig();
       cfg.khatarnakEnabled = cfg.khatarnakEnabled === false ? true : false;
+      centralSignalManager.setAiSourceEnabled("KHATARNAK_JUGAAD", cfg.khatarnakEnabled);
       superAdminService.saveConfig();
       superAdminService.logAction("KHATARNAK_TOGGLED", `Khatarnak Jugaad set to ${cfg.khatarnakEnabled ? "ON" : "OFF"}`, cbUserId);
       const menu = superAdminService.renderKhatarnakControlMenu();
@@ -1318,6 +1351,7 @@ async function startServer() {
     if (data === "adm:harami:toggle") {
       const cfg = superAdminService.getConfig();
       cfg.haramiEnabled = !cfg.haramiEnabled;
+      centralSignalManager.setAiSourceEnabled("HARAMI_AI", cfg.haramiEnabled);
       superAdminService.saveConfig();
       superAdminService.logAction("HARAMI_TOGGLED", `Harami AI set to ${cfg.haramiEnabled ? "ON" : "OFF"}`, cbUserId);
       const activeSummary = serverActiveTrade
@@ -1350,6 +1384,7 @@ async function startServer() {
     if (data === "adm:warroom:toggle") {
       const cfg = superAdminService.getConfig();
       cfg.warRoomEnabled = !cfg.warRoomEnabled;
+      centralSignalManager.setAiSourceEnabled("WAR_ROOM", cfg.warRoomEnabled);
       superAdminService.saveConfig();
       superAdminService.logAction("WAR_ROOM_TOGGLED", `War Room set to ${cfg.warRoomEnabled ? "ON" : "OFF"}`, cbUserId);
       const menu = superAdminService.renderWarRoomControlMenu(!!serverActiveTrade);
@@ -4053,20 +4088,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       botLabel = "Khatarnak Jugaad / Harami AI / War Room";
     }
 
-    // Live Mode: Retrieve ALL active approved & trial Telegram users (filtered by expiration & bot access)
+    // Live Mode: Audit and dispatch to ALL registered users according to persistent authorization state
     const nowMs = Date.now();
-    const approvedUsers = Object.values(telegramUsersStore).filter((u) => {
-      if (u.status !== "approved" && u.status !== "trial") return false;
-      if (u.expiresAt && nowMs > u.expiresAt) return false;
-
-      // Bot Access check
-      if (!u.botAccess || u.botAccess === "all") return true;
-      if (signalEngine === "GMC_SYSTEM") return true;
-      if (u.botAccess === "harami" && signalEngine === "HARAMI_AI") return true;
-      if (u.botAccess === "war_room" && signalEngine === "WAR_ROOM") return true;
-      if (u.botAccess === "khatarnak" && signalEngine === "KHATARNAK") return true;
-      return false;
-    });
+    const nowIso = new Date(nowMs).toISOString();
 
     const signalIdExtracted =
       customAlertId ||
@@ -4084,7 +4108,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 ━━━━━━━━━━━━━━━━━━━━
 <b>Trade ID:</b> <code>${signalIdExtracted}</code>
 <b>Bot:</b> <code>${botLabel}</code>
-<b>👥 Approved Users:</b> <code>${approvedUsers.length}</code>
+<b>👥 Registered Users:</b> <code>${Object.keys(telegramUsersStore).length}</code>
 <b>✅ Delivered:</b> <code>1 (Super Admin)</code>
 <b>❌ Failed:</b> <code>0</code>
 <b>⏱️ Status:</b> ⏸️ <b>PAUSED (Held for Admin)</b>
@@ -4114,46 +4138,103 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       return adminSignalOk;
     }
 
-    const targetChatIds = Array.from(
-      new Set([
-        masterId,
-        ...approvedUsers.map((u) => cleanServerTelegramInput(u.chatId || u.userId)).filter(Boolean),
-      ])
-    );
-
     let successCount = 0;
     let failedCount = 0;
+    let attemptedSubscribers = 0;
 
-    for (const cid of targetChatIds) {
-      const ok = await sendSingleTelegramMessage(cid, text, customPhotoBuffer);
-      if (ok) {
+    // 1. Dispatch to Super Admin Master ID First (always authorized)
+    if (masterId) {
+      const adminOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
+      if (adminOk) {
         successCount++;
-        for (const [k, u] of Object.entries(telegramUsersStore)) {
-          if (k === cid || u.userId === cid || u.chatId === cid) {
-            u.totalSignalsReceived = (u.totalSignalsReceived || 0) + 1;
-          }
-        }
+        console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: DELIVERED`);
       } else {
         failedCount++;
-        serverDeliveryFailures.unshift({
-          timestampUtc: new Date().toISOString(),
-          userId: cid,
-          reason: "HTTP/API Delivery Timeout or Chat Blocked",
-        });
+        console.warn(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: FAILED`);
       }
     }
+
+    // 2. Evaluate and dispatch to ALL registered users in telegramUsersStore
+    for (const [userIdKey, u] of Object.entries(telegramUsersStore)) {
+      if (!u || !u.userId) continue;
+      const cleanUid = cleanServerTelegramInput(u.userId);
+      if (cleanUid === masterId) {
+        // Master ID already handled above
+        continue;
+      }
+
+      const targetChatId = cleanServerTelegramInput(u.chatId || u.userId);
+      const isAuthStatus = u.status === "approved" || u.status === "trial";
+      const isNotExpired = (!u.expiresAt || (typeof u.expiresAt === "number" && nowMs < u.expiresAt));
+      const isNotBlockedOrRevoked = u.status !== "blocked" && u.status !== "rejected" && u.status !== "pending" && u.status !== "expired";
+
+      // Engine Bot Access filter
+      let engineAllowed = true;
+      if (u.botAccess && u.botAccess !== "all") {
+        if (signalEngine === "HARAMI_AI" && u.botAccess !== "harami") engineAllowed = false;
+        if (signalEngine === "WAR_ROOM" && u.botAccess !== "war_room") engineAllowed = false;
+        if (signalEngine === "KHATARNAK" && u.botAccess !== "khatarnak") engineAllowed = false;
+      }
+
+      const planLabel = u.approvalDurationLabel || (u.expiresAt ? "Subscription" : "Lifetime (Permanent)");
+      const expLabel = u.expiresAt ? (u.expiresAtIso || new Date(u.expiresAt).toISOString()) : "LIFETIME (NO_EXPIRY)";
+      const isAccessValid = isAuthStatus && isNotExpired && isNotBlockedOrRevoked && engineAllowed;
+
+      let accessDesc = "VALID";
+      let dispatchResult = "NOT_ATTEMPTED";
+
+      if (!isNotBlockedOrRevoked) {
+        accessDesc = u.status === "blocked" ? "BLOCKED" : u.status === "rejected" ? "REJECTED" : u.status === "expired" ? "ACCESS_EXPIRED" : "ADMIN_REVOKED";
+        dispatchResult = accessDesc;
+      } else if (!isNotExpired) {
+        accessDesc = "EXPIRED";
+        dispatchResult = "ACCESS_EXPIRED";
+      } else if (!isAuthStatus) {
+        accessDesc = "UNAUTHORIZED";
+        dispatchResult = "PENDING_APPROVAL";
+      } else if (!engineAllowed) {
+        accessDesc = "FILTERED_BY_ENGINE";
+        dispatchResult = "ENGINE_NOT_PERMITTED";
+      } else {
+        accessDesc = "VALID";
+      }
+
+      if (isAccessValid && targetChatId) {
+        attemptedSubscribers++;
+        const delivered = await sendSingleTelegramMessage(targetChatId, text, customPhotoBuffer);
+        if (delivered) {
+          successCount++;
+          u.totalSignalsReceived = (u.totalSignalsReceived || 0) + 1;
+          u.lastActive = nowIso;
+          dispatchResult = "DELIVERED";
+        } else {
+          failedCount++;
+          dispatchResult = "FAILED";
+          serverDeliveryFailures.unshift({
+            timestampUtc: nowIso,
+            userId: targetChatId,
+            reason: "HTTP/API Delivery Timeout or Chat Blocked",
+          });
+        }
+      }
+
+      // Strict per-user audit log
+      console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${u.userId} → Approval Status: ${u.status.toUpperCase()} → Plan: ${planLabel} → expiresAt: ${expLabel} → Current Time: ${nowIso} → Access: ${isAccessValid ? "VALID" : accessDesc} → Signal Dispatch Result: ${dispatchResult}`);
+    }
+
     saveTelegramUsers();
 
     // Record Delivery Log
+    const totalRecipients = attemptedSubscribers + (masterId ? 1 : 0);
     const deliveryRecord: ServerTelegramDeliveryRecord = {
       id: `DELIV-${Date.now()}`,
       signalId: signalIdExtracted,
       engine: signalEngine,
-      timestampUtc: new Date().toISOString(),
-      recipientsCount: targetChatIds.length,
+      timestampUtc: nowIso,
+      recipientsCount: totalRecipients,
       successCount,
       failedCount,
-      status: successCount === targetChatIds.length ? "DELIVERED" : successCount > 0 ? "PARTIAL" : "FAILED",
+      status: successCount === totalRecipients ? "DELIVERED" : successCount > 0 ? "PARTIAL" : "FAILED",
     };
     serverDeliveryLogs.unshift(deliveryRecord);
     saveTelegramDeliveryLogs();
@@ -4163,7 +4244,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const receipt = superAdminService.formatMasterTradeReceipt({
         tradeId: signalIdExtracted,
         engine: botLabel,
-        approvedUsers: approvedUsers.length,
+        approvedUsers: attemptedSubscribers,
         delivered: successCount,
         failed: failedCount,
         status: failedCount === 0 ? "SYNCED" : "PARTIAL",
@@ -4173,7 +4254,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     if (successCount > 0) {
       serverTelegramIdempotency.markDispatched(customAlertId, text, "subscribers");
-      console.log(`[SERVER 24/7 BROADCASTER]: Dispatched signal to ${successCount}/${targetChatIds.length} approved Telegram users (Engine: ${signalEngine}).`);
+      console.log(`[SERVER 24/7 BROADCASTER]: Dispatched signal to ${successCount}/${totalRecipients} recipients (Engine: ${signalEngine}).`);
       serverTelegramDeliveryStatus = "Sent";
       serverTelegramStatus = "Connected";
       return true;
@@ -6451,7 +6532,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
   app.post("/api/telegram/send", async (req, res) => {
     try {
-      const { text, alertId, botToken, chatId, withPhoto } = req.body || {};
+      const { text, alertId, botToken, chatId, withPhoto, isDirectSingleChat } = req.body || {};
       if (!text) {
         return res.status(400).json({ ok: false, error: "Text message is required" });
       }
@@ -6460,6 +6541,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const targetChatId = cleanChat || serverTargetChatId || "5218548758";
       if (botToken || cleanChat) {
         saveServerTelegramConfig(botToken, cleanChat);
+      }
+
+      // If it's a direct single chat ping (e.g. admin test or single message), use single send
+      if (isDirectSingleChat && cleanChat) {
+        const tokenToUse = await resolveWorkingTelegramToken(botToken);
+        const singleOk = await sendSingleTelegramMessage(cleanChat, text);
+        return res.json({ ok: singleOk, activeToken: tokenToUse });
       }
 
       // Check Idempotency Guard (Zero Duplicate Signal Enforcer)
@@ -6479,10 +6567,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const hImg2 = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
       const dImg2 = path.join(process.cwd(), "public", "gmc_logo.jpg");
       const logoPath = fs.existsSync(hImg2) ? hImg2 : dImg2;
+      let photoBufferToUse: Buffer | null = null;
+
       if ((withPhoto || text.includes("HARAMI AI") || text.includes("SIGNAL ALERT") || text.includes("OUTCOME"))) {
         try {
-          let photoBufferToUse: Buffer | null = null;
-
           if (text.includes("HARAMI AI") || text.includes("SIGNAL ALERT")) {
             try {
               // Extract prices from signal text if possible for manual send
@@ -6523,55 +6611,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (!photoBufferToUse && fs.existsSync(logoPath)) {
             photoBufferToUse = fs.readFileSync(logoPath);
           }
-
-          if (photoBufferToUse) {
-            const blob = new Blob([photoBufferToUse], { type: "image/jpeg" });
-            const formData = new FormData();
-            formData.append("chat_id", String(targetChatId));
-            formData.append("photo", blob, "gmc_signal_chart.jpg");
-            formData.append("caption", text);
-            formData.append("parse_mode", "HTML");
-
-            const photoRes = await fetch(`https://api.telegram.org/bot${tokenToUse}/sendPhoto`, {
-              method: "POST",
-              body: formData,
-            });
-
-            const photoData = await photoRes.json();
-            if (photoData.ok) {
-              serverTelegramIdempotency.markDispatched(alertId, text, targetChatId);
-              return res.json({ ok: true, activeToken: tokenToUse, result: photoData.result });
-            }
-          }
         } catch (e) {
-          // Fall through to text fallback
+          // Fall through to text
         }
       }
 
-      const url = `https://api.telegram.org/bot${tokenToUse}/sendMessage`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: targetChatId,
-          text,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.ok) {
-        serverTelegramIdempotency.markDispatched(alertId, text, targetChatId);
-        return res.json({ ok: true, activeToken: tokenToUse, result: data.result });
-      } else {
-        console.warn("[TELEGRAM API WARNING]:", data.description || data);
-        return res.status(200).json({
-          ok: false,
-          error: data.description || "Telegram API rejected the message",
-          errorCode: data.error_code,
-        });
-      }
+      // Broadcast to all authorized users via the centralized persistent dispatch engine
+      const broadcastSuccess = await sendServerTelegramMessage(text, undefined, photoBufferToUse || undefined, alertId);
+      return res.json({ ok: broadcastSuccess, activeToken: tokenToUse });
     } catch (err: any) {
       console.warn("[TELEGRAM SERVER ROUTE NOTICE]:", err.message || err);
       return res.status(200).json({ ok: false, error: err.message || "Failed to reach Telegram API" });
@@ -6737,12 +6784,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
   app.post("/api/admin/telegram/users/action", async (req, res) => {
     try {
-      const { userId, action, customMessage } = req.body || {};
+      const { userId, action, customMessage, duration } = req.body || {};
       if (!userId || !action) {
         return res.status(400).json({ ok: false, error: "Missing userId or action" });
       }
 
-      const cleanId = String(userId).trim();
+      const cleanId = cleanServerTelegramInput(String(userId));
       // Find matching user by userId or chatId
       let targetUser = Object.values(telegramUsersStore).find(
         (u) => u.userId === cleanId || u.chatId === cleanId
@@ -6755,19 +6802,46 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const nowIso = new Date().toISOString();
 
       if (action === "approve" && targetUser) {
+        const expInfo = calculateUserExpiry(duration || "lifetime", targetUser.expiresAt);
         targetUser.status = "approved";
+        targetUser.planType = expInfo.expiresAt ? "standard" : "lifetime";
+        targetUser.approvalDuration = expInfo.durationKey;
+        targetUser.approvalDurationLabel = expInfo.durationLabel;
+        targetUser.approvedAt = targetUser.approvedAt || nowIso;
         targetUser.decisionAt = nowIso;
+        targetUser.expiresAt = expInfo.expiresAt;
+        targetUser.expiresAtIso = expInfo.expiresAtIso;
+        targetUser.expiryNotified = false;
+        telegramUsersStore[targetUser.userId] = targetUser;
         saveTelegramUsers();
+
+        superAdminService.logAction(
+          "USER_APPROVED_WEB",
+          `Approved user ${targetUser.firstName} (${targetUser.userId}) - Plan: ${expInfo.durationLabel}`,
+          "WEB_ADMIN",
+          targetUser.userId
+        );
+
+        const planDesc = expInfo.durationLabel;
+        const expiryDesc = expInfo.expiresAtIso ? `Valid until: <code>${new Date(expInfo.expiresAt!).toUTCString()}</code>` : `Access: <code>Permanent / Lifetime (Never Expires)</code>`;
 
         // Send instant approval notification directly to the Telegram user
         await sendSingleTelegramMessage(
           targetUser.chatId,
-          `<b>🎉 ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${targetUser.firstName || "Trader"}</b>! Your Telegram Bot access request (ID: <code>${targetUser.userId}</code>) has been <b>APPROVED</b>.\n\n✅ You are now authorized to receive real-time institutional GMC Gold trading signals, entry alerts, and TP/SL hits.\n\nType /start or /signal to check active market status!`
+          `<b>🎉 ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${targetUser.firstName || "Trader"}</b>! Your Telegram Bot access request (ID: <code>${targetUser.userId}</code>) has been <b>APPROVED</b>.\n\n<b>⏳ Plan Duration:</b> <code>${planDesc}</code>\n<b>🕒 Expiry:</b> ${expiryDesc}\n\n✅ You are now authorized to receive real-time institutional GMC Gold trading signals, entry alerts, and TP/SL hits automatically.\n\n<i>⚡ Your session is active 24/7. Signals will arrive automatically without needing /start.</i>`
         );
       } else if (action === "reject" && targetUser) {
         targetUser.status = "rejected";
         targetUser.decisionAt = nowIso;
+        telegramUsersStore[targetUser.userId] = targetUser;
         saveTelegramUsers();
+
+        superAdminService.logAction(
+          "USER_REJECTED",
+          `Rejected user ${targetUser.firstName} (${targetUser.userId})`,
+          "WEB_ADMIN",
+          targetUser.userId
+        );
 
         await sendSingleTelegramMessage(
           targetUser.chatId,
@@ -6776,25 +6850,56 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       } else if (action === "block" && targetUser) {
         targetUser.status = "blocked";
         targetUser.decisionAt = nowIso;
+        telegramUsersStore[targetUser.userId] = targetUser;
         saveTelegramUsers();
+
+        superAdminService.logAction(
+          "USER_BLOCKED",
+          `Blocked user ${targetUser.firstName} (${targetUser.userId})`,
+          "WEB_ADMIN",
+          targetUser.userId
+        );
 
         await sendSingleTelegramMessage(
           targetUser.chatId,
           `<b>🚫 ACCOUNT BLOCKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account (ID: <code>${targetUser.userId}</code>) has been blocked from GMC Trading AI signals by the Super Admin.`
         );
       } else if (action === "unblock" && targetUser) {
+        const expInfo = calculateUserExpiry(duration || targetUser.approvalDuration || "lifetime", targetUser.expiresAt);
         targetUser.status = "approved";
+        targetUser.planType = expInfo.expiresAt ? "standard" : "lifetime";
+        targetUser.approvalDuration = expInfo.durationKey;
+        targetUser.approvalDurationLabel = expInfo.durationLabel;
         targetUser.decisionAt = nowIso;
+        targetUser.expiresAt = expInfo.expiresAt;
+        targetUser.expiresAtIso = expInfo.expiresAtIso;
+        targetUser.expiryNotified = false;
+        telegramUsersStore[targetUser.userId] = targetUser;
         saveTelegramUsers();
+
+        superAdminService.logAction(
+          "USER_UNBLOCKED",
+          `Unblocked user ${targetUser.firstName} (${targetUser.userId}) - Plan: ${expInfo.durationLabel}`,
+          "WEB_ADMIN",
+          targetUser.userId
+        );
 
         await sendSingleTelegramMessage(
           targetUser.chatId,
-          `<b>✅ ACCOUNT UNBLOCKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account has been unblocked by the Super Admin. You are now authorized to receive signals!`
+          `<b>✅ ACCOUNT UNBLOCKED</b>\n━━━━━━━━━━━━━━━━━━━\nYour Telegram account has been unblocked by the Super Admin. You are now authorized to receive live trading signals!\n\n<b>⏳ Plan:</b> <code>${expInfo.durationLabel}</code>\n<i>⚡ Live signals will arrive automatically 24/7 without needing /start.</i>`
         );
       } else if (action === "revoke" && targetUser) {
         targetUser.status = "pending";
         targetUser.decisionAt = nowIso;
+        telegramUsersStore[targetUser.userId] = targetUser;
         saveTelegramUsers();
+
+        superAdminService.logAction(
+          "USER_REVOKED",
+          `Revoked access for user ${targetUser.firstName} (${targetUser.userId})`,
+          "WEB_ADMIN",
+          targetUser.userId
+        );
 
         await sendSingleTelegramMessage(
           targetUser.chatId,
@@ -6803,7 +6908,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       } else if (action === "ping" && targetUser) {
         const pingSent = await sendSingleTelegramMessage(
           targetUser.chatId,
-          `<b>⚡ GMC TRADING • SUPER ADMIN DIRECT PING</b>\n━━━━━━━━━━━━━━━━━━━\nHello <b>${targetUser.firstName || "Trader"}</b>!\nThis is a direct connectivity test from the GMC Super Admin.\n\n<b>Telegram ID:</b> <code>${targetUser.userId}</code>\n<b>Status:</b> <code>${targetUser.status.toUpperCase()}</code>\n<b>Time:</b> <code>${new Date().toLocaleString()}</code>\n\n<i>All systems operational.</i>`
+          `<b>⚡ GMC TRADING • SUPER ADMIN DIRECT PING</b>\n━━━━━━━━━━━━━━━━━━━\nHello <b>${targetUser.firstName || "Trader"}</b>!\nThis is a direct connectivity test from the GMC Super Admin.\n\n<b>Telegram ID:</b> <code>${targetUser.userId}</code>\n<b>Status:</b> <code>${targetUser.status.toUpperCase()}</code>\n<b>Plan:</b> <code>${targetUser.approvalDurationLabel || "Active Plan"}</code>\n<b>Time:</b> <code>${new Date().toLocaleString()}</code>\n\n<i>All systems operational. Signals stream automatically 24/7.</i>`
         );
         if (!pingSent) {
           return res.status(200).json({ ok: false, error: "Failed to deliver ping to user. Bot may be blocked or chat not started." });
@@ -7292,6 +7397,112 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
 
       const sent = await sendServerTelegramMessage(text);
       res.json({ ok: true, sent, message: "Telegram signal broadcast dispatched successfully." });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ==========================================
+  // CENTRAL SIGNAL MANAGER API ENDPOINTS
+  // ==========================================
+
+  // 1. Get Live State & AI Candidates & Active Setup
+  app.get("/api/central-signal-manager/state", async (req, res) => {
+    try {
+      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+      const currentPrice = goldTick && goldTick.price > 0 ? goldTick.price : 2945.80;
+      const state = await centralSignalManager.evaluateCycles(currentPrice, 0.20, "XAUUSD");
+      res.json({ ok: true, state });
+    } catch (err: any) {
+      console.error("[CENTRAL SIGNAL MANAGER STATE ERROR]:", err);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 2. Toggle AI Source ON / OFF (Harami AI, Khatarnak Jugaad, War Room)
+  app.post("/api/central-signal-manager/toggle-ai", (req, res) => {
+    try {
+      const { source, enabled } = req.body || {};
+      if (!source) {
+        return res.status(400).json({ ok: false, error: "Missing required field 'source'" });
+      }
+      
+      const brainSource = String(source).toUpperCase() as AiBrainSource;
+      const isEnabled = Boolean(enabled);
+      
+      // Update Central Signal Manager Engine
+      centralSignalManager.setAiSourceEnabled(brainSource, isEnabled);
+      
+      // Sync with SuperAdminTelegramService
+      const cfg = superAdminService.getConfig();
+      if (brainSource === "HARAMI_AI") {
+        cfg.haramiEnabled = isEnabled;
+      } else if (brainSource === "KHATARNAK_JUGAAD") {
+        cfg.khatarnakEnabled = isEnabled;
+      } else if (brainSource === "WAR_ROOM") {
+        cfg.warRoomEnabled = isEnabled;
+      }
+      superAdminService.saveConfig();
+      superAdminService.logAction("AI_SOURCE_TOGGLED", `${brainSource} set to ${isEnabled ? "ON" : "OFF"} via Web Dashboard`, "SUPER_ADMIN");
+      
+      const state = centralSignalManager.getState();
+      res.json({
+        ok: true,
+        message: `${brainSource} successfully set to ${isEnabled ? "ON" : "OFF"}`,
+        state,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3. Update Engine Config
+  app.post("/api/central-signal-manager/config", (req, res) => {
+    try {
+      const { minScoreThreshold, cooldownMinutes, autoBroadcastToTelegram, haramiEnabled, khatarnakEnabled, warRoomEnabled } = req.body || {};
+      const current = centralSignalManager.getState();
+      
+      centralSignalManager.setConfig(
+        minScoreThreshold !== undefined ? Number(minScoreThreshold) : current.minScoreThreshold,
+        cooldownMinutes !== undefined ? (Number(cooldownMinutes) as any) : current.cooldownMinutesConfig,
+        autoBroadcastToTelegram !== undefined ? Boolean(autoBroadcastToTelegram) : current.autoBroadcastToTelegram,
+        {
+          haramiEnabled,
+          khatarnakEnabled,
+          warRoomEnabled,
+        }
+      );
+      
+      res.json({ ok: true, state: centralSignalManager.getState() });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 4. Force Close Active Central Setup
+  app.post("/api/central-signal-manager/force-close", async (req, res) => {
+    try {
+      const { reason } = req.body || {};
+      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+      const currentPrice = goldTick && goldTick.price > 0 ? goldTick.price : 2945.80;
+      
+      const closed = await centralSignalManager.forceCloseActiveSetup(
+        reason || "Manual override via Central Signal Manager Dashboard",
+        currentPrice,
+        async (msg) => await sendServerTelegramMessage(msg)
+      );
+      
+      res.json({ ok: true, closed, state: centralSignalManager.getState() });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 5. Reset Cooldown State
+  app.post("/api/central-signal-manager/reset-cooldown", (req, res) => {
+    try {
+      centralSignalManager.resetCooldown();
+      res.json({ ok: true, state: centralSignalManager.getState() });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }

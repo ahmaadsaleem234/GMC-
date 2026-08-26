@@ -12,6 +12,7 @@ import {
   centralSignalManager,
   CentralSignalManagerState,
   ActiveCentralSetup,
+  AiBrainSource,
 } from "./centralSignalManager";
 import {
   dispatchCentralWinningSetupToTelegram,
@@ -74,6 +75,18 @@ export function useCentralSignalManagerWatcher(
     },
     setConfig: (minScore: number, cooldownMins: 30 | 35 | 40, autoBroadcast: boolean) => {
       centralSignalManager.setConfig(minScore, cooldownMins, autoBroadcast);
+      evaluateAndSync();
+    },
+    toggleAiSource: (source: AiBrainSource, enabled: boolean) => {
+      centralSignalManager.setAiSourceEnabled(source, enabled);
+      // Also notify backend in background
+      try {
+        fetch("/api/central-signal-manager/toggle-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source, enabled }),
+        }).catch(() => {});
+      } catch (e) {}
       evaluateAndSync();
     },
   };

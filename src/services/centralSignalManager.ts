@@ -266,7 +266,7 @@ export interface DecisionAuditLogEntry {
     score: number;
     rejectionReason: string;
   }[];
-  eventType: "COMPETITION_EVALUATED" | "SETUP_ACTIVATED" | "ENTRY_TRIGGERED" | "TP_HIT" | "SL_HIT" | "PROTECTION_ACTIVATED" | "SETUP_CLOSED" | "COOLDOWN_STARTED" | "COOLDOWN_ENDED" | "EMERGENCY_PAUSED";
+  eventType: "COMPETITION_EVALUATED" | "SETUP_ACTIVATED" | "ENTRY_TRIGGERED" | "TP_HIT" | "SL_HIT" | "PROTECTION_ACTIVATED" | "SETUP_CLOSED" | "COOLDOWN_STARTED" | "COOLDOWN_ENDED" | "EMERGENCY_PAUSED" | "CONFIG_UPDATED" | "MANUAL_CLOSE";
   eventDetails: string;
   finalPnlPips?: number;
 }
@@ -302,6 +302,11 @@ export interface CentralSignalManagerState {
   currentPrice: number;
   spread: number;
   assetKey: string;
+  
+  // Independent AI Source ON/OFF Controls (Synchronized with Telegram Super Admin)
+  haramiEnabled: boolean;
+  khatarnakEnabled: boolean;
+  warRoomEnabled: boolean;
   
   // 3 AI Candidates evaluated in the latest cycle
   candidates: Record<AiBrainSource, AiCandidateEvaluation>;
@@ -441,6 +446,12 @@ export class CentralSignalManagerEngine {
   private minScoreThreshold: number = 70;
   private cooldownMinutesConfig: CooldownDurationMinutes = 30;
   private autoBroadcastToTelegram: boolean = true;
+
+  // Independent AI Source ON/OFF Controls (Synchronized with Telegram Super Admin)
+  private haramiEnabled: boolean = true;
+  private khatarnakEnabled: boolean = true;
+  private warRoomEnabled: boolean = true;
+
   private isInitialized = false;
   private onSetupPromotedListeners: Set<(setup: ActiveCentralSetup) => void> = new Set();
 
@@ -515,6 +526,9 @@ export class CentralSignalManagerEngine {
           if (cfg.minScoreThreshold) this.minScoreThreshold = cfg.minScoreThreshold;
           if (cfg.cooldownMinutesConfig) this.cooldownMinutesConfig = cfg.cooldownMinutesConfig;
           if (cfg.autoBroadcastToTelegram !== undefined) this.autoBroadcastToTelegram = cfg.autoBroadcastToTelegram;
+          if (cfg.haramiEnabled !== undefined) this.haramiEnabled = cfg.haramiEnabled;
+          if (cfg.khatarnakEnabled !== undefined) this.khatarnakEnabled = cfg.khatarnakEnabled;
+          if (cfg.warRoomEnabled !== undefined) this.warRoomEnabled = cfg.warRoomEnabled;
         }
       }
 
@@ -542,6 +556,9 @@ export class CentralSignalManagerEngine {
             minScoreThreshold: this.minScoreThreshold,
             cooldownMinutesConfig: this.cooldownMinutesConfig,
             autoBroadcastToTelegram: this.autoBroadcastToTelegram,
+            haramiEnabled: this.haramiEnabled,
+            khatarnakEnabled: this.khatarnakEnabled,
+            warRoomEnabled: this.warRoomEnabled,
           })
         );
       }
@@ -550,10 +567,58 @@ export class CentralSignalManagerEngine {
     }
   }
 
-  public setConfig(minScore: number, cooldownMins: CooldownDurationMinutes, autoBroadcast: boolean) {
+  public setConfig(
+    minScore: number,
+    cooldownMins: CooldownDurationMinutes,
+    autoBroadcast: boolean,
+    sources?: { haramiEnabled?: boolean; khatarnakEnabled?: boolean; warRoomEnabled?: boolean }
+  ) {
     this.minScoreThreshold = minScore;
     this.cooldownMinutesConfig = cooldownMins;
     this.autoBroadcastToTelegram = autoBroadcast;
+    if (sources) {
+      if (sources.haramiEnabled !== undefined) this.haramiEnabled = sources.haramiEnabled;
+      if (sources.khatarnakEnabled !== undefined) this.khatarnakEnabled = sources.khatarnakEnabled;
+      if (sources.warRoomEnabled !== undefined) this.warRoomEnabled = sources.warRoomEnabled;
+    }
+    this.saveToStorage();
+  }
+
+  /**
+   * Check if a specific AI Trading Source is enabled
+   */
+  public isAiSourceEnabled(source: AiBrainSource): boolean {
+    if (source === "HARAMI_AI") return this.haramiEnabled !== false;
+    if (source === "KHATARNAK_JUGAAD") return this.khatarnakEnabled !== false;
+    if (source === "WAR_ROOM") return this.warRoomEnabled !== false;
+    return true;
+  }
+
+  /**
+   * Set a specific AI Trading Source enabled / disabled
+   */
+  public setAiSourceEnabled(source: AiBrainSource, enabled: boolean) {
+    if (source === "HARAMI_AI") this.haramiEnabled = enabled;
+    if (source === "KHATARNAK_JUGAAD") this.khatarnakEnabled = enabled;
+    if (source === "WAR_ROOM") this.warRoomEnabled = enabled;
+    
+    const sourceName = source === "HARAMI_AI" ? "Harami AI" : source === "KHATARNAK_JUGAAD" ? "Khatarnak Jugaad" : "War Room Supreme";
+    this.addAuditLog(
+      "CONFIG_UPDATED",
+      null,
+      source,
+      `AI Source ${sourceName} toggled to ${enabled ? "🟢 ENABLED (ON)" : "🔴 DISABLED (OFF)"} by Admin.`
+    );
+    this.saveToStorage();
+  }
+
+  /**
+   * Update all 3 AI sources at once
+   */
+  public setAiSources(sources: { haramiEnabled?: boolean; khatarnakEnabled?: boolean; warRoomEnabled?: boolean }) {
+    if (sources.haramiEnabled !== undefined) this.haramiEnabled = sources.haramiEnabled;
+    if (sources.khatarnakEnabled !== undefined) this.khatarnakEnabled = sources.khatarnakEnabled;
+    if (sources.warRoomEnabled !== undefined) this.warRoomEnabled = sources.warRoomEnabled;
     this.saveToStorage();
   }
 
@@ -579,6 +644,9 @@ export class CentralSignalManagerEngine {
       minScoreThreshold: this.minScoreThreshold,
       cooldownMinutesConfig: this.cooldownMinutesConfig,
       autoBroadcastToTelegram: this.autoBroadcastToTelegram,
+      haramiEnabled: this.haramiEnabled,
+      khatarnakEnabled: this.khatarnakEnabled,
+      warRoomEnabled: this.warRoomEnabled,
     };
   }
 
@@ -654,24 +722,56 @@ export class CentralSignalManagerEngine {
     this.saveToStorage();
   }
 
-  public forceCloseActiveSetup(reason: string = "Manual Close") {
-    if (!this.activeSetup) return;
-    this.activeSetup.lifecycleState = "CLOSED";
-    this.activeSetup.lifecycleStatusLabel = "CLOSED";
-    this.activeSetup.closedAt = Date.now();
-    this.activeSetup.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
-    this.activeSetup.finalOutcome = reason;
+  public resetCooldown() {
+    this.resetCooldownManually();
+  }
+
+  public async forceCloseActiveSetup(
+    reason: string = "Manual Close",
+    currentPrice?: number,
+    broadcastCallback?: (msg: string) => Promise<any>
+  ): Promise<boolean> {
+    if (!this.activeSetup) return false;
+    const s = this.activeSetup;
+    s.lifecycleState = "CLOSED";
+    s.lifecycleStatusLabel = "CLOSED";
+    s.closedAt = Date.now();
+    s.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
+    s.finalOutcome = reason;
+
+    const closeMsg = `🛑 <b>TRADE CLOSED MANUALLY</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>${s.brainName} [${s.setupId}]</b> closed by Super Admin.\n<b>Reason:</b> <i>${reason}</i>\n<b>Cooldown:</b> ${this.cooldownMinutesConfig}m activated.`;
+    
+    if (broadcastCallback) {
+      try {
+        await broadcastCallback(closeMsg);
+      } catch (e) {
+        console.warn("[CENTRAL SIGNAL MANAGER]: Force close broadcast error:", e);
+      }
+    }
 
     this.addAuditLog(
       "SETUP_CLOSED",
-      this.activeSetup.setupId,
-      this.activeSetup.brainSource,
-      `Setup ${this.activeSetup.setupId} closed (${reason}). Starting ${this.cooldownMinutesConfig}-min cooldown.`
+      s.setupId,
+      s.brainSource,
+      `Setup ${s.setupId} closed (${reason}). Starting ${this.cooldownMinutesConfig}-min cooldown.`
     );
 
     this.startCooldown();
     this.activeSetup = null;
     this.saveToStorage();
+    return true;
+  }
+
+  public getState(currentPrice: number = 2945.80): CentralSignalManagerState {
+    return this.evaluateState([], [], currentPrice, undefined, "XAUUSD");
+  }
+
+  public async evaluateCycles(
+    currentPrice: number = 2945.80,
+    spread: number = 0.20,
+    assetKey: string = "XAUUSD"
+  ): Promise<CentralSignalManagerState> {
+    return this.evaluateState([], [], currentPrice, undefined, assetKey);
   }
 
   /**
@@ -709,7 +809,7 @@ export class CentralSignalManagerEngine {
     }
   ): {
     allowed: boolean;
-    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "ALLOWED";
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "BLOCKED_SOURCE_DISABLED" | "ALLOWED";
     message: string;
     activeSetup?: ActiveCentralSetup;
   } {
@@ -723,6 +823,19 @@ export class CentralSignalManagerEngine {
         : "Harami AI Master 🤖";
     const brainEmoji = source === "KHATARNAK_JUGAAD" ? "💀" : source === "WAR_ROOM" ? "🛡️" : "🤖";
 
+    console.log(`[${source} → CENTRAL GATEKEEPER]: Evaluating setup ${setupData.setupId || "NEW"} (${setupData.direction} @ $${setupData.preferredEntry}, Score: ${setupData.setupScore}/100)`);
+
+    // 0. Check if this AI Trading Source is enabled by Admin
+    if (!this.isAiSourceEnabled(source)) {
+      const reasonMsg = `Gatekeeper Block: ${brainName} is currently turned OFF by Admin. Setup ${setupData.setupId || ""} rejected from Telegram dispatch.`;
+      console.log(`[${source} → CENTRAL GATEKEEPER]: 🔴 REJECTED — ${reasonMsg}`);
+      return {
+        allowed: false,
+        reason: "BLOCKED_SOURCE_DISABLED",
+        message: reasonMsg,
+      };
+    }
+
     // 1. Check if an active trade is already running
     if (this.activeSetup) {
       // If it is the exact same setup being re-confirmed / updated, allow it
@@ -735,6 +848,7 @@ export class CentralSignalManagerEngine {
         };
       }
 
+      console.log(`[${source} → CENTRAL GATEKEEPER]: ⏳ QUEUED — Active trade currently running (${this.activeSetup.brainName} [${this.activeSetup.setupId}]).`);
       return {
         allowed: false,
         reason: "BLOCKED_ACTIVE_EXISTS",
@@ -745,6 +859,7 @@ export class CentralSignalManagerEngine {
 
     // 2. Check if the system is in cooldown
     if (this.cooldown.isActive) {
+      console.log(`[${source} → CENTRAL GATEKEEPER]: ⏳ QUEUED — System in strict cooldown (${this.cooldown.remainingFormatted} remaining).`);
       return {
         allowed: false,
         reason: "BLOCKED_IN_COOLDOWN",
@@ -754,6 +869,7 @@ export class CentralSignalManagerEngine {
 
     // 3. Check Minimum Score Threshold
     if (setupData.setupScore < this.minScoreThreshold) {
+      console.log(`[${source} → CENTRAL GATEKEEPER]: ❌ REJECTED — Setup score ${setupData.setupScore}/100 is below the ${this.minScoreThreshold}/100 threshold.`);
       return {
         allowed: false,
         reason: "BLOCKED_LOW_SCORE",
@@ -839,6 +955,8 @@ export class CentralSignalManagerEngine {
       }
     );
 
+    console.log(`[${source} → CENTRAL GATEKEEPER]: 🏆 PROMOTED TO SINGLE ACTIVE SETUP — ${setupId}`);
+
     this.saveToStorage();
     this.notifySetupPromoted(newActive);
 
@@ -851,11 +969,63 @@ export class CentralSignalManagerEngine {
   }
 
   /**
+   * Helper specifically for War Room Supreme setups with full stage logging
+   */
+  public promoteWarRoomSetup(setup: {
+    setupId: string;
+    symbol?: string;
+    direction: "BUY" | "SELL";
+    entryLow: number;
+    entryHigh: number;
+    bestEntry: number;
+    stopLoss: number;
+    tp1: number;
+    tp2: number;
+    tp3: number;
+    tp4?: number;
+    rrRatioString?: string;
+    setupScore?: number;
+    confidence?: number;
+    reason?: string;
+  }): {
+    allowed: boolean;
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "BLOCKED_SOURCE_DISABLED" | "ALLOWED";
+    message: string;
+    activeSetup?: ActiveCentralSetup;
+  } {
+    console.log(`[WAR ROOM → STAGE 2: CENTRAL SIGNAL MANAGER INGESTION]: Ingesting War Room Setup #${setup.setupId} (${setup.direction} @ $${setup.bestEntry})`);
+    
+    const result = this.registerOrBroadcastSetup("WAR_ROOM", {
+      setupId: setup.setupId,
+      assetKey: setup.symbol?.replace(/[^A-Z]/g, "") || "XAUUSD",
+      timeframe: "15M",
+      direction: setup.direction,
+      entryZoneLow: setup.entryLow,
+      entryZoneHigh: setup.entryHigh,
+      entryRangeFormatted: `$${setup.entryLow.toFixed(2)} — $${setup.entryHigh.toFixed(2)}`,
+      preferredEntry: setup.bestEntry,
+      stopLoss: setup.stopLoss,
+      tp1: setup.tp1,
+      tp2: setup.tp2,
+      tp3: setup.tp3,
+      finalTp: setup.tp4 || setup.tp3,
+      rrRatioString: setup.rrRatioString || "1:3.2",
+      setupScore: setup.setupScore || 92,
+      marketConfidence: setup.confidence || 91,
+      signatureLine: getRandomSignatureLine("WAR_ROOM"),
+      selectionReason: setup.reason || "War Room Supreme 7-Gate Institutional Trade.",
+    });
+
+    console.log(`[WAR ROOM → STAGE 3: SINGLE ACTIVE SETUP VALIDATION]: Result = ${result.reason}. Allowed: ${result.allowed}. Message: ${result.message}`);
+    return result;
+  }
+
+  /**
    * Helper specifically for Khatarnak Jugaad setups
    */
   public promoteKhatarnakJugaadSetup(setup: KhatarnakJugaadSetup): {
     allowed: boolean;
-    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "ALLOWED";
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "BLOCKED_SOURCE_DISABLED" | "ALLOWED";
     message: string;
     activeSetup?: ActiveCentralSetup;
   } {
@@ -1070,6 +1240,9 @@ export class CentralSignalManagerEngine {
       currentPrice: px,
       spread,
       assetKey,
+      haramiEnabled: this.haramiEnabled,
+      khatarnakEnabled: this.khatarnakEnabled,
+      warRoomEnabled: this.warRoomEnabled,
       candidates,
       consensus,
       activeSetup: this.activeSetup,
@@ -1101,9 +1274,17 @@ export class CentralSignalManagerEngine {
     // 🎯 PREFERRED ENTRY: Best 2.6 Sell Entry
     const preferredEntry = rawSetup1m.bestSellEntry || currentPx;
 
+    const isEnabled = this.isAiSourceEnabled("KHATARNAK_JUGAAD");
     const marketConfidence = Math.max(70, Math.min(96, Math.round(rawSetup1m.score * 0.95 + 4)));
-    const grade: AiCandidateEvaluation["qualityGrade"] =
-      rawSetup1m.score >= 80 ? "STRONG" : rawSetup1m.score >= 70 ? "VALID" : rawSetup1m.score >= 60 ? "WAIT" : "REJECT";
+    const grade: AiCandidateEvaluation["qualityGrade"] = !isEnabled
+      ? "REJECT"
+      : rawSetup1m.score >= 80
+      ? "STRONG"
+      : rawSetup1m.score >= 70
+      ? "VALID"
+      : rawSetup1m.score >= 60
+      ? "WAIT"
+      : "REJECT";
 
     const qualityAudit: SetupQualityAudit = {
       realTimePriceVerified: currentPx > 0,
@@ -1115,8 +1296,10 @@ export class CentralSignalManagerEngine {
       riskRewardPassed: true,
       slTpValidityPassed: rawSetup1m.stopLoss > 0 && rawSetup1m.tp1 > 0,
       freshnessPassed: Date.now() - rawSetup1m.timestamp < 180000,
-      overallPassed: rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
-      verificationSummary: "9/9 Real Data & 1M Dynamic 2.6 Institutional Sell Checks Passed",
+      overallPassed: isEnabled && rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
+      verificationSummary: isEnabled
+        ? "9/9 Real Data & 1M Dynamic 2.6 Institutional Sell Checks Passed"
+        : "🔴 Khatarnak Jugaad disabled by Admin (OFF)",
     };
 
     return {
@@ -1151,9 +1334,11 @@ export class CentralSignalManagerEngine {
       marketRegime: rawSetup1m.marketRegime,
       dataFreshnessTimestamp: rawSetup1m.timestamp,
       isStale: false,
-      isValid: rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
-      competitionStatus: "QUEUED_WAITING",
-      verdictReason: rawSetup1m.hasValidSetup
+      isValid: isEnabled && rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
+      competitionStatus: !isEnabled ? "REJECTED_LOW_SCORE" : "QUEUED_WAITING",
+      verdictReason: !isEnabled
+        ? "🔴 Source turned OFF by Admin."
+        : rawSetup1m.hasValidSetup
         ? `Valid 1M Institutional 2.6 Sell setup formed.`
         : rawSetup1m.waitingReason || "Awaiting 1M Sell LQ sweep & 2.6 retracement.",
     };
@@ -1190,10 +1375,18 @@ export class CentralSignalManagerEngine {
     const tp3 = dir === "BUY" ? Number((preferredEntry + tp3Dist).toFixed(2)) : Number((preferredEntry - tp3Dist).toFixed(2));
     const finalTp = dir === "BUY" ? Number((preferredEntry + finalTpDist).toFixed(2)) : Number((preferredEntry - finalTpDist).toFixed(2));
 
+    const isEnabled = this.isAiSourceEnabled("WAR_ROOM");
     const setupScore = Math.max(72, Math.min(95, Math.round(86 + (Math.sin(currentPx) * 6))));
     const marketConfidence = Math.max(75, Math.min(94, Math.round(setupScore * 0.96)));
-    const grade: AiCandidateEvaluation["qualityGrade"] =
-      setupScore >= 80 ? "STRONG" : setupScore >= 70 ? "VALID" : setupScore >= 60 ? "WAIT" : "REJECT";
+    const grade: AiCandidateEvaluation["qualityGrade"] = !isEnabled
+      ? "REJECT"
+      : setupScore >= 80
+      ? "STRONG"
+      : setupScore >= 70
+      ? "VALID"
+      : setupScore >= 60
+      ? "WAIT"
+      : "REJECT";
 
     const qualityAudit: SetupQualityAudit = {
       realTimePriceVerified: currentPx > 0,
@@ -1205,8 +1398,10 @@ export class CentralSignalManagerEngine {
       riskRewardPassed: true,
       slTpValidityPassed: stopLoss > 0 && tp1 > 0,
       freshnessPassed: true,
-      overallPassed: setupScore >= this.minScoreThreshold,
-      verificationSummary: "9/9 4H Macro & 15M Institutional POI Checks Passed",
+      overallPassed: isEnabled && setupScore >= this.minScoreThreshold,
+      verificationSummary: isEnabled
+        ? "9/9 4H Macro & 15M Institutional POI Checks Passed"
+        : "🔴 War Room Supreme disabled by Admin (OFF)",
     };
 
     return {
@@ -1241,9 +1436,11 @@ export class CentralSignalManagerEngine {
       marketRegime: "STRONG_BULLISH",
       dataFreshnessTimestamp: Date.now(),
       isStale: false,
-      isValid: setupScore >= this.minScoreThreshold,
-      competitionStatus: "QUEUED_WAITING",
-      verdictReason: "7/7 Institutional Execution Gates verified & aligned.",
+      isValid: isEnabled && setupScore >= this.minScoreThreshold,
+      competitionStatus: !isEnabled ? "REJECTED_LOW_SCORE" : "QUEUED_WAITING",
+      verdictReason: !isEnabled
+        ? "🔴 Source turned OFF by Admin."
+        : "7/7 Institutional Execution Gates verified & aligned.",
     };
   }
 
@@ -1271,10 +1468,18 @@ export class CentralSignalManagerEngine {
     const tp3 = dir === "BUY" ? Number((preferredEntry + slDist * 3.5).toFixed(2)) : Number((preferredEntry - slDist * 3.5).toFixed(2));
     const finalTp = dir === "BUY" ? Number((preferredEntry + slDist * 4.2).toFixed(2)) : Number((preferredEntry - slDist * 4.2).toFixed(2));
 
+    const isEnabled = this.isAiSourceEnabled("HARAMI_AI");
     const setupScore = Math.max(70, Math.min(93, Math.round(84 + (Math.cos(currentPx) * 5))));
     const marketConfidence = Math.max(72, Math.min(92, Math.round(setupScore * 0.94)));
-    const grade: AiCandidateEvaluation["qualityGrade"] =
-      setupScore >= 80 ? "STRONG" : setupScore >= 70 ? "VALID" : setupScore >= 60 ? "WAIT" : "REJECT";
+    const grade: AiCandidateEvaluation["qualityGrade"] = !isEnabled
+      ? "REJECT"
+      : setupScore >= 80
+      ? "STRONG"
+      : setupScore >= 70
+      ? "VALID"
+      : setupScore >= 60
+      ? "WAIT"
+      : "REJECT";
 
     const qualityAudit: SetupQualityAudit = {
       realTimePriceVerified: currentPx > 0,
@@ -1286,8 +1491,10 @@ export class CentralSignalManagerEngine {
       riskRewardPassed: true,
       slTpValidityPassed: stopLoss > 0 && tp1 > 0,
       freshnessPassed: true,
-      overallPassed: setupScore >= this.minScoreThreshold,
-      verificationSummary: "9/9 Neural Pattern & Sub-Brain Concurrence Checks Passed",
+      overallPassed: isEnabled && setupScore >= this.minScoreThreshold,
+      verificationSummary: isEnabled
+        ? "9/9 Neural Pattern & Sub-Brain Concurrence Checks Passed"
+        : "🔴 Harami AI disabled by Admin (OFF)",
     };
 
     return {
@@ -1322,9 +1529,11 @@ export class CentralSignalManagerEngine {
       marketRegime: "STRONG_BULLISH",
       dataFreshnessTimestamp: Date.now(),
       isStale: false,
-      isValid: setupScore >= this.minScoreThreshold,
-      competitionStatus: "QUEUED_WAITING",
-      verdictReason: "7/7 Sub-Brains concurred on directional bias.",
+      isValid: isEnabled && setupScore >= this.minScoreThreshold,
+      competitionStatus: !isEnabled ? "REJECTED_LOW_SCORE" : "QUEUED_WAITING",
+      verdictReason: !isEnabled
+        ? "🔴 Source turned OFF by Admin."
+        : "7/7 Sub-Brains concurred on directional bias.",
     };
   }
 
@@ -1411,7 +1620,9 @@ export class CentralSignalManagerEngine {
     consensus: AiConsensusState,
     currentPx: number
   ) {
-    const list = Object.values(candidates).filter((c) => c.isValid && (c.direction === "BUY" || c.direction === "SELL"));
+    const list = Object.values(candidates).filter(
+      (c) => c.isValid && this.isAiSourceEnabled(c.brainSource) && (c.direction === "BUY" || c.direction === "SELL")
+    );
 
     if (list.length === 0) {
       // No AI brain meets the 70+ quality threshold

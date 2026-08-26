@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { LivePrice } from "../types";
 import {
+  centralSignalManager,
   AiBrainSource,
   CentralSignalManagerState,
   AiCandidateEvaluation,
@@ -56,6 +57,7 @@ interface CentralSignalManagerViewProps {
   onForceCloseActiveSetup: (reason?: string) => void;
   onResetCooldownManually: () => void;
   onUpdateConfig: (minScore: number, cooldownMins: CooldownDurationMinutes, autoBroadcast: boolean) => void;
+  onToggleAiSource?: (source: AiBrainSource, enabled: boolean) => void;
   currentPrice: number;
   prices?: Record<string, LivePrice>;
   assetKey?: string;
@@ -67,6 +69,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
   onForceCloseActiveSetup,
   onResetCooldownManually,
   onUpdateConfig,
+  onToggleAiSource,
   currentPrice,
   prices = {},
   assetKey = "XAUUSD",
@@ -81,6 +84,9 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
   const [cfgMinScore, setCfgMinScore] = useState<number>(managerState.minScoreThreshold);
   const [cfgCooldown, setCfgCooldown] = useState<CooldownDurationMinutes>(managerState.cooldownMinutesConfig);
   const [cfgAutoBroadcast, setCfgAutoBroadcast] = useState<boolean>(managerState.autoBroadcastToTelegram);
+  const [cfgHarami, setCfgHarami] = useState<boolean>(managerState.haramiEnabled ?? true);
+  const [cfgKhatarnak, setCfgKhatarnak] = useState<boolean>(managerState.khatarnakEnabled ?? true);
+  const [cfgWarRoom, setCfgWarRoom] = useState<boolean>(managerState.warRoomEnabled ?? true);
 
   const {
     marketStatus,
@@ -91,10 +97,37 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
     cooldown,
     leaderboard,
     auditLogs,
+    haramiEnabled = true,
+    khatarnakEnabled = true,
+    warRoomEnabled = true,
   } = managerState;
+
+  const handleToggleAiSource = (source: AiBrainSource, currentEnabled: boolean) => {
+    const nextEnabled = !currentEnabled;
+    if (source === "HARAMI_AI") setCfgHarami(nextEnabled);
+    if (source === "KHATARNAK_JUGAAD") setCfgKhatarnak(nextEnabled);
+    if (source === "WAR_ROOM") setCfgWarRoom(nextEnabled);
+
+    if (onToggleAiSource) {
+      onToggleAiSource(source, nextEnabled);
+    } else {
+      centralSignalManager.setAiSourceEnabled(source, nextEnabled);
+      try {
+        fetch("/api/central-signal-manager/toggle-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source, enabled: nextEnabled }),
+        }).catch(() => {});
+      } catch (e) {}
+      onRefresh();
+    }
+  };
 
   const handleSaveConfig = () => {
     onUpdateConfig(cfgMinScore, cfgCooldown, cfgAutoBroadcast);
+    if (cfgHarami !== haramiEnabled) handleToggleAiSource("HARAMI_AI", haramiEnabled);
+    if (cfgKhatarnak !== khatarnakEnabled) handleToggleAiSource("KHATARNAK_JUGAAD", khatarnakEnabled);
+    if (cfgWarRoom !== warRoomEnabled) handleToggleAiSource("WAR_ROOM", warRoomEnabled);
     setIsSettingsOpen(false);
   };
 
@@ -275,6 +308,113 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
               }`}
             >
               {marketStatus === "HEALTHY" ? "LIVE VERIFIED" : "WARNING"}
+            </div>
+          </div>
+        </div>
+
+        {/* 🎛️ INDEPENDENT 3-AI SOURCE ON/OFF CONTROLS BAR */}
+        <div className="mt-4 pt-4 border-t border-slate-800/80">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                Independent AI Source Controls (Admin Orchestrator)
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Only ON sources can submit candidate setups to Central Manager
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs">
+            {/* 1. Harami AI Toggle */}
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                haramiEnabled
+                  ? "bg-purple-950/20 border-purple-500/40 shadow-sm"
+                  : "bg-slate-900/40 border-slate-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🤖</span>
+                <div>
+                  <div className="font-bold text-white text-xs">Harami AI</div>
+                  <div className="text-[10px] text-purple-300">
+                    {haramiEnabled ? "🟢 ACTIVE SOURCE" : "🔴 DISABLED"}
+                  </div>
+                </div>
+              </div>
+              <button
+                id="csm-toggle-harami-btn"
+                onClick={() => handleToggleAiSource("HARAMI_AI", haramiEnabled)}
+                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                  haramiEnabled
+                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                }`}
+              >
+                {haramiEnabled ? "ON" : "OFF"}
+              </button>
+            </div>
+
+            {/* 2. Khatarnak Jugaad Toggle */}
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                khatarnakEnabled
+                  ? "bg-orange-950/20 border-orange-500/40 shadow-sm"
+                  : "bg-slate-900/40 border-slate-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">💀</span>
+                <div>
+                  <div className="font-bold text-white text-xs">Khatarnak Jugaad</div>
+                  <div className="text-[10px] text-orange-300">
+                    {khatarnakEnabled ? "🟢 ACTIVE SOURCE" : "🔴 DISABLED"}
+                  </div>
+                </div>
+              </div>
+              <button
+                id="csm-toggle-khatarnak-btn"
+                onClick={() => handleToggleAiSource("KHATARNAK_JUGAAD", khatarnakEnabled)}
+                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                  khatarnakEnabled
+                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                }`}
+              >
+                {khatarnakEnabled ? "ON" : "OFF"}
+              </button>
+            </div>
+
+            {/* 3. War Room Supreme Toggle */}
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                warRoomEnabled
+                  ? "bg-amber-950/20 border-amber-500/40 shadow-sm"
+                  : "bg-slate-900/40 border-slate-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🛡️</span>
+                <div>
+                  <div className="font-bold text-white text-xs">War Room Supreme</div>
+                  <div className="text-[10px] text-amber-300">
+                    {warRoomEnabled ? "🟢 ACTIVE SOURCE" : "🔴 DISABLED"}
+                  </div>
+                </div>
+              </div>
+              <button
+                id="csm-toggle-warroom-btn"
+                onClick={() => handleToggleAiSource("WAR_ROOM", warRoomEnabled)}
+                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                  warRoomEnabled
+                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                }`}
+              >
+                {warRoomEnabled ? "ON" : "OFF"}
+              </button>
             </div>
           </div>
         </div>
@@ -603,12 +743,16 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
           {(["KHATARNAK_JUGAAD", "WAR_ROOM", "HARAMI_AI"] as AiBrainSource[]).map((source) => {
             const candidate: AiCandidateEvaluation = candidates[source];
             const isWinner = activeSetup?.brainSource === source;
+            const isSourceEnabled =
+              source === "HARAMI_AI" ? haramiEnabled : source === "KHATARNAK_JUGAAD" ? khatarnakEnabled : warRoomEnabled;
 
             return (
               <div
                 key={source}
                 className={`bg-[#0F172A] rounded-2xl p-5 border-2 transition-all relative flex flex-col justify-between ${
-                  isWinner
+                  !isSourceEnabled
+                    ? "border-slate-800/60 opacity-65 bg-[#090D16]"
+                    : isWinner
                     ? "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.25)] bg-gradient-to-b from-[#1E293B]/80 to-[#0F172A]"
                     : "border-slate-800 hover:border-slate-700"
                 }`}
@@ -619,17 +763,35 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                     <div className="flex items-center gap-2">
                       <span className="text-2xl">{candidate.brainEmoji}</span>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{candidate.brainName}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-white text-sm">{candidate.brainName}</h4>
+                        </div>
                         <div className="text-[10px] font-mono text-slate-400">
                           {candidate.timeframe} • ID: {candidate.setupId}
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleToggleAiSource(source, isSourceEnabled)}
+                        className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] cursor-pointer transition-all ${
+                          isSourceEnabled
+                            ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                            : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                        }`}
+                        title={isSourceEnabled ? "Click to turn OFF this AI source" : "Click to turn ON this AI source"}
+                      >
+                        {isSourceEnabled ? "ON" : "OFF"}
+                      </button>
+
                       {isWinner ? (
                         <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded text-[10px] font-bold font-mono">
-                          🏆 ACTIVE WINNER
+                          🏆 ACTIVE
+                        </span>
+                      ) : !isSourceEnabled ? (
+                        <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold font-mono">
+                          MUTED
                         </span>
                       ) : candidate.competitionStatus === "REJECTED_CONFLICT" ? (
                         <span className="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded text-[10px] font-bold font-mono">
@@ -1007,6 +1169,70 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                     }`}
                   />
                 </button>
+              </div>
+
+              {/* AI Source Master Routing Controls */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="font-bold text-white text-xs uppercase tracking-wider">
+                  Independent AI Sources ON / OFF
+                </div>
+                
+                {/* Harami AI */}
+                <div className="flex items-center justify-between p-2.5 bg-[#0B0F17] rounded-xl border border-purple-500/30">
+                  <div className="flex items-center gap-2">
+                    <span>🤖</span>
+                    <div>
+                      <div className="font-bold text-white text-xs">Harami AI</div>
+                      <div className="text-[10px] text-purple-300">Multi-TF institutional analysis</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCfgHarami(!cfgHarami)}
+                    className={`px-3 py-1 rounded-lg font-mono font-bold text-xs ${
+                      cfgHarami ? "bg-emerald-500 text-slate-950" : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                    }`}
+                  >
+                    {cfgHarami ? "ENABLED" : "MUTED"}
+                  </button>
+                </div>
+
+                {/* Khatarnak Jugaad */}
+                <div className="flex items-center justify-between p-2.5 bg-[#0B0F17] rounded-xl border border-orange-500/30">
+                  <div className="flex items-center gap-2">
+                    <span>💀</span>
+                    <div>
+                      <div className="font-bold text-white text-xs">Khatarnak Jugaad 💀</div>
+                      <div className="text-[10px] text-orange-300">1M Fib 2.6 institutional sniper</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCfgKhatarnak(!cfgKhatarnak)}
+                    className={`px-3 py-1 rounded-lg font-mono font-bold text-xs ${
+                      cfgKhatarnak ? "bg-emerald-500 text-slate-950" : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                    }`}
+                  >
+                    {cfgKhatarnak ? "ENABLED" : "MUTED"}
+                  </button>
+                </div>
+
+                {/* War Room Supreme */}
+                <div className="flex items-center justify-between p-2.5 bg-[#0B0F17] rounded-xl border border-amber-500/30">
+                  <div className="flex items-center gap-2">
+                    <span>🛡️</span>
+                    <div>
+                      <div className="font-bold text-white text-xs">War Room Supreme</div>
+                      <div className="text-[10px] text-amber-300">SMC / DOM multi-timeframe engine</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCfgWarRoom(!cfgWarRoom)}
+                    className={`px-3 py-1 rounded-lg font-mono font-bold text-xs ${
+                      cfgWarRoom ? "bg-emerald-500 text-slate-950" : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                    }`}
+                  >
+                    {cfgWarRoom ? "ENABLED" : "MUTED"}
+                  </button>
+                </div>
               </div>
             </div>
 

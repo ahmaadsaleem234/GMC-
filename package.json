@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild worker.ts --bundle --platform=neutral --format=esm --outfile=worker.js",
+    "build:worker": "esbuild worker.ts --bundle --platform=neutral --format=esm --outfile=worker.js",
     "start": "node dist/server.cjs",
     "dev:worker": "wrangler dev worker.ts",
     "deploy:worker": "wrangler deploy worker.ts",

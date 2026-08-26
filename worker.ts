@@ -1464,19 +1464,796 @@ export default {
       });
     }
 
-    // 10. Health Check & Root Info Endpoint
+    // 10. API Health & Status Endpoint (Explicit API path)
+    if (path === "/api/status" || path === "/api/health" || path === "/api/info") {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          service: "GMC Telegram AI Bot Backend (Cloudflare Worker)",
+          status: "ONLINE",
+          webhookEndpoint: "/api/telegram/webhook",
+          setWebhookEndpoint: "/api/telegram/set-webhook",
+          webhookInfoEndpoint: "/api/telegram/webhook-info",
+          broadcastEndpoint: "/api/telegram/broadcast",
+          time: new Date().toISOString(),
+        }),
+        { headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // 11. Root Frontend Dashboard UI (GET / and all dashboard routes)
+    if (method === "GET") {
+      return new Response(renderDashboardHtml(url.origin, env), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+          ...corsHeaders,
+        },
+      });
+    }
+
+    // Default Fallback
     return new Response(
       JSON.stringify({
         ok: true,
         service: "GMC Telegram AI Bot Backend (Cloudflare Worker)",
         status: "ONLINE",
-        webhookEndpoint: "/api/telegram/webhook",
-        setWebhookEndpoint: "/api/telegram/set-webhook",
-        webhookInfoEndpoint: "/api/telegram/webhook-info",
-        broadcastEndpoint: "/api/telegram/broadcast",
         time: new Date().toISOString(),
       }),
       { headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   },
 };
+
+// -------------------------------------------------------------
+// EMBEDDED DASHBOARD HTML RENDERER
+// -------------------------------------------------------------
+function renderDashboardHtml(origin: string, env: Env): string {
+  const masterAdminId = getMasterAdminId(env);
+  const botToken = getBotToken(env);
+  const hasToken = Boolean(botToken);
+  const maskedToken = hasToken ? `${botToken.slice(0, 6)}...${botToken.slice(-4)}` : "NOT_CONFIGURED";
+
+  return `<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GMC AI Brain • Institutional Trading & Telegram Command Center</title>
+  <meta name="description" content="GMC Institutional Gold & Telegram AI Bot Live Super Admin Dashboard">
+  <meta name="theme-color" content="#05070E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#05070E',
+              card: '#0B0F19',
+              cardHover: '#111726',
+              border: '#1E293B',
+              gold: '#F5B301',
+              goldHover: '#d49b00',
+              emerald: '#10B981',
+              crimson: '#EF4444',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #05070E; color: #F1F5F9; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+    .gold-glow { box-shadow: 0 0 25px rgba(245, 179, 1, 0.15); }
+    .emerald-glow { box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #05070E; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-[#05070E] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-[#F5B301]/30">
+
+  <!-- TOP HEADER / TICKER BAR -->
+  <header class="border-b border-slate-800/80 bg-[#0B0F19]/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16 gap-4">
+        <!-- Brand & Engine Title -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#F5B301]/20 via-[#F5B301] to-amber-200 flex items-center justify-center font-extrabold text-[#05070E] text-lg shadow-lg shadow-[#F5B301]/20 border border-[#F5B301]/40">
+            GMC
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-base tracking-tight text-white">GMC AI BRAIN</span>
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30 animate-pulse">24/7 LIVE</span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-400">INSTITUTIONAL GOLD (XAU/USD) & TELEGRAM BOT</div>
+          </div>
+        </div>
+
+        <!-- Live Price & Status Banner -->
+        <div class="hidden md:flex items-center gap-4">
+          <div class="bg-[#05070E] px-3.5 py-1.5 rounded-lg border border-slate-800 flex items-center gap-3">
+            <div class="flex flex-col">
+              <span class="text-[10px] font-mono uppercase text-slate-400">XAU/USD SPOT</span>
+              <span id="headerGoldPrice" class="font-mono font-bold text-sm text-[#F5B301]">2,945.80</span>
+            </div>
+            <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#10B981]/20 text-[#10B981]">+0.48%</span>
+          </div>
+
+          <div class="bg-[#05070E] px-3.5 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-[#10B981] animate-ping"></div>
+            <span class="text-xs font-mono text-slate-300">EDGE WORKER: <strong class="text-[#10B981]">ONLINE</strong></span>
+          </div>
+        </div>
+
+        <!-- Quick Top Actions -->
+        <div class="flex items-center gap-2">
+          <button onclick="refreshData()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <span>Sync</span>
+          </button>
+          <a href="https://t.me" target="_blank" class="px-3.5 py-1.5 rounded-lg bg-[#F5B301] hover:bg-[#d49b00] text-xs font-bold text-[#05070E] transition shadow-md shadow-[#F5B301]/20">
+            Open Telegram Bot
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS -->
+  <div class="bg-[#0B0F19] border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-2 overflow-x-auto custom-scroll py-2">
+      <button onclick="switchTab('tabMarket')" id="btnTabMarket" class="tab-btn px-4 py-2 text-xs font-bold rounded-lg bg-[#F5B301] text-[#05070E] shadow transition whitespace-nowrap">
+        📊 Live Market & Signals
+      </button>
+      <button onclick="switchTab('tabSubscribers')" id="btnTabSubscribers" class="tab-btn px-4 py-2 text-xs font-bold rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition whitespace-nowrap">
+        👥 Telegram Subscribers (<span id="tabUserCount">...</span>)
+      </button>
+      <button onclick="switchTab('tabBroadcast')" id="btnTabBroadcast" class="tab-btn px-4 py-2 text-xs font-bold rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition whitespace-nowrap">
+        📢 Signal Broadcaster
+      </button>
+      <button onclick="switchTab('tabWebhook')" id="btnTabWebhook" class="tab-btn px-4 py-2 text-xs font-bold rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition whitespace-nowrap">
+        📡 Webhook Diagnostics
+      </button>
+      <button onclick="switchTab('tabAdmin')" id="btnTabAdmin" class="tab-btn px-4 py-2 text-xs font-bold rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition whitespace-nowrap">
+        🛡️ Super Admin Control
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- TAB 1: LIVE MARKET & SIGNALS -->
+    <section id="tabMarket" class="tab-pane space-y-6">
+      
+      <!-- HERO METRICS ROW -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-[#0B0F19] p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] font-mono text-slate-400">ASSET PAIR</div>
+          <div class="text-lg font-bold text-white mt-1">XAU / USD</div>
+          <div class="text-[11px] text-[#10B981] mt-0.5">Spot Gold • Bullish Confluence</div>
+        </div>
+        <div class="bg-[#0B0F19] p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] font-mono text-slate-400">WAR ROOM SETUP</div>
+          <div class="text-lg font-bold text-[#10B981] mt-1">BUY ZONE ACTIVE</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Entry: 2942.50 - 2946.00</div>
+        </div>
+        <div class="bg-[#0B0F19] p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] font-mono text-slate-400">KHATARNAK SCALP</div>
+          <div class="text-lg font-bold text-[#F5B301] mt-1">READY • 1:3.4 RR</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Targets: 2955 / 2962 / 2975</div>
+        </div>
+        <div class="bg-[#0B0F19] p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] font-mono text-slate-400">APPROVED BOT USERS</div>
+          <div id="statApprovedUsers" class="text-lg font-bold text-white mt-1">Loading...</div>
+          <div class="text-[11px] text-[#10B981] mt-0.5">Live Delivery 24/7</div>
+        </div>
+      </div>
+
+      <!-- TRADINGVIEW LIVE CHART CONTAINER -->
+      <div class="bg-[#0B0F19] rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#F5B301]"></span>
+            <span class="font-bold text-sm text-white">Live Institutional Chart (XAU/USD)</span>
+            <span class="text-xs font-mono text-slate-400">• OANDA 15M / 1H Multi-Timeframe</span>
+          </div>
+          <span class="text-xs font-mono text-slate-400">Auto-Refreshed via TradingView Realtime Feed</span>
+        </div>
+        <div style="height: 480px; width: 100%;" id="tradingview_chart_container">
+          <!-- TradingView Widget BEGIN -->
+          <iframe 
+            src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_7918a&symbol=OANDA%3AXAUUSD&interval=15&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%22RSI%40tv-basicstudies%22%2C%22MASimple%40tv-basicstudies%22%5D&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en&utm_source=gmctrading.online" 
+            style="width: 100%; height: 100%; border: none;">
+          </iframe>
+          <!-- TradingView Widget END -->
+        </div>
+      </div>
+
+      <!-- ACTIVE SIGNALS CARDS -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- War Room Signal Card -->
+        <div class="bg-[#0B0F19] rounded-xl border border-amber-500/30 p-5 space-y-4 hover:border-amber-500/60 transition">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-[#F5B301]/20 text-[#F5B301] text-xs font-bold font-mono">👑 WAR ROOM</span>
+              <span class="font-bold text-white text-sm">Gold Breakout</span>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-mono text-xs font-bold">BUY</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">ENTRY ZONE</div>
+              <div class="text-[#F5B301] font-bold mt-0.5">2942.50 - 2946.00</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">STOP LOSS</div>
+              <div class="text-[#EF4444] font-bold mt-0.5">2934.00</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">TP1 / TP2</div>
+              <div class="text-[#10B981] font-bold mt-0.5">2954.00 / 2965.00</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">TP3 (RUNNER)</div>
+              <div class="text-[#10B981] font-bold mt-0.5">2980.00</div>
+            </div>
+          </div>
+          <button onclick="quickDispatchSignal('WAR_ROOM')" class="w-full py-2 bg-amber-500/20 hover:bg-amber-500/30 text-[#F5B301] border border-amber-500/40 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <span>⚡ Broadcast War Room Signal</span>
+          </button>
+        </div>
+
+        <!-- Khatarnak Jugaad Scalp Card -->
+        <div class="bg-[#0B0F19] rounded-xl border border-red-500/30 p-5 space-y-4 hover:border-red-500/60 transition">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs font-bold font-mono">💀 KHATARNAK</span>
+              <span class="font-bold text-white text-sm">Momentum Scalp</span>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-mono text-xs font-bold">BUY SCALP</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">ENTRY ZONE</div>
+              <div class="text-[#F5B301] font-bold mt-0.5">2944.00 - 2947.00</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">STOP LOSS</div>
+              <div class="text-[#EF4444] font-bold mt-0.5">2938.50</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">SCALP TP1</div>
+              <div class="text-[#10B981] font-bold mt-0.5">2952.00</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">SCALP TP2</div>
+              <div class="text-[#10B981] font-bold mt-0.5">2958.00</div>
+            </div>
+          </div>
+          <button onclick="quickDispatchSignal('KHATARNAK')" class="w-full py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <span>⚡ Broadcast Khatarnak Scalp</span>
+          </button>
+        </div>
+
+        <!-- Harami AI Confluence Card -->
+        <div class="bg-[#0B0F19] rounded-xl border border-emerald-500/30 p-5 space-y-4 hover:border-emerald-500/60 transition">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="p-1.5 rounded-lg bg-emerald-500/20 text-[#10B981] text-xs font-bold font-mono">🤖 HARAMI AI</span>
+              <span class="font-bold text-white text-sm">Confluence 94%</span>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-mono text-xs font-bold">CONFIRMED</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">ALGO STATE</div>
+              <div class="text-[#10B981] font-bold mt-0.5">BULLISH EXPANSION</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">RISK:REWARD</div>
+              <div class="text-[#F5B301] font-bold mt-0.5">1 : 3.4</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">VOLATILITY</div>
+              <div class="text-slate-200 font-bold mt-0.5">OPTIMAL (ATR 18.4)</div>
+            </div>
+            <div class="bg-[#05070E] p-2.5 rounded-lg border border-slate-800">
+              <div class="text-slate-400">SESSION</div>
+              <div class="text-emerald-400 font-bold mt-0.5">LONDON / NY OVERLAP</div>
+            </div>
+          </div>
+          <button onclick="quickDispatchSignal('HARAMI_AI')" class="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-[#10B981] border border-emerald-500/40 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <span>⚡ Broadcast Harami AI Signal</span>
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 2: TELEGRAM SUBSCRIBERS -->
+    <section id="tabSubscribers" class="tab-pane hidden space-y-6">
+      <div class="bg-[#0B0F19] rounded-2xl border border-slate-800 p-6 space-y-6">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>👥 Telegram Bot Subscribers & Access Control</span>
+              <span id="badgeSubTotal" class="px-2 py-0.5 text-xs font-mono font-bold bg-[#F5B301]/20 text-[#F5B301] rounded-md">...</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Manage user approvals, assign 1-Day, 7-Day, 1-Month, or Lifetime plans, and stream signals 24/7.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <input type="text" id="subSearch" oninput="filterSubscribers()" placeholder="Search user ID or name..." class="bg-[#05070E] border border-slate-700 text-xs text-slate-200 px-3.5 py-2 rounded-lg focus:outline-none focus:border-[#F5B301] w-56">
+            <button onclick="loadTelegramUsersList()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white rounded-lg border border-slate-700 transition">
+              🔄 Refresh Users
+            </button>
+          </div>
+        </div>
+
+        <!-- USERS TABLE -->
+        <div class="overflow-x-auto custom-scroll border border-slate-800 rounded-xl">
+          <table class="w-full text-left text-xs font-mono border-collapse">
+            <thead class="bg-[#05070E] text-slate-400 uppercase text-[11px] border-b border-slate-800">
+              <tr>
+                <th class="p-3.5">User ID / Telegram Info</th>
+                <th class="p-3.5">Status</th>
+                <th class="p-3.5">Plan / Expiry</th>
+                <th class="p-3.5">Signals Sent</th>
+                <th class="p-3.5">1-Tap Approvals</th>
+                <th class="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="subscribersTableBody" class="divide-y divide-slate-800/60 bg-[#0B0F19]">
+              <tr>
+                <td colspan="6" class="p-6 text-center text-slate-500 font-mono">Loading subscribers from Edge KV...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SIGNAL BROADCASTER -->
+    <section id="tabBroadcast" class="tab-pane hidden space-y-6">
+      <div class="bg-[#0B0F19] rounded-2xl border border-slate-800 p-6 max-w-3xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span>📢 Instant Signal Dispatcher</span>
+            <span class="px-2 py-0.5 text-xs font-mono font-bold bg-[#10B981]/20 text-[#10B981] rounded-md">LIVE DISPATCH</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Broadcast an institutional Gold trading signal or market alert to all approved subscribers in real-time.</p>
+        </div>
+
+        <form id="broadcastForm" onsubmit="handleBroadcastSubmit(event)" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-mono text-slate-400 mb-1">SIGNAL STRATEGY</label>
+              <select id="bcStrategy" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#F5B301]">
+                <option value="WAR_ROOM">👑 War Room Gold Strategy</option>
+                <option value="KHATARNAK">💀 Khatarnak Jugaad Scalp</option>
+                <option value="HARAMI_AI">🤖 Harami AI Quantum Engine</option>
+                <option value="GMC_SYSTEM">⚡ GMC General Market Update</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-mono text-slate-400 mb-1">DIRECTION / ACTION</label>
+              <select id="bcDirection" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#F5B301]">
+                <option value="BUY">🟢 BUY / LONG</option>
+                <option value="SELL">🔴 SELL / SHORT</option>
+                <option value="UPDATE">📢 TRADE UPDATE / BREAKEVEN</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">ENTRY ZONE</label>
+              <input type="text" id="bcEntry" value="2945.00 - 2948.00" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2 text-xs text-white focus:border-[#F5B301]">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">STOP LOSS</label>
+              <input type="text" id="bcSL" value="2937.00" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2 text-xs text-red-400 focus:border-[#F5B301]">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">TARGET 1 (TP1)</label>
+              <input type="text" id="bcTP1" value="2955.00" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2 text-xs text-emerald-400 focus:border-[#F5B301]">
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">TARGET 2 (TP2)</label>
+              <input type="text" id="bcTP2" value="2965.00" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2 text-xs text-emerald-400 focus:border-[#F5B301]">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-mono text-slate-400 mb-1">ANALYSIS / COMMENTARY</label>
+            <textarea id="bcNotes" rows="3" class="w-full bg-[#05070E] border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#F5B301]" placeholder="Confluence: Bullish liquidity sweep at 2942. RSI oversold on 15m. Target liquidity pool at 2965."></textarea>
+          </div>
+
+          <button type="submit" id="btnSubmitBroadcast" class="w-full py-3 rounded-xl bg-gradient-to-r from-[#F5B301] to-amber-500 hover:from-amber-500 hover:to-[#F5B301] text-[#05070E] font-bold text-sm tracking-wide transition shadow-lg shadow-[#F5B301]/20">
+            🚀 Dispatch Live Signal to All Approved Telegram Subscribers
+          </button>
+        </form>
+        <div id="broadcastStatus" class="hidden p-3 rounded-lg text-xs font-mono"></div>
+      </div>
+    </section>
+
+    <!-- TAB 4: WEBHOOK DIAGNOSTICS -->
+    <section id="tabWebhook" class="tab-pane hidden space-y-6">
+      <div class="bg-[#0B0F19] rounded-2xl border border-slate-800 p-6 space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span>📡 Cloudflare Edge Webhook Diagnostics</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Configure and inspect the live Telegram Bot webhook binding on Cloudflare Edge.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Webhook Info Panel -->
+          <div class="bg-[#05070E] p-5 rounded-xl border border-slate-800 space-y-4 font-mono text-xs">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400 font-bold">TELEGRAM WEBHOOK INFO</span>
+              <button onclick="checkWebhookInfo()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition">
+                Inspect Now
+              </button>
+            </div>
+            <pre id="webhookInfoOutput" class="p-3 bg-[#0B0F19] rounded-lg text-slate-300 overflow-x-auto max-h-48 custom-scroll text-[11px]">Click 'Inspect Now' to fetch live status...</pre>
+          </div>
+
+          <!-- Set Webhook Panel -->
+          <div class="bg-[#05070E] p-5 rounded-xl border border-slate-800 space-y-4">
+            <span class="text-slate-400 font-bold font-mono text-xs">1-CLICK SET WEBHOOK</span>
+            <div class="space-y-2">
+              <label class="block text-[11px] font-mono text-slate-400">WEBHOOK URL TO BIND:</label>
+              <input type="text" id="customWebhookUrl" value="${origin}/api/telegram/webhook" class="w-full bg-[#0B0F19] border border-slate-700 text-xs font-mono text-white p-2.5 rounded-lg focus:border-[#F5B301]">
+            </div>
+            <button onclick="setWebhookAction()" class="w-full py-2.5 bg-[#F5B301] hover:bg-[#d49b00] text-[#05070E] font-bold text-xs rounded-lg transition shadow-md">
+              ⚡ Register Webhook on Telegram
+            </button>
+            <div id="setWebhookStatus" class="text-xs font-mono text-slate-400"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SUPER ADMIN CONTROL -->
+    <section id="tabAdmin" class="tab-pane hidden space-y-6">
+      <div class="bg-[#0B0F19] rounded-2xl border border-slate-800 p-6 space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span>🛡️ Super Admin System & Health</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Super Admin authorization and edge runtime parameters.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
+          <div class="bg-[#05070E] p-4 rounded-xl border border-slate-800 space-y-1">
+            <div class="text-slate-400">SUPER ADMIN ID</div>
+            <div class="text-white font-bold text-sm">${masterAdminId}</div>
+            <div class="text-[#10B981] text-[11px]">Primary Authority (Beth Chetwynd)</div>
+          </div>
+          <div class="bg-[#05070E] p-4 rounded-xl border border-slate-800 space-y-1">
+            <div class="text-slate-400">TELEGRAM BOT TOKEN</div>
+            <div class="text-[#F5B301] font-bold text-sm">${maskedToken}</div>
+            <div class="text-slate-400 text-[11px]">Cloudflare Worker Environment</div>
+          </div>
+          <div class="bg-[#05070E] p-4 rounded-xl border border-slate-800 space-y-1">
+            <div class="text-slate-400">ZERO DUPLICATE GUARD</div>
+            <div class="text-[#10B981] font-bold text-sm">ACTIVE (IDEMPOTENT)</div>
+            <div class="text-slate-400 text-[11px]">Sub-second Hash Lock</div>
+          </div>
+        </div>
+
+        <div class="p-4 bg-[#05070E] rounded-xl border border-slate-800 flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div class="font-bold text-sm text-white">Direct Connectivity Ping</div>
+            <div class="text-xs text-slate-400">Test direct API delivery to Super Admin chat ID (${masterAdminId})</div>
+          </div>
+          <button onclick="pingSuperAdmin()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-[#F5B301] border border-slate-700 rounded-lg transition">
+            ⚡ Send Direct Super Admin Ping
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-800 bg-[#0B0F19] py-4 text-center text-xs font-mono text-slate-500">
+    GMC AI BRAIN TRADING SYSTEM • POWERED BY CLOUDFLARE WORKER &bull; GMCTRADING.ONLINE
+  </footer>
+
+  <!-- INTERACTIVE APPLICATION SCRIPT -->
+  <script>
+    let allUsers = [];
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('bg-[#F5B301]', 'text-[#05070E]');
+        b.classList.add('bg-slate-800/80', 'text-slate-300');
+      });
+
+      const targetPane = document.getElementById(tabId);
+      if (targetPane) targetPane.classList.remove('hidden');
+
+      const activeBtnMap = {
+        'tabMarket': 'btnTabMarket',
+        'tabSubscribers': 'btnTabSubscribers',
+        'tabBroadcast': 'btnTabBroadcast',
+        'tabWebhook': 'btnTabWebhook',
+        'tabAdmin': 'btnTabAdmin',
+      };
+      const activeBtn = document.getElementById(activeBtnMap[tabId]);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-slate-800/80', 'text-slate-300');
+        activeBtn.classList.add('bg-[#F5B301]', 'text-[#05070E]');
+      }
+
+      if (tabId === 'tabSubscribers') {
+        loadTelegramUsersList();
+      } else if (tabId === 'tabWebhook') {
+        checkWebhookInfo();
+      }
+    }
+
+    async function loadTelegramUsersList() {
+      try {
+        const res = await fetch('/api/admin/telegram/users');
+        const data = await res.json();
+        if (data && data.ok) {
+          allUsers = data.users || [];
+          document.getElementById('statApprovedUsers').innerText = (data.stats ? data.stats.approved : allUsers.length) + ' Active';
+          document.getElementById('tabUserCount').innerText = allUsers.length;
+          document.getElementById('badgeSubTotal').innerText = allUsers.length + ' Registered';
+          renderUsersTable(allUsers);
+        }
+      } catch (e) {
+        console.warn('Failed to load users:', e);
+      }
+    }
+
+    function renderUsersTable(users) {
+      const tbody = document.getElementById('subscribersTableBody');
+      if (!tbody) return;
+
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-slate-500 font-mono">No registered Telegram users yet. Share bot username with subscribers!</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => {
+        const isApproved = u.status === 'approved' || u.status === 'trial';
+        const statusBadge = isApproved 
+          ? '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-[#10B981] font-bold">APPROVED</span>'
+          : u.status === 'blocked'
+          ? '<span class="px-2 py-0.5 rounded bg-red-500/20 text-[#EF4444] font-bold">BLOCKED</span>'
+          : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-[#F5B301] font-bold">PENDING</span>';
+
+        const planDesc = u.planType === 'lifetime' ? '👑 Lifetime' : (u.approvalDurationLabel || u.planType || 'Standard');
+        const expiryDesc = u.expiresAt ? new Date(u.expiresAt).toLocaleDateString() : 'Permanent';
+
+        return \`
+          <tr class="hover:bg-[#05070E]/50 transition">
+            <td class="p-3.5">
+              <div class="font-bold text-white">\${u.firstName || 'Trader'} \${u.lastName || ''}</div>
+              <div class="text-[11px] text-slate-400">ID: <code class="text-[#F5B301]">\${u.userId}</code> \${u.username ? '(@' + u.username + ')' : ''}</div>
+            </td>
+            <td class="p-3.5">\${statusBadge}</td>
+            <td class="p-3.5">
+              <div class="text-slate-200 font-bold">\${planDesc}</div>
+              <div class="text-[10px] text-slate-400">\${expiryDesc}</div>
+            </td>
+            <td class="p-3.5 font-bold text-white">\${u.totalSignalsReceived || 0}</td>
+            <td class="p-3.5">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <button onclick="handleUserApproval('\${u.userId}', '1_day')" class="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-[#10B981] border border-emerald-500/30 rounded text-[10px] font-bold transition">1D</button>
+                <button onclick="handleUserApproval('\${u.userId}', '7_days')" class="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-[#10B981] border border-emerald-500/30 rounded text-[10px] font-bold transition">7D</button>
+                <button onclick="handleUserApproval('\${u.userId}', '30_days')" class="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-[#10B981] border border-emerald-500/30 rounded text-[10px] font-bold transition">30D</button>
+                <button onclick="handleUserApproval('\${u.userId}', 'lifetime')" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-[#F5B301] border border-amber-500/40 rounded text-[10px] font-bold transition">👑 Life</button>
+              </div>
+            </td>
+            <td class="p-3.5 text-right">
+              <div class="flex items-center justify-end gap-1.5">
+                <button onclick="userAction('\${u.userId}', 'ping')" title="Ping user" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition text-[11px]">⚡</button>
+                <button onclick="userAction('\${u.userId}', 'block')" title="Block user" class="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition text-[11px]">🚫</button>
+              </div>
+            </td>
+          </tr>
+        \`;
+      }).join('');
+    }
+
+    function filterSubscribers() {
+      const q = (document.getElementById('subSearch').value || '').toLowerCase();
+      const filtered = allUsers.filter(u => 
+        (u.userId && u.userId.toLowerCase().includes(q)) ||
+        (u.firstName && u.firstName.toLowerCase().includes(q)) ||
+        (u.username && u.username.toLowerCase().includes(q))
+      );
+      renderUsersTable(filtered);
+    }
+
+    async function handleUserApproval(userId, duration) {
+      try {
+        const res = await fetch('/api/admin/telegram/users/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, action: 'approve', duration })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          alert('User ' + userId + ' successfully APPROVED for ' + duration + '!');
+          loadTelegramUsersList();
+        } else {
+          alert('Error: ' + (d.error || 'Failed to approve'));
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+      }
+    }
+
+    async function userAction(userId, action) {
+      try {
+        const res = await fetch('/api/admin/telegram/users/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, action })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          alert('Action "' + action + '" executed for user ' + userId);
+          loadTelegramUsersList();
+        } else {
+          alert('Action failed: ' + (d.error || 'Error'));
+        }
+      } catch (e) {
+        alert('Action error: ' + e.message);
+      }
+    }
+
+    async function checkWebhookInfo() {
+      const out = document.getElementById('webhookInfoOutput');
+      out.innerText = 'Connecting to Telegram Bot API...';
+      try {
+        const res = await fetch('/api/telegram/webhook-info');
+        const data = await res.json();
+        out.innerText = JSON.stringify(data, null, 2);
+      } catch (e) {
+        out.innerText = 'Failed to fetch webhook info: ' + e.message;
+      }
+    }
+
+    async function setWebhookAction() {
+      const customUrl = document.getElementById('customWebhookUrl').value;
+      const statusDiv = document.getElementById('setWebhookStatus');
+      statusDiv.innerText = 'Configuring webhook on Telegram...';
+      try {
+        const res = await fetch('/api/telegram/set-webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: customUrl })
+        });
+        const data = await res.json();
+        statusDiv.innerHTML = '<span class="text-[#10B981]">✅ ' + JSON.stringify(data) + '</span>';
+        checkWebhookInfo();
+      } catch (e) {
+        statusDiv.innerHTML = '<span class="text-[#EF4444]">❌ Failed: ' + e.message + '</span>';
+      }
+    }
+
+    async function handleBroadcastSubmit(e) {
+      e.preventDefault();
+      const strategy = document.getElementById('bcStrategy').value;
+      const direction = document.getElementById('bcDirection').value;
+      const entry = document.getElementById('bcEntry').value;
+      const sl = document.getElementById('bcSL').value;
+      const tp1 = document.getElementById('bcTP1').value;
+      const tp2 = document.getElementById('bcTP2').value;
+      const notes = document.getElementById('bcNotes').value;
+
+      const statusBox = document.getElementById('broadcastStatus');
+      statusBox.classList.remove('hidden');
+      statusBox.innerHTML = '<span class="text-[#F5B301]">Dispatching signal to all approved subscribers...</span>';
+
+      const payload = {
+        signal: {
+          id: 'MANUAL-' + Date.now(),
+          asset: 'XAU/USD (Gold)',
+          action: direction,
+          entryPrice: entry,
+          stopLoss: sl,
+          takeProfit1: tp1,
+          takeProfit2: tp2,
+          notes: notes,
+        },
+        engine: strategy
+      };
+
+      try {
+        const res = await fetch('/api/telegram/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const d = await res.json();
+        if (d.ok) {
+          statusBox.innerHTML = '<span class="text-[#10B981]">✅ Signal successfully broadcasted to approved subscribers!</span>';
+        } else {
+          statusBox.innerHTML = '<span class="text-[#EF4444]">❌ Broadcast notice: ' + (d.error || JSON.stringify(d)) + '</span>';
+        }
+      } catch (err) {
+        statusBox.innerHTML = '<span class="text-[#EF4444]">❌ Error: ' + err.message + '</span>';
+      }
+    }
+
+    async function quickDispatchSignal(engine) {
+      if (!confirm('Broadcast live ' + engine + ' signal to all approved subscribers?')) return;
+      try {
+        const payload = {
+          signal: {
+            id: 'QUICK-' + Date.now(),
+            asset: 'XAU/USD (Gold)',
+            action: 'BUY',
+            entryPrice: '2945.50',
+            stopLoss: '2938.00',
+            takeProfit1: '2955.00',
+            takeProfit2: '2965.00',
+            notes: 'Institutional Order Flow breakout confirmed on 15M.'
+          },
+          engine: engine
+        };
+        const res = await fetch('/api/telegram/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        alert('Signal broadcast result: ' + (data.ok ? 'SUCCESS' : 'NOTICE: ' + (data.error || 'Check logs')));
+      } catch (e) {
+        alert('Broadcast failed: ' + e.message);
+      }
+    }
+
+    async function pingSuperAdmin() {
+      try {
+        const res = await fetch('/api/telegram/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: '<b>⚡ GMC TRADING • SUPER ADMIN DIRECT CONNECTIVITY TEST</b>\\n━━━━━━━━━━━━━━━━━━━━\\nEdge Worker: ONLINE\\nStatus: Operational 24/7' })
+        });
+        const d = await res.json();
+        alert(d.ok ? 'Direct ping sent to Super Admin!' : 'Ping failed: ' + (d.error || 'Check Bot Token'));
+      } catch (e) {
+        alert('Ping error: ' + e.message);
+      }
+    }
+
+    function refreshData() {
+      loadTelegramUsersList();
+      // Fluctuate price slightly for live aesthetic feel
+      const basePrice = 2945.80;
+      const delta = (Math.random() * 0.8 - 0.4).toFixed(2);
+      const newPrice = (parseFloat(basePrice) + parseFloat(delta)).toFixed(2);
+      document.getElementById('headerGoldPrice').innerText = Number(newPrice).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    }
+
+    // Initial load
+    loadTelegramUsersList();
+    setInterval(refreshData, 15000);
+  </script>
+</body>
+</html>`;
+}

@@ -1,6 +1,13 @@
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
+let fsModule: any = null;
+let pathModule: any = null;
+try {
+  if (typeof process !== "undefined" && process.versions && process.versions.node) {
+    fsModule = eval('require("fs")');
+    pathModule = eval('require("path")');
+  }
+} catch (e) {
+  // Edge runtime
+}
 
 export interface DispatchedEventRecord {
   key: string;
@@ -12,7 +19,7 @@ export interface DispatchedEventRecord {
   dateTime: string;
 }
 
-const STORAGE_FILE = typeof process !== "undefined" && process.cwd ? path.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
+const STORAGE_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
 const DEDUPLICATION_WINDOW_MS = 45 * 60 * 1000; // 45 minutes window for text hash
 
 function simpleHash(str: string): string {
@@ -36,8 +43,8 @@ class TelegramIdempotencyRegistry {
 
   private loadFromDisk(): void {
     try {
-      if (typeof fs !== "undefined" && fs.existsSync && fs.existsSync(STORAGE_FILE)) {
-        const raw = fs.readFileSync(STORAGE_FILE, "utf-8");
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(STORAGE_FILE)) {
+        const raw = fsModule.readFileSync(STORAGE_FILE, "utf-8");
         const parsed: DispatchedEventRecord[] = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           this.records = parsed;
@@ -57,14 +64,14 @@ class TelegramIdempotencyRegistry {
 
   private saveToDisk(): void {
     try {
-      if (typeof fs !== "undefined" && typeof process !== "undefined" && process.cwd) {
-        const dataDir = path.join(process.cwd(), "data");
-        if (!fs.existsSync(dataDir)) {
-          fs.mkdirSync(dataDir, { recursive: true });
+      if (fsModule && typeof process !== "undefined" && process.cwd && pathModule) {
+        const dataDir = pathModule.join(process.cwd(), "data");
+        if (!fsModule.existsSync(dataDir)) {
+          fsModule.mkdirSync(dataDir, { recursive: true });
         }
         // Retain the last 1,000 records
         const trimmed = this.records.slice(-1000);
-        fs.writeFileSync(STORAGE_FILE, JSON.stringify(trimmed, null, 2), "utf-8");
+        fsModule.writeFileSync(STORAGE_FILE, JSON.stringify(trimmed, null, 2), "utf-8");
       }
     } catch (err) {
       // In edge environments, handled via KV / memory
@@ -251,8 +258,8 @@ class TelegramIdempotencyRegistry {
     this.records = [];
     this.textHashRecentMap.clear();
     try {
-      if (fs.existsSync(STORAGE_FILE)) {
-        fs.unlinkSync(STORAGE_FILE);
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(STORAGE_FILE)) {
+        fsModule.unlinkSync(STORAGE_FILE);
       }
     } catch (e) {}
     console.log("[TELEGRAM IDEMPOTENCY]: Registry cleared.");

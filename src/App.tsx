@@ -355,6 +355,7 @@ export function App() {
     forceCloseActiveSetup: closeCentralActiveSetup,
     resetCooldownManually: resetCentralCooldown,
     setConfig: updateCentralConfig,
+    toggleAiSource: toggleCentralAiSource,
   } = useCentralSignalManagerWatcher(candles15m, candles5m, currentPrice, prices, activeAssetKey);
 
   // Continuously update forming candle with live real-time price
@@ -665,6 +666,7 @@ export function App() {
               onForceCloseActiveSetup={closeCentralActiveSetup}
               onResetCooldownManually={resetCentralCooldown}
               onUpdateConfig={updateCentralConfig}
+              onToggleAiSource={toggleCentralAiSource}
               currentPrice={currentPrice}
               prices={prices}
               assetKey={activeAssetKey}
