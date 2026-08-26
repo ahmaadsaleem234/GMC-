@@ -784,23 +784,21 @@ This will immediately impact all automated signals across all connected subscrib
 <b>🕒 Requested:</b> <code>${new Date(user.joinedAt || Date.now()).toLocaleString()}</code>
 <b>🔒 Current Status:</b> ⏳ <code>PENDING APPROVAL</code>
 
-<i>⚡ Tap an action below to approve with preset duration or manage this user:</i>
+<i>⚡ Select approval duration to activate instant 24/7 signal access:</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
       inline_keyboard: [
         [
-          { text: "✅ APPROVE (Lifetime)", callback_data: `adm:req:approve:${user.userId}` },
-          { text: "❌ REJECT", callback_data: `adm:req:reject:${user.userId}` },
-          { text: "🚫 BLOCK", callback_data: `adm:req:block:${user.userId}` },
-        ],
-        [
           { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
           { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
-          { text: "⚡ 30 Days", callback_data: `adm:usr:grant:${user.userId}:30` },
+          { text: "⚡ 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
+          { text: "♾️ Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` },
         ],
         [
-          { text: "👤 Configure Bot & Access", callback_data: `adm:user:view:${user.userId}` },
+          { text: "❌ REJECT", callback_data: `adm:req:reject:${user.userId}` },
+          { text: "🚫 BLOCK", callback_data: `adm:req:block:${user.userId}` },
+          { text: "👤 Profile", callback_data: `adm:user:view:${user.userId}` },
         ],
       ],
     };
@@ -836,6 +834,8 @@ This will immediately impact all automated signals across all connected subscrib
         ? "⚡ KHATARNAK JUGAAD ONLY"
         : "🤖 ALL BOTS (Harami + War Room + Khatarnak)";
 
+    const durationDisplay = user.approvalDurationLabel || (user.expiresAt ? "Timed Access" : "Lifetime Access");
+
     const text = `
 <b>👤 USER PROFILE & ACCESS CONTROL</b>
 ━━━━━━━━━━━━━━━━━━━━
@@ -844,12 +844,13 @@ This will immediately impact all automated signals across all connected subscrib
 <b>Telegram ID:</b> <code>${user.userId}</code>
 <b>Chat ID:</b> <code>${user.chatId}</code>
 <b>Status:</b> <b>${statusEmoji}</b>
+<b>Duration Plan:</b> <code>${durationDisplay}</code>
 <b>Bot Access:</b> <code>${botAccessDisplay}</code>
 <b>Access Expiry:</b> <code>${expiryStr}</code>
 <b>Signals Received:</b> <code>${user.totalSignalsReceived || 0}</code>
 <b>Joined:</b> <code>${new Date(user.joinedAt).toLocaleDateString()}</code>
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Select Bot Access, Grant Duration, or Change User Status:</i>
+<i>⚡ Select Bot Access, Grant Duration (1 Day, 7 Days, 1 Month, Lifetime), or Change Status:</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
@@ -863,9 +864,9 @@ This will immediately impact all automated signals across all connected subscrib
           { text: "⚡ Khatarnak", callback_data: `adm:usr:bot:${user.userId}:khatarnak` },
         ],
         [
-          { text: "➕ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
-          { text: "➕ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
-          { text: "➕ 30 Days", callback_data: `adm:usr:grant:${user.userId}:30` },
+          { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
+          { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+          { text: "⚡ 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "♾️ Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` },
         ],
         [

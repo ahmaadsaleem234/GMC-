@@ -908,7 +908,11 @@ async function startServer() {
     status: "approved" | "trial" | "pending" | "rejected" | "blocked" | "expired";
     planType?: "trial" | "standard" | "war_room" | "lifetime";
     botAccess?: "all" | "khatarnak" | "harami" | "war_room";
+    approvalDuration?: string;
+    approvalDurationLabel?: string;
+    approvedAt?: string | null;
     expiresAt?: number | null;
+    expiresAtIso?: string | null;
     expiryNotified?: boolean;
     joinedAt: string;
     lastActive: string;
@@ -938,6 +942,81 @@ async function startServer() {
   let telegramUsersStore: Record<string, TelegramBotUser> = {};
   let serverDeliveryLogs: ServerTelegramDeliveryRecord[] = [];
   let serverDeliveryFailures: ServerTelegramDeliveryFailure[] = [];
+
+  function calculateUserExpiry(
+    duration: string | number | undefined,
+    currentExpiresAt?: number | null
+  ): { expiresAt: number | null; expiresAtIso: string | null; durationKey: string; durationLabel: string } {
+    const durStr = String(duration || "").toLowerCase().trim();
+    const now = Date.now();
+
+    if (durStr === "1" || durStr === "1_day" || durStr === "1d" || durStr === "1 day" || durStr === "day") {
+      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const exp = base + 1 * 86400000;
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: "1_day",
+        durationLabel: "1 Day (24 Hours)",
+      };
+    }
+    if (durStr === "7" || durStr === "7_days" || durStr === "7d" || durStr === "7 days" || durStr === "week" || durStr === "1_week") {
+      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const exp = base + 7 * 86400000;
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: "7_days",
+        durationLabel: "7 Days (1 Week)",
+      };
+    }
+    if (
+      durStr === "30" ||
+      durStr === "1_month" ||
+      durStr === "30d" ||
+      durStr === "30_days" ||
+      durStr === "1m" ||
+      durStr === "1 month" ||
+      durStr === "month" ||
+      durStr === "30 days"
+    ) {
+      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const exp = base + 30 * 86400000;
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: "1_month",
+        durationLabel: "1 Month (30 Days)",
+      };
+    }
+    if (durStr === "lifetime" || durStr === "life" || durStr === "permanent" || durStr === "null" || durStr === "0" || durStr === "") {
+      return {
+        expiresAt: null,
+        expiresAtIso: null,
+        durationKey: "lifetime",
+        durationLabel: "Lifetime (Permanent Access)",
+      };
+    }
+
+    const numDays = parseFloat(durStr);
+    if (!isNaN(numDays) && numDays > 0) {
+      const base = (currentExpiresAt && currentExpiresAt > now) ? currentExpiresAt : now;
+      const exp = Math.round(base + numDays * 86400000);
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: `${numDays}_days`,
+        durationLabel: `${numDays} Day${numDays > 1 ? "s" : ""}`,
+      };
+    }
+
+    return {
+      expiresAt: null,
+      expiresAtIso: null,
+      durationKey: "lifetime",
+      durationLabel: "Lifetime (Permanent Access)",
+    };
+  }
 
   function loadTelegramDeliveryLogs() {
     try {
@@ -994,7 +1073,11 @@ async function startServer() {
         status: "approved",
         planType: "lifetime",
         botAccess: "all",
+        approvalDuration: "lifetime",
+        approvalDurationLabel: "Lifetime (Permanent Access)",
+        approvedAt: new Date().toISOString(),
         expiresAt: null,
+        expiresAtIso: null,
         joinedAt: new Date().toISOString(),
         lastActive: new Date().toISOString(),
         totalSignalsReceived: 0,
@@ -1044,6 +1127,7 @@ async function startServer() {
         // 1. Expired check
         if (user.expiresAt && now >= user.expiresAt) {
           user.status = "expired";
+          user.expiresAtIso = new Date(user.expiresAt).toISOString();
           changed = true;
           superAdminService.logAction(
             "SUBSCRIPTION_EXPIRED",
@@ -1055,7 +1139,7 @@ async function startServer() {
           // Notify user
           sendSingleTelegramMessage(
             user.chatId || user.userId,
-            `⏳ <b>SUBSCRIPTION EXPIRED</b>\n━━━━━━━━━━━━━━━━━━━━\nYour GMC Trading AI signal subscription expired on <code>${new Date(user.expiresAt).toLocaleDateString()}</code>.\n\nPlease contact the Super Admin to renew your access.`
+            `⏳ <b>SUBSCRIPTION EXPIRED</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${user.firstName || "Trader"}</b>!\nYour GMC Trading AI signal subscription expired on <code>${new Date(user.expiresAt).toUTCString()}</code>.\n\n<i>🛡️ Automated trade delivery has been paused. Please contact the Super Admin to renew your access (1 Day, 7 Days, 1 Month, or Lifetime).</i>`
           ).catch(() => {});
 
           // Notify Super Admin
@@ -1456,35 +1540,47 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
         return;
       }
 
+      const nowIso = new Date().toISOString();
       user.status = "approved";
-      user.planType = user.planType || "lifetime";
+      user.planType = "lifetime";
+      user.approvalDuration = "lifetime";
+      user.approvalDurationLabel = "Lifetime (Permanent Access)";
+      user.approvedAt = user.approvedAt || nowIso;
       user.expiresAt = null;
-      user.decisionAt = new Date().toISOString();
+      user.expiresAtIso = null;
+      user.expiryNotified = false;
+      user.decisionAt = nowIso;
       saveTelegramUsers();
 
       superAdminService.logAction(
         "USER_APPROVED_TELEGRAM",
-        `Approved user ${user.firstName} (${targetUserId}) via Telegram One-Tap button`,
+        `Approved user ${user.firstName} (${targetUserId}) Lifetime via Telegram One-Tap button`,
         cbUserId,
         targetUserId
       );
 
-      await answerTelegramCallback(cbId, `✅ APPROVED! ${user.firstName} will now receive all live trades.`, false);
+      await answerTelegramCallback(cbId, `✅ APPROVED! ${user.firstName} will now receive all live trades permanently.`, false);
 
       const updatedText = `
-✅ <b>USER ACCESS APPROVED</b>
+✅ <b>USER ACCESS APPROVED (LIFETIME)</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>👤 User:</b> <b>${user.firstName || "Trader"} ${user.lastName || ""}</b> (${user.username || "No @username"})
 <b>🆔 Telegram ID:</b> <code>${user.userId}</code>
 <b>🔒 Status:</b> 🟢 <code>APPROVED (ACTIVE SUBSCRIBER)</code>
+<b>⏳ Plan Duration:</b> <code>Lifetime (Permanent)</code>
 <b>🕒 Approved At:</b> <code>${new Date().toLocaleString()}</code>
 <b>👑 Decision By:</b> <code>Super Admin</code>
 
-<i>⚡ User is now active. Every new trade generated by Master Admin will be automatically delivered to this user immediately with exact same entry, SL, TP1–TP4 & chart visuals.</i>
+<i>⚡ User is now active. Every new trade generated by Master Admin will be automatically delivered to this user immediately with exact same entry, SL, TP1–TP4 & chart visuals. Session is 24/7 persistent!</i>
 `.trim();
 
       const updatedKeyboard: TelegramInlineKeyboard = {
         inline_keyboard: [
+          [
+            { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${targetUserId}:1` },
+            { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${targetUserId}:7` },
+            { text: "⚡ 1 Month", callback_data: `adm:usr:grant:${targetUserId}:30` },
+          ],
           [
             { text: "🚫 BLOCK USER", callback_data: `adm:req:block:${targetUserId}` },
             { text: "⏳ REVOKE TO PENDING", callback_data: `adm:req:revoke:${targetUserId}` },
@@ -1501,7 +1597,7 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
       // Automated instant notification to the user
       await sendSingleTelegramMessage(
         user.chatId || targetUserId,
-        `🎉 <b>ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${user.firstName || "Trader"}</b>! Your Telegram Bot access (ID: <code>${user.userId}</code>) has been <b>APPROVED</b> by the Super Admin.\n\n✅ <b>Access Status:</b> <code>ACTIVE SUBSCRIBER</code>\n📡 <b>Signal Feed:</b> <code>SYNCHRONIZED WITH MASTER ADMIN</code>\n📈 <b>Covered Asset:</b> <code>FOREXCOM:XAUUSD (Gold Spot)</code>\n\n<i>⚡ You will now receive all institutional GMC Gold signals, entry alerts, and TP/SL execution updates in real-time with full chart visuals.</i>\n\n<b>Available Commands:</b>\n/signal — View active trade setup\n/lifeline — Check bot connection & heartbeat\n/help — Show all bot commands`
+        `🎉 <b>ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━\nCongratulations <b>${user.firstName || "Trader"}</b>! Your Telegram Bot access (ID: <code>${user.userId}</code>) has been <b>APPROVED</b> by the Super Admin.\n\n✅ <b>Access Status:</b> <code>ACTIVE SUBSCRIBER</code>\n⏳ <b>Plan Duration:</b> <code>Lifetime (Never Expires)</code>\n📡 <b>Signal Feed:</b> <code>SYNCHRONIZED WITH MASTER ADMIN (24/7)</code>\n📈 <b>Covered Asset:</b> <code>FOREXCOM:XAUUSD (Gold Spot)</code>\n\n<i>⚡ Your session is active and persistent! All institutional GMC Gold signals, entry alerts, and TP/SL updates will arrive automatically in this chat without needing to re-enter /start.</i>\n\n<b>Available Commands:</b>\n/signal — View active trade setup\n/lifeline — Check bot connection & heartbeat\n/help — Show all bot commands`
       ).catch(() => {});
       return;
     }
@@ -1746,38 +1842,38 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
       const parts = data.split(":");
       const targetUserId = parts[3];
       const duration = parts[4];
-      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId);
+      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId || telegramUsersStore[k].chatId === targetUserId);
       const user = userKey ? telegramUsersStore[userKey] : null;
 
       if (user) {
-        const now = Date.now();
-        if (duration === "lifetime") {
-          user.expiresAt = null;
-          user.planType = "lifetime";
-        } else {
-          const days = Number(duration) || 7;
-          const currentExp = user.expiresAt && user.expiresAt > now ? user.expiresAt : now;
-          user.expiresAt = currentExp + days * 86400000;
-          user.planType = "standard";
-        }
+        const nowIso = new Date().toISOString();
+        const expInfo = calculateUserExpiry(duration, user.expiresAt);
         user.status = "approved";
-        user.decisionAt = new Date().toISOString();
+        user.planType = expInfo.expiresAt ? "standard" : "lifetime";
+        user.approvalDuration = expInfo.durationKey;
+        user.approvalDurationLabel = expInfo.durationLabel;
+        user.approvedAt = user.approvedAt || nowIso;
+        user.decisionAt = nowIso;
+        user.expiresAt = expInfo.expiresAt;
+        user.expiresAtIso = expInfo.expiresAtIso;
         user.expiryNotified = false;
         saveTelegramUsers();
 
         superAdminService.logAction(
           "USER_ACCESS_GRANTED",
-          `Granted ${duration} access to ${user.firstName} ${user.lastName || ""} (${targetUserId})`,
+          `Granted ${expInfo.durationLabel} access to ${user.firstName} ${user.lastName || ""} (${targetUserId})`,
           cbUserId,
           targetUserId
         );
 
         // Notify subscriber in their chat
-        const expFormatted = user.expiresAt ? new Date(user.expiresAt).toLocaleDateString() : "Lifetime";
+        const expFormatted = user.expiresAt ? new Date(user.expiresAt).toUTCString() : "♾️ Lifetime (Never Expires)";
         sendSingleTelegramMessage(
           user.chatId || targetUserId,
-          `🎉 <b>ACCESS APPROVED & ACTIVATED!</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${user.firstName}</b>!\nYour GMC Trading AI access has been activated for <b>${duration === "lifetime" ? "Lifetime" : duration + " Days"}</b>.\n\n<b>Access Expiry:</b> <code>${expFormatted}</code>\n\n<i>⚡ You will now receive all live Harami AI & War Room trade signals automatically. Use /signal to view active trades.</i>`
+          `🎉 <b>ACCESS APPROVED & ACTIVATED!</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${user.firstName || "Trader"}</b>!\nYour Telegram Bot access has been <b>ACTIVATED</b> by the Super Admin.\n\n<b>🔒 Access Status:</b> <code>✅ APPROVED (ACTIVE SUBSCRIBER)</code>\n<b>⏳ Plan Duration:</b> <code>${expInfo.durationLabel}</code>\n<b>🕒 Access Expiry:</b> <code>${expFormatted}</code>\n<b>📡 Live Feed:</b> <code>🟢 SYNCHRONIZED WITH MASTER AI (24/7)</code>\n<b>🎯 Covered Asset:</b> FOREXCOM:XAUUSD (Gold Spot)\n\n<i>⚡ Your session is active and persistent! All new trades, SL/TP updates, and chart visuals will arrive automatically. You do NOT need to restart the bot or re-enter /start.</i>\n\n<b>Commands:</b>\n/signal — Active trade status\n/lifeline — Connection heartbeat\n/help — Show commands`
         ).catch(() => {});
+
+        await answerTelegramCallback(cbId, `✅ Granted ${expInfo.durationLabel} to ${user.firstName}!`, false);
 
         const card = superAdminService.renderUserCard(user);
         await editTelegramMessageText(cbChatId, cbMsgId, card.text, card.keyboard);
@@ -3049,6 +3145,15 @@ ${rows}
                   continue;
                 }
 
+                if (user.status === "expired") {
+                  const expDateStr = user.expiresAt ? new Date(user.expiresAt).toUTCString() : "Recently";
+                  await sendSingleTelegramMessage(
+                    chatId,
+                    `⏳ <b>SUBSCRIPTION EXPIRED</b>\n━━━━━━━━━━━━━━━━━━━\nHello <b>${firstName}</b>!\nYour GMC Trading AI signal access expired on <code>${expDateStr}</code>.\n\n<b>🆔 Telegram ID:</b> <code>${userId}</code>\n<b>🔒 Status:</b> <code>EXPIRED</code>\n\n<i>🛡️ Automated trade delivery has been paused. Please contact the Super Admin to renew your access (1 Day, 7 Days, 1 Month, or Lifetime).</i>`
+                  );
+                  continue;
+                }
+
                 if (user.status === "pending") {
                   await sendSingleTelegramMessage(
                     chatId,
@@ -3088,6 +3193,21 @@ ${rows}
                 let replyText = "";
                 let chartBufferToSend: Buffer | undefined;
 
+                const getRemainingDurationText = (exp?: number | null) => {
+                  if (!exp) return "♾️ Lifetime (Never Expires)";
+                  const diff = exp - Date.now();
+                  if (diff <= 0) return "🔴 Expired";
+                  const days = Math.floor(diff / 86400000);
+                  const hours = Math.floor((diff % 86400000) / 3600000);
+                  const mins = Math.floor((diff % 3600000) / 60000);
+                  if (days > 0) return `${days}d ${hours}h remaining`;
+                  if (hours > 0) return `${hours}h ${mins}m remaining`;
+                  return `${mins}m remaining`;
+                };
+
+                const planLabel = user.approvalDurationLabel || (user.expiresAt ? "Active Subscription" : "Lifetime (Permanent Access)");
+                const expiryLabel = user.expiresAt ? `${new Date(user.expiresAt).toUTCString()} (${getRemainingDurationText(user.expiresAt)})` : "♾️ Lifetime (Never Expires)";
+
                 if (textLower.startsWith("/lifeline") || textLower.startsWith("/run") || textLower.startsWith("/bot") || textLower.startsWith("/myaccess") || textLower.startsWith("/account")) {
                   const tick = await fetchLiveServerGoldTick();
                   const warRoomSetup = warRoomServerService.getActiveSetup();
@@ -3100,6 +3220,8 @@ ${rows}
 <b>👤 TRADER:</b> <b>${firstName} ${lastName}</b> (${username || "No @username"})
 <b>🆔 TELEGRAM ID:</b> <code>${userId}</code>
 <b>🔒 ACCESS STATUS:</b> <code>✅ APPROVED (ACTIVE SUBSCRIBER)</code>
+<b>⏳ PLAN DURATION:</b> <code>${planLabel}</code>
+<b>🕒 ACCESS EXPIRY:</b> <code>${expiryLabel}</code>
 <b>📡 LIFELINE / HEARTBEAT:</b> <code>🟢 24/7 ONLINE & STREAMING</code>
 <b>📈 LIVE GOLD (XAUUSD):</b> <code>$${tick.price.toFixed(2)}</code> (${tick.source})
 <b>📊 SIGNALS RECEIVED:</b> <code>${user.totalSignalsReceived || 0}</code>
@@ -3107,34 +3229,38 @@ ${rows}
 <b>🕒 NEXT CYCLE:</b> <code>${nextTimeStr}</code>
 
 <b>🎯 MASTER SIGNAL MIRRORING:</b>
-• Signal Feed: <code>SYNCHRONIZED WITH MASTER ADMIN</code>
+• Signal Feed: <code>SYNCHRONIZED WITH MASTER ADMIN (24/7)</code>
 • Harami AI Engine (M15 / 30M): <code>${serverEngineStatus.toUpperCase()}</code>
 • GMC War Room (7-Gate): <code>ONLINE</code>
+• Khatarnak Jugaad: <code>ONLINE</code>
 • Active Position: <code>${serverActiveTrade ? serverActiveTrade.direction + " @ $" + serverActiveTrade.entry : warRoomSetup ? warRoomSetup.direction + " @ $" + warRoomSetup.bestEntry : "NO OPEN POSITION (SCANNING)"}</code>
 
-<i>⚡ You are authorized to receive every new trade generated by the Master Signal engine immediately with exact same entry, SL, TP1–TP4 levels and chart visuals.</i>
+<i>⚡ Your access is persistent and active 24/7. Every new trade generated by the Master Signal engine will be delivered to this chat automatically with exact entry, SL, TP1–TP4 levels and chart visuals.</i>
 `.trim();
                 } else if (textLower.startsWith("/start") || textLower.startsWith("/subscribe")) {
                   replyText = `
-<b>🧠 GMC TRADING AI • HARAMI AI & WAR ROOM INTEGRATION</b>
+<b>🧠 GMC TRADING AI • SUBSCRIBER ACCESS</b>
 ━━━━━━━━━━━━━━━━━━━
 Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Trading Ecosystem</b>.
 
 <b>🤖 BOT STATUS:</b> <code>ONLINE & 24/7 ACTIVE</code>
-<b>🔒 YOUR ACCESS:</b> <code>✅ APPROVED (SUBSCRIBER)</code>
+<b>🔒 YOUR ACCESS:</b> <code>✅ APPROVED (ACTIVE SUBSCRIBER)</code>
+<b>⏳ PLAN DURATION:</b> <code>${planLabel}</code>
+<b>🕒 ACCESS EXPIRY:</b> <code>${expiryLabel}</code>
 <b>🎯 COVERED ASSET:</b> FOREXCOM:XAUUSD (Gold Spot)
 <b>🌐 LIVE PLATFORM:</b> <code>gmctrading.online</code>
 
-<b>🔥 DUAL AI SIGNAL ENGINES:</b>
+<b>🔥 INSTITUTIONAL SIGNAL ENGINES:</b>
+• <b>Khatarnak Jugaad:</b> 1M tick-by-tick sniper structure & Golden Fib execution.
 • <b>Harami AI:</b> 30-Minute algorithmic cycles with automated A+ entries (≥88% confidence).
-• <b>GMC War Room:</b> Institutional 7-Gate Execution clearance (Grade A/A+ setups with multi-timeframe confirmation).
-• <b>Deduplication:</b> Zero duplicate signals guaranteed via Cross-Engine Synchronized Ledger.
+• <b>GMC War Room:</b> Institutional 7-Gate Execution clearance (Grade A/A+ setups).
+• <b>Single Active Setup:</b> Zero duplicate signals guaranteed via Central Signal Orchestrator.
 
-<i>⚡ Qualified trades dispatch automatically to this chat with complete Entry, SL, TP1–TP4, and Chart Visuals.</i>
+<i>⚡ Your session is active and persistent! All live trades, entry alerts, TP/SL hits, and chart visuals will continue to arrive automatically in this chat without needing to re-enter /start or re-activate.</i>
 
 <b>AVAILABLE COMMANDS:</b>
-/lifeline — Bot run heartbeat, account lifeline & connection status
-/signal — View active trade signal (War Room / Harami AI)
+/signal — View active trade setup (Entry, SL, TP1–TP4)
+/lifeline — Bot connection, account lifeline & heartbeat
 /warroom — Live GMC AI War Room status & candidate analysis
 /harami — Harami AI 30-minute scan telemetry & decision
 /status — Live engine health, live gold tick & metrics

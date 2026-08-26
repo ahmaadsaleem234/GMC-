@@ -1,5 +1,6 @@
 import { KhatarnakJugaadSetup, JugaadTimeframe, SetupFinalResult } from "./khatarnakJugaadEngine";
 import { getTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram";
+import { centralSignalManager } from "./centralSignalManager";
 
 export type JugaadTelegramEventType =
   | "NEW_SETUP"
@@ -15,8 +16,8 @@ export type JugaadTelegramEventType =
 export interface DispatchedJugaadAlert {
   id: string;
   setupId: string;
-  timeframe: JugaadTimeframe;
-  signalType: "BUY" | "SELL";
+  timeframe: "1M";
+  signalType: "SELL";
   event: JugaadTelegramEventType;
   eventLabel: string;
   price: number;
@@ -26,8 +27,8 @@ export interface DispatchedJugaadAlert {
   success: boolean;
 }
 
-const DISPATCHED_EVENTS_STORAGE_KEY = "kj_dispatched_telegram_events_v1";
-const ALERT_LOGS_STORAGE_KEY = "kj_telegram_alert_logs_v1";
+const DISPATCHED_EVENTS_STORAGE_KEY = "kj_dispatched_telegram_events_v2";
+const ALERT_LOGS_STORAGE_KEY = "kj_telegram_alert_logs_v2";
 
 /**
  * Get the set of dispatched event keys to prevent duplicate broadcasts.
@@ -53,7 +54,6 @@ export function recordDispatchedEventKey(setupId: string, event: JugaadTelegramE
   try {
     const keys = getDispatchedEventKeys();
     keys.add(`${setupId}::${event}`);
-    // Keep max 500 keys in storage
     const array = Array.from(keys).slice(-500);
     localStorage.setItem(DISPATCHED_EVENTS_STORAGE_KEY, JSON.stringify(array));
   } catch (e) {
@@ -108,76 +108,65 @@ export function clearDispatchedEventHistory(): void {
 }
 
 /**
- * Format the EXACT Telegram message for a NEW Khatarnak Jugaad Setup:
- * 
- * 💀 KHATARNAK JUGAAD
- * 
- * XAUUSD • 15M • BUY 🟢
- * 
- * 🟢 Entry: REAL PRICE — REAL PRICE
- * 🛑 SL: REAL PRICE
- * 
- * 🎯 TP1: REAL PRICE
- * 🎯 TP2: REAL PRICE
- * 🎯 TP3: REAL PRICE
- * 
- * 📊 R:R: REAL VALUE
- * 🔥 Score: REAL SCORE/100
- * 
- * 🧠 Reason: REAL STRUCTURE + FIB 2.6 CONFIRMATION
- * 
- * 💬 “Jugaad chala, scene bana 💀”
- * 
- * SETUP ID: KJ-XXXX
+ * Get clean confirmation status string
+ */
+export function getConfirmationStatusText(setup: KhatarnakJugaadSetup): string {
+  if (setup.isChochConfirmed && setup.isRejectionConfirmed) {
+    return "CHOCH + 1M Rejection Confirmed";
+  }
+  if (setup.isChochConfirmed) {
+    return "CHOCH Confirmed (Rejection Pending)";
+  }
+  if (setup.isRejectionConfirmed) {
+    return "1M Rejection Confirmed (CHOCH Pending)";
+  }
+  if (setup.isEntryTriggered || setup.status === "ENTRY TRIGGERED" || setup.status === "RUNNING") {
+    return "1M Rejection Confirmed";
+  }
+  return "CHOCH + Rejection Pending";
+}
+
+/**
+ * Format the EXACT Telegram message for every 1M SELL Setup
+ * Strictly adheres to the clean, formal, professional format
  */
 export function formatNewSetupTelegramMessage(setup: KhatarnakJugaadSetup): string {
   const asset = setup.assetKey || "XAUUSD";
-  const rr = setup.rrRatioString.replace(/^R:R:\s*/i, "");
+  const rr = setup.rrRatioString ? setup.rrRatioString.replace(/^R:R:\s*/i, "").trim() : "1:2.5";
+  const entryZone = `${setup.sellZoneLow.toFixed(2)} – ${setup.sellZoneHigh.toFixed(2)}`;
+  const confirmation = getConfirmationStatusText(setup);
 
   const message = [
-    `💀 <b>KHATARNAK JUGAAD</b>`,
+    `💀 KHATARNAK JUGAAD | 1M SELL`,
     ``,
-    `<b>${asset} • ${setup.timeframe} • ${setup.signalType}</b>`,
+    `${asset} • SELL ONLY 🔴`,
     ``,
-    `Entry 1: <code>${setup.entry1Golden.toFixed(2)}</code> — 0.62 Golden`,
-    `Entry 2: <code>${setup.entry2Green.toFixed(2)}</code> — 0.81 Green`,
+    `🎯 ENTRY: ${entryZone}`,
+    `📍 Best Entry: ${setup.bestSellEntry.toFixed(2)}`,
+    `🛑 SL: ${setup.stopLoss.toFixed(2)}`,
     ``,
-    `SL: <code>${setup.stopLoss.toFixed(2)}</code>`,
+    `💰 TP1: ${setup.tp1.toFixed(2)}`,
+    `💰 TP2: ${setup.tp2.toFixed(2)}`,
+    `💰 TP3: ${setup.tp3.toFixed(2)}`,
     ``,
-    `TP1: <code>${setup.tp1.toFixed(2)}</code>`,
-    `TP2: <code>${setup.tp2.toFixed(2)}</code>`,
-    `TP3: <code>${setup.tp3.toFixed(2)}</code>`,
+    `📊 R:R: ${rr}`,
+    `🔥 Score: ${setup.score}/100`,
+    `⚡ Confirmation: ${confirmation}`,
     ``,
-    `R:R: <code>${rr}</code>`,
-    `Score: <code>${setup.score}/100</code>`,
-    ``,
-    `Status: <b>ACTIVE</b>`,
-    ``,
-    `💬 <i>“${setup.funnyLine}”</i>`,
+    `KJ • 1M Institutional Setup`,
   ].join("\n");
 
   return message;
 }
 
 /**
- * Format the EXACT Telegram message for a Status Update on an existing Setup ID:
- * 
- * 🟢 ENTRY HIT
- * 🎯 TP1 HIT
- * 🎯 TP2 HIT
- * 🎯 TP3 HIT
- * 🏆 FINAL TP HIT
- * 🛑 SL HIT
- * ❌ INVALIDATED
- * 🎯 TP1 HIT → 🛑 SL HIT
+ * Format status update message for existing setup
  */
 export function formatStatusUpdateTelegramMessage(
   setup: KhatarnakJugaadSetup,
   event: JugaadTelegramEventType,
   currentPrice: number
 ): string {
-  const isBuy = setup.signalType === "BUY";
-  const directionEmoji = isBuy ? "BUY 🟢" : "SELL 🔴";
   const asset = setup.assetKey || "XAUUSD";
 
   let statusHeader = "";
@@ -185,169 +174,157 @@ export function formatStatusUpdateTelegramMessage(
 
   switch (event) {
     case "ENTRY_HIT":
-      statusHeader = `🟢 <b>ENTRY HIT</b>`;
-      statusDetail = `⚡ Price tapped into 0.62 / 0.81 Golden Execution Zone! Trade is now active.`;
+      statusHeader = `🔴 ENTRY TRIGGERED`;
+      statusDetail = `⚡ Price tapped into 1M Sell Zone (${setup.bestSellEntry.toFixed(2)}). Trade active.`;
       break;
     case "TP1_HIT":
-      statusHeader = `🎯 <b>TP1 HIT</b>`;
-      statusDetail = `💰 Target 1 ($${setup.tp1.toFixed(2)}) reached! Move Stop Loss to Break-Even / Secure partials.`;
+      statusHeader = `🎯 TP1 HIT (+1.5R)`;
+      statusDetail = `💰 Target 1 hit at ${setup.tp1.toFixed(2)}. Move SL to Break-Even (${setup.bestSellEntry.toFixed(2)}).`;
       break;
     case "TP2_HIT":
-      statusHeader = `🎯 <b>TP2 HIT</b>`;
-      statusDetail = `🚀 Target 2 ($${setup.tp2.toFixed(2)}) smashed! Risk-free momentum ride active.`;
+      statusHeader = `🎯 TP2 HIT (+2.5R)`;
+      statusDetail = `💰 Target 2 achieved at ${setup.tp2.toFixed(2)}. Swing low liquidity mitigated.`;
       break;
     case "TP3_HIT":
-      statusHeader = `🎯 <b>TP3 HIT</b>`;
-      statusDetail = `🔥 Target 3 ($${setup.tp3.toFixed(2)}) reached! High multiplier institutional expansion.`;
-      break;
     case "FINAL_TP_HIT":
-      statusHeader = `🏆 <b>FINAL TP HIT</b>`;
-      statusDetail = `👑 MAXIMUM TARGET HIT ($${setup.tp4Final.toFixed(2)})! Complete Fibonacci 2.6 cycle achieved.`;
+      statusHeader = `🏆 FINAL TP HIT (+4.0R)`;
+      statusDetail = `💰 Maximum target achieved at ${setup.tp3.toFixed(2)}. Trade completed.`;
       break;
     case "SL_HIT":
-      statusHeader = `🛑 <b>SL HIT</b>`;
-      statusDetail = `🛡️ Stop Loss triggered at $${setup.stopLoss.toFixed(2)}. Risk strictly managed per setup rule.`;
+      statusHeader = `🛑 SL HIT`;
+      statusDetail = `Stop loss triggered at ${setup.stopLoss.toFixed(2)}. Capital protected.`;
       break;
     case "TP_THEN_SL_HIT":
-      statusHeader = `🎯 <b>TP1 HIT → 🛑 SL HIT</b>`;
-      statusDetail = `⚠️ Profit was locked at TP1 before remaining runner tapped protected Stop Loss / Break-Even.`;
+      statusHeader = `🎯 TP1 HIT → 🛑 BREAK-EVEN EXIT`;
+      statusDetail = `Profit locked at TP1 before position exited at Break-Even.`;
       break;
     case "INVALIDATED":
-      statusHeader = `❌ <b>INVALIDATED</b>`;
-      statusDetail = `⚠️ Structural swing invalidated before entry was filled. Setup cancelled to preserve capital.`;
+      statusHeader = `❌ SETUP INVALIDATED`;
+      statusDetail = `Price broke above Sell LQ ceiling. Setup cancelled.`;
       break;
     default:
-      statusHeader = `📢 <b>STATUS UPDATE</b>`;
-      statusDetail = `Setup status updated.`;
+      statusHeader = `📢 STATUS UPDATE`;
+      statusDetail = `Status updated for 1M SELL setup.`;
   }
 
   const message = [
-    `💀 <b>KHATARNAK JUGAAD</b>`,
+    `💀 KHATARNAK JUGAAD | 1M SELL UPDATE`,
     ``,
-    statusHeader,
+    `${asset} • SELL ONLY 🔴`,
     ``,
-    `<b>${asset} • ${setup.timeframe} • ${directionEmoji}</b>`,
+    `${statusHeader}`,
+    `${statusDetail}`,
     ``,
-    `📍 <b>Current Price:</b> <code>$${currentPrice.toFixed(2)}</code>`,
-    `🟢 <b>Entry Range:</b> <code>${setup.entryFormatted}</code>`,
-    `🛑 <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code>`,
-    `🎯 <b>Targets:</b> TP1: <code>$${setup.tp1.toFixed(2)}</code> | TP2: <code>$${setup.tp2.toFixed(2)}</code> | TP3: <code>$${setup.tp3.toFixed(2)}</code>`,
+    `📍 Best Entry: ${setup.bestSellEntry.toFixed(2)}`,
+    `🛑 SL: ${setup.stopLoss.toFixed(2)}`,
+    `💰 Current Price: ${currentPrice.toFixed(2)}`,
     ``,
-    `ℹ️ <i>${statusDetail}</i>`,
-    ``,
-    `💬 <i>“${setup.funnyLine}”</i>`,
-    ``,
-    `<b>SETUP ID:</b> <code>${setup.id}</code>`,
+    `KJ • 1M Institutional Setup`,
   ].join("\n");
 
   return message;
 }
 
 /**
- * Dispatch a New Setup alert to Telegram with duplicate protection.
+ * Dispatch NEW setup to Telegram
+ * Validated through the Central Signal Manager Gatekeeper
  */
 export async function dispatchNewJugaadSetupToTelegram(
-  setup: KhatarnakJugaadSetup,
-  overrideConfig?: { botToken?: string; chatId?: string }
-): Promise<{ success: boolean; message: string }> {
-  // Strict quality filter: only real high quality setups
-  if (!setup.hasValidSetup || setup.status === "NO VALID SETUP" || setup.status === "WAITING" && setup.score < 60) {
-    return { success: false, message: "Filtered: Setup is not active or below quality threshold." };
+  setup: KhatarnakJugaadSetup
+): Promise<{ success: boolean; error?: string }> {
+  if (!setup.hasValidSetup && setup.score < 80) {
+    return { success: false, error: "Setup score below 80 or no valid setup." };
   }
 
-  // Check if NEW_SETUP was already dispatched for this Setup ID
-  if (isEventAlreadyDispatched(setup.id, "NEW_SETUP")) {
-    return { success: true, message: `Setup ${setup.id} already dispatched to Telegram.` };
+  // 1. Check with Central Signal Manager Gatekeeper
+  const gatekeeper = centralSignalManager.promoteKhatarnakJugaadSetup(setup);
+  if (!gatekeeper.allowed) {
+    return {
+      success: false,
+      error: gatekeeper.message,
+    };
   }
 
-  const messageText = formatNewSetupTelegramMessage(setup);
-  const alertKey = `kj-setup-${setup.id}-${setup.timeframe}`;
+  const message = formatNewSetupTelegramMessage(setup);
+  const cfg = getTelegramConfig();
 
-  const res = await sendTelegramMessage(messageText, alertKey, overrideConfig);
+  if (!cfg.botToken || !cfg.chatId) {
+    return { success: false, error: "Telegram Bot Token or Chat ID not configured." };
+  }
 
+  const res = await sendTelegramMessage(message);
+
+  const log: DispatchedJugaadAlert = {
+    id: `ALERT-${Date.now()}`,
+    setupId: setup.id,
+    timeframe: "1M",
+    signalType: "SELL",
+    event: "NEW_SETUP",
+    eventLabel: `NEW 1M 2.6 SELL (#${setup.id})`,
+    price: setup.currentPrice,
+    timestamp: Date.now(),
+    dateTime: new Date().toLocaleTimeString(),
+    messageText: message,
+    success: res.success,
+  };
+
+  saveAlertLog(log);
   if (res.success) {
     recordDispatchedEventKey(setup.id, "NEW_SETUP");
-    saveAlertLog({
-      id: `alert-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      setupId: setup.id,
-      timeframe: setup.timeframe,
-      signalType: setup.signalType === "SELL" ? "SELL" : "BUY",
-      event: "NEW_SETUP",
-      eventLabel: `NEW ${setup.signalType} SETUP (${setup.score}/100)`,
-      price: setup.currentPrice,
-      timestamp: Date.now(),
-      dateTime: new Date().toLocaleTimeString(),
-      messageText,
-      success: true,
-    });
   }
 
   return res;
 }
 
 /**
- * Dispatch a Status Update alert to Telegram for an existing Setup ID.
- * Strictly prevents duplicates for the same event on the same Setup ID.
+ * Dispatch status update to Telegram and sync lifecycle with Central Signal Manager
  */
-export async function dispatchJugaadStatusUpdateToTelegram(
+export async function dispatchStatusUpdateToTelegram(
   setup: KhatarnakJugaadSetup,
   event: JugaadTelegramEventType,
-  currentPrice: number,
-  overrideConfig?: { botToken?: string; chatId?: string }
-): Promise<{ success: boolean; message: string }> {
-  if (!setup.hasValidSetup || !setup.id || setup.id.includes("WAIT") || setup.id.includes("VOLATILE")) {
-    return { success: false, message: "Invalid setup ID." };
+  currentPrice: number
+): Promise<{ success: boolean; error?: string }> {
+  const message = formatStatusUpdateTelegramMessage(setup, event, currentPrice);
+  const cfg = getTelegramConfig();
+
+  // Sync lifecycle transition into Central Signal Manager
+  if (
+    event === "ENTRY_HIT" ||
+    event === "TP1_HIT" ||
+    event === "TP2_HIT" ||
+    event === "TP3_HIT" ||
+    event === "FINAL_TP_HIT" ||
+    event === "SL_HIT" ||
+    event === "TP_THEN_SL_HIT" ||
+    event === "INVALIDATED"
+  ) {
+    centralSignalManager.updateActiveSetupLifecycleEvent(setup.id, event, currentPrice);
   }
 
-  // Deduplication check per setup ID & event
-  if (isEventAlreadyDispatched(setup.id, event)) {
-    return { success: true, message: `Event ${event} already dispatched for ${setup.id}.` };
+  if (!cfg.botToken || !cfg.chatId) {
+    return { success: false, error: "Telegram Bot Token or Chat ID not configured." };
   }
 
-  const messageText = formatStatusUpdateTelegramMessage(setup, event, currentPrice);
-  const alertKey = `kj-status-${setup.id}-${event}`;
+  const res = await sendTelegramMessage(message);
 
-  const res = await sendTelegramMessage(messageText, alertKey, overrideConfig);
+  const log: DispatchedJugaadAlert = {
+    id: `ALERT-${Date.now()}`,
+    setupId: setup.id,
+    timeframe: "1M",
+    signalType: "SELL",
+    event,
+    eventLabel: `${event} (#${setup.id})`,
+    price: currentPrice,
+    timestamp: Date.now(),
+    dateTime: new Date().toLocaleTimeString(),
+    messageText: message,
+    success: res.success,
+  };
 
+  saveAlertLog(log);
   if (res.success) {
     recordDispatchedEventKey(setup.id, event);
-    saveAlertLog({
-      id: `alert-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      setupId: setup.id,
-      timeframe: setup.timeframe,
-      signalType: setup.signalType === "SELL" ? "SELL" : "BUY",
-      event,
-      eventLabel: getEventLabel(event),
-      price: currentPrice,
-      timestamp: Date.now(),
-      dateTime: new Date().toLocaleTimeString(),
-      messageText,
-      success: true,
-    });
   }
 
   return res;
-}
-
-function getEventLabel(event: JugaadTelegramEventType): string {
-  switch (event) {
-    case "ENTRY_HIT":
-      return "🟢 ENTRY HIT";
-    case "TP1_HIT":
-      return "🎯 TP1 HIT";
-    case "TP2_HIT":
-      return "🎯 TP2 HIT";
-    case "TP3_HIT":
-      return "🎯 TP3 HIT";
-    case "FINAL_TP_HIT":
-      return "🏆 FINAL TP HIT";
-    case "SL_HIT":
-      return "🛑 SL HIT";
-    case "TP_THEN_SL_HIT":
-      return "🎯 TP1 HIT → 🛑 SL HIT";
-    case "INVALIDATED":
-      return "❌ INVALIDATED";
-    default:
-      return event;
-  }
 }

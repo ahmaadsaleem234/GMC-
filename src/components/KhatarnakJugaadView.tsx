@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   ShieldAlert,
   Sliders,
-  TrendingUp,
   TrendingDown,
   Activity,
   History,
@@ -21,10 +20,20 @@ import {
   DollarSign,
   Info,
   Settings,
+  HelpCircle,
+  ArrowDownRight,
+  Target,
+  Percent,
+  Check,
+  XCircle,
+  Brain,
+  Lock,
+  Sparkles,
+  GitBranch,
+  Compass,
 } from "lucide-react";
 import { LivePrice } from "../types";
 import {
-  JugaadTimeframe,
   KhatarnakJugaadSetup,
   SetupHistoryRecord,
   calculateKhatarnakJugaadSetup,
@@ -32,7 +41,22 @@ import {
 } from "../services/khatarnakJugaadEngine";
 import { playAlertChime } from "../utils/audioAlert";
 import { sendTelegramMessage, getTelegramConfig } from "../utils/telegram";
-import { dispatchNewJugaadSetupToTelegram } from "../services/khatarnakTelegramService";
+import {
+  dispatchNewJugaadSetupToTelegram,
+  formatNewSetupTelegramMessage,
+} from "../services/khatarnakTelegramService";
+import {
+  evaluateKhatarnakBrain,
+  getActiveBrainVersion,
+  saveTradeToMemory,
+  HistoricalTradeMemory,
+  BrainVersionProfile,
+} from "../services/khatarnakBrainEngine";
+import { KhatarnakBrainTab } from "./khatarnak/KhatarnakBrainTab";
+import { KhatarnakHardSafetyTab } from "./khatarnak/KhatarnakHardSafetyTab";
+import { KhatarnakSelfLearningTab } from "./khatarnak/KhatarnakSelfLearningTab";
+import { KhatarnakTradeMemoryTab } from "./khatarnak/KhatarnakTradeMemoryTab";
+import { Khatarnak3DHeroEngine } from "./khatarnak/Khatarnak3DHeroEngine";
 import { useKhatarnakTelegramWatcher } from "../services/useKhatarnakTelegramWatcher";
 import { KhatarnakTelegramSettingsModal } from "./KhatarnakTelegramSettingsModal";
 import { useCandleData } from "../useLiveData";
@@ -50,8 +74,9 @@ export const KhatarnakJugaadView: React.FC<KhatarnakJugaadViewProps> = ({
   assetKey = "XAUUSD",
   onExecuteTrade,
 }) => {
-  const [activeTimeframe, setActiveTimeframe] = useState<JugaadTimeframe>("15M");
-  const [activeSubTab, setActiveSubTab] = useState<"SIGNAL" | "RISK" | "HISTORY" | "PERFORMANCE">("SIGNAL");
+  const [activeSubTab, setActiveSubTab] = useState<
+    "3D_RADAR" | "BRAIN" | "BLUEPRINT" | "SAFETY" | "LEARNING" | "SIGNAL" | "RISK" | "MEMORY" | "TELEMETRY"
+  >("3D_RADAR");
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [telegramStatus, setTelegramStatus] = useState<string | null>(null);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -61,19 +86,21 @@ export const KhatarnakJugaadView: React.FC<KhatarnakJugaadViewProps> = ({
   // Risk Management Parameters
   const [accountBalance, setAccountBalance] = useState<number>(10000);
   const [riskPercent, setRiskPercent] = useState<number>(1.0);
+  const [dailyLossUSD, setDailyLossUSD] = useState<number>(0);
+  const [consecutiveLosses, setConsecutiveLosses] = useState<number>(0);
+  const [openTradesCount, setOpenTradesCount] = useState<number>(0);
+  const [activeBrainVersion, setActiveBrainVersionState] = useState<BrainVersionProfile>(getActiveBrainVersion());
 
-  // Independent real candle data streams for 15M and 5M
-  const { candles: candles15m } = useCandleData(assetKey, "15min");
-  const { candles: candles5m } = useCandleData(assetKey, "5min");
+  // Strict 1M Candle Data Stream
+  const { candles: candles1m } = useCandleData(assetKey, "1min");
 
-  // Keep state for both completely independent setups
-  const [setup15m, setSetup15m] = useState<KhatarnakJugaadSetup | null>(null);
-  const [setup5m, setSetup5m] = useState<KhatarnakJugaadSetup | null>(null);
+  // Keep state for live setup
+  const [setup1m, setSetup1m] = useState<KhatarnakJugaadSetup | null>(null);
 
   // History Records
   const [setupHistory, setSetupHistory] = useState<SetupHistoryRecord[]>(() => {
     try {
-      const saved = localStorage.getItem("kj_setup_history");
+      const saved = localStorage.getItem("kj_1m_setup_history");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       // ignore
@@ -81,810 +108,1029 @@ export const KhatarnakJugaadView: React.FC<KhatarnakJugaadViewProps> = ({
     return [];
   });
 
-  // Previous status tracker for audio alert chime & history archival
-  const prevStatus15m = useRef<string>("");
-  const prevStatus5m = useRef<string>("");
-
-  // Read-only tab: Telegram watcher is completely disabled for client-side auto-dispatch.
-  // Trades/events must NEVER be triggered by opening or refreshing website tabs.
-  // Manual dispatch is available via explicit user button click only.
+  const prevStatus = useRef<string>("");
 
   // Save history on change
   useEffect(() => {
     try {
-      localStorage.setItem("kj_setup_history", JSON.stringify(setupHistory));
+      localStorage.setItem("kj_1m_setup_history", JSON.stringify(setupHistory));
     } catch (e) {}
   }, [setupHistory]);
 
-  // Recalculate 15M setup independently using real 15M candle data
+  // Recalculate 1M setup dynamically using real 1M live candle stream
   useEffect(() => {
-    if (candles15m && candles15m.length > 0 && currentPrice > 0) {
+    if (candles1m && candles1m.length > 0 && currentPrice > 0) {
       const calculated = calculateKhatarnakJugaadSetup(
-        candles15m,
+        candles1m,
         currentPrice,
-        "15M",
-        setup15m,
+        "1M",
+        setup1m,
         accountBalance,
-        riskPercent
+        riskPercent,
+        assetKey
       );
-      calculated.assetKey = assetKey;
-      setSetup15m(calculated);
+      setSetup1m(calculated);
 
-      if (prevStatus15m.current && prevStatus15m.current !== calculated.status) {
+      if (prevStatus.current && prevStatus.current !== calculated.status) {
         if (audioEnabled) playAlertChime();
 
-        // Check if trade reached terminal outcome to archive into history
+        // Archive completed setups
         if (
           calculated.status === "🛑 SL HIT" ||
           calculated.status === "🏆 FINAL TP HIT" ||
           calculated.status === "🎯 TP3 HIT" ||
+          calculated.status === "🎯 TP2 HIT" ||
           calculated.status === "❌ INVALIDATED"
         ) {
-          archiveSetupHistory(calculated);
+          const record: SetupHistoryRecord = {
+            setupId: calculated.id,
+            dateTime: new Date().toLocaleString(),
+            asset: assetKey,
+            timeframe: "1M",
+            signalType: "SELL",
+            marketRegime: calculated.marketRegime,
+            entryRange: calculated.entryFormatted,
+            actualEntry: calculated.bestSellEntry,
+            stopLoss: calculated.stopLoss,
+            tp1: calculated.tp1,
+            tp2: calculated.tp2,
+            tp3: calculated.tp3,
+            finalTp: calculated.finalTp,
+            rrRatio: calculated.rrRatioString,
+            score: calculated.score,
+            status: calculated.status,
+            result: calculated.finalResult || "IN_PROGRESS",
+            createdAt: calculated.timestamp,
+            closedAt: Date.now(),
+            reasons: calculated.reasons,
+            impulseRange: calculated.impulseRange,
+            level26: calculated.level26,
+          };
+
+          setSetupHistory((prev) => {
+            if (prev.some((h) => h.setupId === record.setupId && h.status === record.status)) {
+              return prev;
+            }
+            return [record, ...prev].slice(0, 50);
+          });
         }
       }
-      prevStatus15m.current = calculated.status;
+
+      prevStatus.current = calculated.status;
     }
-  }, [candles15m, currentPrice, assetKey, audioEnabled, accountBalance, riskPercent]);
+  }, [candles1m, currentPrice, accountBalance, riskPercent, assetKey, audioEnabled]);
 
-  // Recalculate 5M setup independently using real 5M candle data
-  useEffect(() => {
-    if (candles5m && candles5m.length > 0 && currentPrice > 0) {
-      const calculated = calculateKhatarnakJugaadSetup(
-        candles5m,
-        currentPrice,
-        "5M",
-        setup5m,
-        accountBalance,
-        riskPercent
-      );
-      calculated.assetKey = assetKey;
-      setSetup5m(calculated);
-
-      if (prevStatus5m.current && prevStatus5m.current !== calculated.status) {
-        if (audioEnabled) playAlertChime();
-
-        // Check if trade reached terminal outcome to archive into history
-        if (
-          calculated.status === "🛑 SL HIT" ||
-          calculated.status === "🏆 FINAL TP HIT" ||
-          calculated.status === "🎯 TP3 HIT" ||
-          calculated.status === "❌ INVALIDATED"
-        ) {
-          archiveSetupHistory(calculated);
-        }
-      }
-      prevStatus5m.current = calculated.status;
-    }
-  }, [candles5m, currentPrice, assetKey, audioEnabled, accountBalance, riskPercent]);
-
-  const archiveSetupHistory = (setup: KhatarnakJugaadSetup) => {
-    if (!setup.hasValidSetup) return;
-    setSetupHistory((prev) => {
-      const exists = prev.find((h) => h.setupId === setup.id);
-      if (exists) {
-        return prev.map((h) =>
-          h.setupId === setup.id
-            ? {
-                ...h,
-                status: setup.status,
-                result: setup.finalResult || (setup.status as any),
-                closedAt: Date.now(),
-              }
-            : h
-        );
-      }
-      const newRecord: SetupHistoryRecord = {
-        setupId: setup.id,
-        dateTime: new Date(setup.timestamp).toLocaleString(),
-        asset: setup.assetKey,
-        timeframe: setup.timeframe,
-        signalType: setup.signalType === "SELL" ? "SELL" : "BUY",
-        marketRegime: setup.marketRegime,
-        entryRange: setup.entryFormatted,
-        actualEntry: setup.entry1Golden,
-        stopLoss: setup.stopLoss,
-        tp1: setup.tp1,
-        tp2: setup.tp2,
-        tp3: setup.tp3,
-        finalTp: setup.tp4Final,
-        rrRatio: setup.rrRatioString,
-        score: setup.score,
-        status: setup.status,
-        result: setup.finalResult || (setup.status as any),
-        createdAt: setup.timestamp,
-        closedAt: Date.now(),
-        reasons: setup.reasons,
-      };
-      return [newRecord, ...prev].slice(0, 50);
-    });
-  };
-
-  const activeSetup = activeTimeframe === "15M" ? setup15m : setup5m;
-
-  // Shuffle funny line without repeating
-  const handleShuffleFunnyLine = () => {
-    const newLine = getRandomFunnyLine();
-    if (activeTimeframe === "15M" && setup15m) {
-      setSetup15m({ ...setup15m, funnyLine: newLine });
-    } else if (activeTimeframe === "5M" && setup5m) {
-      setSetup5m({ ...setup5m, funnyLine: newLine });
-    }
-  };
-
-  // Telegram Broadcast Handler (Uses high-priority Khatarnak Telegram Dispatcher)
-  const handleBroadcastTelegram = async () => {
-    if (!activeSetup || !activeSetup.hasValidSetup) return;
+  // Manual Dispatch to Telegram
+  const handleManualTelegramBroadcast = async () => {
+    if (!setup1m) return;
     setIsBroadcasting(true);
-    setTelegramStatus("Broadcasting setup to Telegram...");
-
+    setTelegramStatus(null);
     try {
-      const res = await dispatchNewJugaadSetupToTelegram(activeSetup);
+      const res = await dispatchNewJugaadSetupToTelegram(setup1m);
       if (res.success) {
-        setTelegramStatus("✅ Broadcasted to Telegram successfully!");
-        setTimeout(() => setTelegramStatus(null), 3500);
+        setTelegramStatus("✅ 1M 2.6 SELL Signal dispatched to Telegram channel!");
       } else {
-        setTelegramStatus(res.message || "⚠️ Check Telegram bot configuration.");
-        setTimeout(() => setTelegramStatus(null), 3500);
+        setTelegramStatus(`⚠️ Telegram error: ${res.error || "Failed to send"}`);
       }
-    } catch (e) {
-      setTelegramStatus("❌ Broadcast failed.");
-      setTimeout(() => setTelegramStatus(null), 3500);
+    } catch (err: any) {
+      setTelegramStatus(`❌ Error: ${err.message}`);
     } finally {
       setIsBroadcasting(false);
+      setTimeout(() => setTelegramStatus(null), 5000);
     }
   };
 
-  // Copy Clean Card Text (Strictly matching prompt format)
-  const handleCopyCardText = () => {
-    if (!activeSetup || !activeSetup.hasValidSetup) return;
-    const isBuy = activeSetup.signalType === "BUY";
-    const directionEmoji = isBuy ? "BUY 🟢" : "SELL 🔴";
-    const entryEmoji = isBuy ? "🟢" : "🔴";
-
-    const text =
-      `💀 KHATARNAK JUGAAD\n\n` +
-      `${activeSetup.assetKey} • ${activeSetup.timeframe} • ${directionEmoji}\n\n` +
-      `${entryEmoji} Entry: ${activeSetup.entryFormatted}\n` +
-      `🛑 SL: ${activeSetup.stopLoss.toFixed(2)}\n\n` +
-      `🎯 TP1: ${activeSetup.tp1.toFixed(2)}\n` +
-      `🎯 TP2: ${activeSetup.tp2.toFixed(2)}\n` +
-      `🎯 TP3: ${activeSetup.tp3.toFixed(2)}\n\n` +
-      `📊 R:R: ${activeSetup.rrRatioString}\n` +
-      `🔥 Score: ${activeSetup.score}/100\n\n` +
-      `🧠 Reason:\n` +
-      `${activeSetup.shortReason}\n\n` +
-      `💬 “${activeSetup.funnyLine}”`;
-
+  // Copy Setup Details
+  const handleCopySetup = () => {
+    if (!setup1m) return;
+    const text = formatNewSetupTelegramMessage(setup1m);
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 2500);
   };
 
-  // Execute 1-Click Demo Trade
-  const handleExecuteDemoTrade = () => {
-    if (!activeSetup || !activeSetup.hasValidSetup || !onExecuteTrade) return;
+  // Execute Trade in active Demo/Live Account
+  const handleExecuteTrade = () => {
+    if (!setup1m || !onExecuteTrade) return;
     onExecuteTrade({
-      assetKey: activeSetup.assetKey,
-      type: activeSetup.signalType === "SELL" ? "SELL" : "BUY",
-      entryPrice: activeSetup.entry1Golden || currentPrice,
-      stopLoss: activeSetup.stopLoss,
-      takeProfit: activeSetup.tp2,
-      lotSize: activeSetup.riskManagement.recommendedLotSize || 0.1,
-      signalSource: `💀 KHATARNAK JUGAAD • ${activeSetup.timeframe}`,
+      type: "SELL",
+      asset: assetKey,
+      entryPrice: setup1m.bestSellEntry,
+      stopLoss: setup1m.stopLoss,
+      takeProfit: setup1m.tp2,
+      lotSize: setup1m.riskManagement.recommendedLotSize,
+      comment: `Khatarnak 1M 2.6 Sell (#${setup1m.id})`,
+      signalSource: "💀 KHATARNAK JUGAAD — 1M Institutional 2.6 Sell Engine",
     });
   };
 
-  // Analytics Computation
-  const totalCompleted = setupHistory.length;
-  const winCount = setupHistory.filter(
-    (h) =>
-      h.result.includes("WIN") ||
-      h.status.includes("TP1") ||
-      h.status.includes("TP2") ||
-      h.status.includes("TP3") ||
-      h.status.includes("FINAL TP")
-  ).length;
-  const slCount = setupHistory.filter((h) => h.status === "🛑 SL HIT" || h.result.includes("LOSS")).length;
-  const winRate = totalCompleted > 0 ? Math.round((winCount / totalCompleted) * 100) : 78;
+  // Compute AI Brain Evaluation with hard safety gate and pattern matching
+  const brainOutput = evaluateKhatarnakBrain(
+    setup1m,
+    accountBalance,
+    0.25,
+    dailyLossUSD,
+    consecutiveLosses,
+    openTradesCount
+  );
 
-  const tf15History = setupHistory.filter((h) => h.timeframe === "15M");
-  const tf5History = setupHistory.filter((h) => h.timeframe === "5M");
-  const buyHistory = setupHistory.filter((h) => h.signalType === "BUY");
-  const sellHistory = setupHistory.filter((h) => h.signalType === "SELL");
+  const isLive = candles1m && candles1m.length > 0;
 
   return (
-    <div id="khatarnak-jugaad-container" className="max-w-3xl mx-auto space-y-6">
-      {/* TOP HEADER CONTROLS (Clean, Minimal, Mobile-Friendly) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0B0F17] border border-[#1E293B] px-5 py-3 rounded-2xl shadow-lg">
-        {/* Timeframe Independent Selector: 15M | 5M */}
-        <div className="flex items-center gap-1.5 bg-[#111827] p-1 rounded-xl border border-slate-800">
-          <button
-            id="jugaad-tf-15m-btn"
-            onClick={() => setActiveTimeframe("15M")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTimeframe === "15M"
-                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md font-black"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>15M Setup</span>
-          </button>
-
-          <button
-            id="jugaad-tf-5m-btn"
-            onClick={() => setActiveTimeframe("5M")}
-            className={`px-4 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTimeframe === "5M"
-                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md font-black"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>5M Setup</span>
-          </button>
+    <div id="khatarnak-jugaad-container" className="space-y-5">
+      {/* 1. Header Banner & Engine Mode */}
+      <div className="bg-gradient-to-r from-zinc-900 via-neutral-900 to-zinc-900 border border-red-900/40 rounded-xl p-4 sm:p-5 shadow-2xl relative overflow-hidden">
+        <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+          <span className="text-9xl font-black text-red-500">💀</span>
         </div>
 
-        {/* Sub-view Navigation Tabs */}
-        <div className="flex items-center gap-1 bg-[#111827] p-1 rounded-xl border border-slate-800 text-xs">
-          <button
-            onClick={() => setActiveSubTab("SIGNAL")}
-            className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "SIGNAL"
-                ? "bg-slate-800 text-amber-300 font-black shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Signal
-          </button>
-          <button
-            onClick={() => setActiveSubTab("RISK")}
-            className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "RISK"
-                ? "bg-slate-800 text-amber-300 font-black shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Risk / Lots
-          </button>
-          <button
-            onClick={() => setActiveSubTab("HISTORY")}
-            className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "HISTORY"
-                ? "bg-slate-800 text-amber-300 font-black shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            History
-          </button>
-          <button
-            onClick={() => setActiveSubTab("PERFORMANCE")}
-            className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-              activeSubTab === "PERFORMANCE"
-                ? "bg-slate-800 text-amber-300 font-black shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Analytics
-          </button>
-        </div>
-
-        {/* Live Real-time Price Pill + Telegram Alerts Status + Audio Toggle */}
-        <div className="flex items-center gap-2.5">
-          <button
-            id="jugaad-telegram-settings-btn"
-            onClick={() => setIsTelegramModalOpen(true)}
-            className="bg-[#111827] hover:bg-[#1E293B] border border-cyan-500/30 hover:border-cyan-400/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-mono text-cyan-300 font-bold transition-all cursor-pointer shadow-sm"
-            title="Configure Telegram Bot & View Live Alert Logs"
-          >
-            <Send className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Telegram Alerts</span>
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping ml-0.5" />
-          </button>
-
-          <div className="bg-[#111827] border border-amber-500/30 px-3 py-1.5 rounded-xl flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-xs font-mono text-slate-400">{assetKey}:</span>
-            <span className="text-xs font-mono font-black text-amber-300">
-              ${currentPrice.toFixed(2)}
-            </span>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="bg-red-500/20 text-red-400 border border-red-500/40 text-xs font-black px-2.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
+                💀 KHATARNAK JUGAAD AI BRAIN
+              </span>
+              <span className="bg-purple-500/10 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                <GitBranch className="w-3 h-3" />
+                {brainOutput.activeVersion.version}
+              </span>
+              <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold px-2 py-0.5 rounded">
+                1M STRICT • SELL ONLY
+              </span>
+              <span className="bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-xs font-mono px-2 py-0.5 rounded">
+                DYNAMIC 2.6 MATH
+              </span>
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                  brainOutput.safetyAudit.passed
+                    ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                    : "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                }`}
+              >
+                {brainOutput.safetyAudit.passed ? "🛡️ Safety: CLEAR" : "🚨 Safety: BLOCKED"}
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              Institutional 2.6 AI Brain & Autonomous Execution Engine
+            </h1>
+            <p className="text-xs sm:text-sm text-zinc-400 max-w-3xl">
+              Strict 1-Minute Institutional Pipeline: <strong className="text-zinc-200">Auto Scanner</strong> → <strong className="text-zinc-200">Liquidity Sweep</strong> → <strong className="text-zinc-200">Dynamic 2.6 / GZ Confluence</strong> → <strong className="text-zinc-200">AI Brain Decision</strong> → <strong className="text-zinc-200">Hard Risk Guardrail</strong> → <strong className="text-red-400 font-bold">💀 SELL</strong> → <strong className="text-purple-300">Self-Learning Memory</strong>.
+            </p>
           </div>
 
-          <button
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`p-2 rounded-xl border transition-all cursor-pointer ${
-              audioEnabled
-                ? "bg-amber-500/10 text-amber-300 border-amber-500/40 hover:bg-amber-500/20"
-                : "bg-slate-800 text-slate-500 border-slate-700"
-            }`}
-            title={audioEnabled ? "Sound Alert Enabled" : "Sound Alert Muted"}
-          >
-            {audioEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              id="kj-audio-toggle-btn"
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              className={`p-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                audioEnabled
+                  ? "bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:bg-zinc-800"
+              }`}
+              title="Toggle Audio Alerts"
+            >
+              {audioEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-zinc-500" />}
+              <span>{audioEnabled ? "Alerts ON" : "Muted"}</span>
+            </button>
+
+            <button
+              id="kj-tg-settings-btn"
+              onClick={() => setIsTelegramModalOpen(true)}
+              className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            >
+              <Settings className="w-4 h-4 text-cyan-400" />
+              <span>Telegram Bot</span>
+            </button>
+
+            <button
+              id="kj-broadcast-btn"
+              onClick={handleManualTelegramBroadcast}
+              disabled={isBroadcasting || !setup1m || setup1m.status === "NO VALID SETUP"}
+              className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-red-950/50 transition-all"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isBroadcasting ? "Broadcasting..." : "Dispatch Setup"}</span>
+            </button>
+          </div>
         </div>
+
+        {telegramStatus && (
+          <div className="mt-3 p-2.5 rounded-lg bg-zinc-800/90 border border-zinc-700 text-xs font-medium text-zinc-200 flex items-center gap-2">
+            <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>{telegramStatus}</span>
+          </div>
+        )}
       </div>
 
-      {/* ============================================================ */}
-      {/* 1. SIGNAL VIEW */}
-      {/* ============================================================ */}
-      {activeSubTab === "SIGNAL" && (
-        <>
-          {/* NO VALID SETUP BANNER (WHEN MARKET IS CHOPPY OR STRUCTURE NOT CONFIRMED) */}
-          {activeSetup && !activeSetup.hasValidSetup && (
-            <div className="relative bg-[#0D131F] border border-amber-500/30 rounded-3xl p-8 shadow-2xl text-center space-y-4">
-              <div className="inline-flex items-center justify-center p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
-                <AlertTriangle className="w-8 h-8 text-amber-400 animate-pulse" />
-              </div>
+      {/* Sub-Navigation Tabs */}
+      <div className="flex border-b border-zinc-800 gap-2 overflow-x-auto pb-1">
+        <button
+          id="tab-3d-market-radar"
+          onClick={() => setActiveSubTab("3D_RADAR")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "3D_RADAR"
+              ? "bg-gradient-to-r from-cyan-950/80 to-slate-900 text-cyan-300 border-t-2 border-cyan-400 shadow-lg shadow-cyan-950/40"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Compass className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+          <span>🌐 LIVE 3D AI Radar Engine</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("BRAIN")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "BRAIN"
+              ? "bg-zinc-800 text-red-400 border-t-2 border-red-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Brain className="w-3.5 h-3.5" />
+          <span>🧠 AI Brain & Decision Matrix</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("BLUEPRINT")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "BLUEPRINT"
+              ? "bg-zinc-800 text-red-400 border-t-2 border-red-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Crosshair className="w-3.5 h-3.5" />
+          <span>📐 1M 2.6 Blueprint</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("SAFETY")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "SAFETY"
+              ? "bg-zinc-800 text-rose-400 border-t-2 border-rose-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5" />
+          <span>🛡️ Hard Safety & Guardrails</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("LEARNING")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "LEARNING"
+              ? "bg-zinc-800 text-purple-400 border-t-2 border-purple-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>🧬 Self-Learning Engine</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("SIGNAL")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "SIGNAL"
+              ? "bg-zinc-800 text-amber-400 border-t-2 border-amber-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Flame className="w-3.5 h-3.5" />
+          <span>⚡ Live 1M Signal Matrix</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("RISK")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "RISK"
+              ? "bg-zinc-800 text-cyan-400 border-t-2 border-cyan-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>📊 Lot Sizer & SL/TP Rules</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("MEMORY")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "MEMORY"
+              ? "bg-zinc-800 text-emerald-400 border-t-2 border-emerald-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          <span>📜 Trade Result Memory</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("TELEMETRY")}
+          className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeSubTab === "TELEMETRY"
+              ? "bg-zinc-800 text-purple-400 border-t-2 border-purple-500"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5" />
+          <span>📡 Telegram Broadcasts</span>
+        </button>
+      </div>
+
+      {/* SUBTAB: 3D LIVE AI RADAR ENGINE */}
+      {activeSubTab === "3D_RADAR" && (
+        <Khatarnak3DHeroEngine
+          currentPrice={currentPrice}
+          assetKey={assetKey}
+          candles1m={candles1m || []}
+          setup1m={setup1m}
+          onExecuteTrade={onExecuteTrade}
+          onBroadcastTelegram={handleManualTelegramBroadcast}
+        />
+      )}
+
+      {/* SUBTAB: AI BRAIN & LIVE DECISION FLOW */}
+      {activeSubTab === "BRAIN" && (
+        <KhatarnakBrainTab
+          setup={setup1m}
+          brainOutput={brainOutput}
+          currentPrice={currentPrice}
+          assetKey={assetKey}
+          onExecuteTrade={onExecuteTrade}
+        />
+      )}
+
+      {/* SUBTAB: HARD SAFETY & CIRCUIT BREAKER */}
+      {activeSubTab === "SAFETY" && (
+        <KhatarnakHardSafetyTab
+          safetyAudit={brainOutput.safetyAudit}
+          onConfigChange={() => {}}
+          accountBalance={accountBalance}
+          dailyLossUSD={dailyLossUSD}
+          consecutiveLosses={consecutiveLosses}
+        />
+      )}
+
+      {/* SUBTAB: SELF-LEARNING & VERSION ENGINE */}
+      {activeSubTab === "LEARNING" && (
+        <KhatarnakSelfLearningTab
+          onVersionChanged={(newVer) => setActiveBrainVersionState(newVer)}
+        />
+      )}
+
+      {/* SUBTAB: TRADE RESULT MEMORY & POST-MORTEM LOGS */}
+      {activeSubTab === "MEMORY" && <KhatarnakTradeMemoryTab />}
+
+      {/* 2. SUBTAB: TRADINGVIEW BLUEPRINT & LIVE 2.6 VISUALIZER */}
+      {activeSubTab === "BLUEPRINT" && (
+        <div className="space-y-5">
+          {/* Visual Architecture Diagram corresponding exactly to Reference Blueprint */}
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-2xl relative">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800">
               <div>
-                <h3 className="text-lg font-mono font-black text-amber-400 tracking-wide uppercase">
-                  ⏳ NO VALID SETUP — WAITING ({activeTimeframe})
+                <span className="text-xs font-mono uppercase tracking-widest text-red-400">
+                  TradingView Strategy Architecture • Reference Fidelity
+                </span>
+                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                  Institutional 2.6 Dynamic Retracement Geometry
                 </h3>
-                <p className="text-sm font-sans text-slate-400 max-w-md mx-auto mt-2">
-                  {activeSetup.waitingReason ||
-                    "Market structure is currently unconfirmed or consolidating. Waiting for confirmed Higher High/Higher Low or Lower High/Lower Low swings."}
-                </p>
               </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#111827] text-slate-300 border border-slate-700">
-                  Regime: {activeSetup.marketRegimeLabel}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">Live Asset:</span>
+                <span className="px-2.5 py-1 rounded bg-zinc-800 text-zinc-100 font-mono font-bold text-xs border border-zinc-700">
+                  {assetKey} • 1M
                 </span>
-                <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#111827] text-slate-300 border border-slate-700">
-                  Quality Score: {activeSetup.score}/100 ({activeSetup.scoreLabel})
+                <span className="px-2.5 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/60 font-mono font-bold text-xs">
+                  ${currentPrice.toFixed(2)}
                 </span>
-              </div>
-
-              <div className="pt-2 text-xs font-mono text-slate-500">
-                Quality &gt; Quantity • Fib 2.6 confirmation active • Never force a trade
               </div>
             </div>
-          )}
 
-          {/* THE EXACT FINAL KHATARNAK JUGAAD SETUP DISPLAY CARD */}
-          {activeSetup && activeSetup.hasValidSetup && (
-            <div
-              id="khatarnak-jugaad-final-card"
-              className="relative bg-gradient-to-b from-[#0D131F] to-[#080B12] border border-[#223049] rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden transition-all duration-300 hover:border-amber-500/40"
-            >
-              {/* Subtle Directional Glow */}
-              <div
-                className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none opacity-20 ${
-                  activeSetup.signalType === "BUY" ? "bg-emerald-500" : "bg-rose-500"
-                }`}
-              />
+            {/* Visual Interactive Diagram */}
+            <div className="my-5 p-5 rounded-xl bg-zinc-900/90 border border-zinc-800 relative overflow-hidden">
+              {/* Background Reference Rule */}
+              <div className="absolute top-2 right-3 text-right">
+                <span className="text-[10px] uppercase font-mono text-zinc-500 block">Principle 30</span>
+                <span className="text-xs font-bold text-zinc-400">“Photo jaisa setup dhoondo, photo ke levels copy mat karo.”</span>
+              </div>
 
-              <div className="relative z-10 space-y-4">
-                {/* Header: 💀 KHATARNAK JUGAAD */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-2xl select-none">💀</span>
-                    <span className="text-lg sm:text-xl font-black font-mono tracking-tight text-white uppercase">
-                      KHATARNAK JUGAAD
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                {/* Structural Setup Blueprint Map */}
+                <div className="lg:col-span-8 space-y-4">
+                  {/* Sell LQ Sweep Box */}
+                  <div className="border border-amber-500/40 bg-amber-950/20 rounded-lg p-3 relative">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-black text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        [sel LQ] SELL LIQUIDITY ZONE (${setup1m?.sellLqLow.toFixed(2)} — ${setup1m?.sellLqHigh.toFixed(2)})
+                      </span>
+                      <span className="text-xs font-mono text-amber-300 font-bold bg-amber-900/50 px-2 py-0.5 rounded">
+                        Top Sweep: ${setup1m?.topHigh.toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-1">
+                      Institutional stop hunt sweeps retail buy stops above recent equal highs / session peak, forming the structural <strong>Top</strong>.
+                    </p>
+                  </div>
+
+                  {/* Impulse Displacement & 2.6 Retracement Calculation Box */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Impulse Range Card */}
+                    <div className="border border-red-500/40 bg-red-950/20 rounded-lg p-3">
+                      <span className="text-[11px] font-mono text-red-400 font-bold uppercase block">
+                        Bearish Impulse Range
+                      </span>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-lg font-black text-white font-mono">
+                          -{setup1m?.impulseRange.toFixed(2)} pts
+                        </span>
+                        <span className="text-xs font-semibold text-red-400">
+                          (-{setup1m?.impulsePercent.toFixed(2)}%)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1">
+                        Displacement from <strong>Top (${setup1m?.topHigh.toFixed(2)})</strong> down to <strong>Botam (${setup1m?.botamLow.toFixed(2)})</strong>.
+                      </p>
+                    </div>
+
+                    {/* 2.6 Calculation Card */}
+                    <div className="border border-cyan-500/40 bg-cyan-950/20 rounded-lg p-3">
+                      <span className="text-[11px] font-mono text-cyan-400 font-bold uppercase block">
+                        🔢 Dynamic 2.6 Formula Math
+                      </span>
+                      <div className="text-sm font-black text-cyan-200 font-mono mt-1">
+                        {setup1m?.impulseRange.toFixed(2)} ÷ 2.6 ≈ {setup1m?.delta26.toFixed(2)} pts
+                      </div>
+                      <div className="text-xs font-bold text-emerald-400 mt-1">
+                        Best Setup 2.6 Level: ${setup1m?.level26.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Golden Zone & 2.6 Confluence Zone Card */}
+                  <div className="border border-emerald-500/50 bg-emerald-950/20 rounded-lg p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-mono font-black text-emerald-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        🎯 BEST SETUP OF 2.6 + GOLDEN ZONE (0.62 — 0.81)
+                      </span>
+                      <span className="text-xs font-mono text-emerald-300 font-bold bg-emerald-900/50 px-2 py-0.5 rounded">
+                        Sell Zone: ${setup1m?.entryFormatted}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-300 mt-1">
+                      Price retraces from Botam into the 2.6 level (${setup1m?.level26.toFixed(2)}) with 1M upper wick rejection & CHOCH confirmation to trigger the institutional SELL.
+                    </p>
+                  </div>
+
+                  {/* Buy LQ Target Level */}
+                  <div className="border border-zinc-700 bg-zinc-800/40 rounded-lg p-2.5 flex items-center justify-between">
+                    <span className="text-xs font-mono text-zinc-400 font-bold uppercase flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                      [buy LQ] DOWNSIDE TARGET ZONE (Botam Low: ${setup1m?.botamLow.toFixed(2)})
+                    </span>
+                    <span className="text-xs font-mono text-zinc-300 font-semibold">
+                      TP2 Target Mitigation: ${setup1m?.tp2.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live Real-Time Execution Status Card */}
+                <div className="lg:col-span-4 bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono uppercase text-zinc-400 font-bold">1M Live Setup State</span>
+                    <span className={`text-xs font-black px-2 py-0.5 rounded uppercase ${
+                      setup1m?.status === "ENTRY TRIGGERED" || setup1m?.status === "RUNNING"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                        : setup1m?.status === "WAITING FOR RETRACEMENT"
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                        : setup1m?.status === "IN 2.6 CONFLUENCE ZONE"
+                        ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/40"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}>
+                      {setup1m?.status}
                     </span>
                   </div>
 
-                  {/* Status Pill with Real-time Updates */}
-                  <span
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-black border tracking-wider ${activeSetup.statusColor}`}
-                  >
-                    {activeSetup.status}
-                  </span>
-                </div>
-
-                {/* Sub-Header: XAUUSD • 15M • BUY 🟢 / SELL 🔴 */}
-                <div className="text-sm sm:text-base font-mono font-bold text-slate-300 flex items-center gap-2 pt-1 border-t border-slate-800/80">
-                  <span className="text-white">{activeSetup.assetKey}</span>
-                  <span className="text-slate-500">•</span>
-                  <span className="text-amber-400">{activeSetup.timeframe}</span>
-                  <span className="text-slate-500">•</span>
-                  <span
-                    className={`font-black ${
-                      activeSetup.signalType === "BUY" ? "text-emerald-400" : "text-rose-400"
-                    }`}
-                  >
-                    {activeSetup.signalType === "BUY" ? "BUY 🟢" : "SELL 🔴"}
-                  </span>
-                  <span className="text-slate-500 text-xs ml-auto">
-                    ID: <span className="text-slate-400 font-mono">{activeSetup.id}</span>
-                  </span>
-                </div>
-
-                {/* MAIN VALUES LIST — STRICTLY CLEAN, NO INTERNAL FIB LABELS */}
-                <div className="space-y-2.5 pt-2 text-sm sm:text-base font-mono">
-                  {/* Entry Row: 🟢 Entry: 4508.49 — 4503.54 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>{activeSetup.signalType === "BUY" ? "🟢" : "🔴"}</span>
-                      <span>Entry:</span>
+                  {/* Quality Score Indicator */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400 font-medium">Quality Score (Max 100):</span>
+                      <span className={`font-mono font-black ${
+                        (setup1m?.score || 0) >= 80 ? "text-emerald-400" : (setup1m?.score || 0) >= 70 ? "text-amber-400" : "text-zinc-500"
+                      }`}>
+                        {setup1m?.score}/100
+                      </span>
                     </div>
-                    <div className="font-black text-white tracking-wide">
-                      {activeSetup.entryFormatted}
+                    <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          (setup1m?.score || 0) >= 80
+                            ? "bg-emerald-500"
+                            : (setup1m?.score || 0) >= 70
+                            ? "bg-amber-500"
+                            : "bg-zinc-600"
+                        }`}
+                        style={{ width: `${setup1m?.score || 0}%` }}
+                      />
                     </div>
                   </div>
 
-                  {/* SL Row: 🛑 SL: 4497.60 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-rose-300">
-                      <span>🛑</span>
-                      <span>SL:</span>
+                  {/* Quick Levels */}
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex justify-between p-2 rounded bg-zinc-900 border border-zinc-800">
+                      <span className="text-zinc-400">Best Sell Entry:</span>
+                      <span className="text-emerald-400 font-bold">${setup1m?.bestSellEntry.toFixed(2)}</span>
                     </div>
-                    <div className="font-black text-rose-300 tracking-wide">
-                      {activeSetup.stopLoss.toFixed(2)}
+                    <div className="flex justify-between p-2 rounded bg-zinc-900 border border-zinc-800">
+                      <span className="text-zinc-400">Stop Loss (Top+ATR):</span>
+                      <span className="text-rose-400 font-bold">${setup1m?.stopLoss.toFixed(2)}</span>
                     </div>
-                  </div>
-
-                  {/* TP1 Row: 🎯 TP1: 4534.51 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>🎯</span>
-                      <span>TP1:</span>
+                    <div className="flex justify-between p-2 rounded bg-zinc-900 border border-zinc-800">
+                      <span className="text-zinc-400">TP1 (1.5R):</span>
+                      <span className="text-cyan-400 font-bold">${setup1m?.tp1.toFixed(2)}</span>
                     </div>
-                    <div className="font-black text-amber-300 tracking-wide">
-                      {activeSetup.tp1.toFixed(2)}
+                    <div className="flex justify-between p-2 rounded bg-zinc-900 border border-zinc-800">
+                      <span className="text-zinc-400">TP2 (Botam / 2.5R):</span>
+                      <span className="text-cyan-400 font-bold">${setup1m?.tp2.toFixed(2)}</span>
                     </div>
-                  </div>
-
-                  {/* TP2 Row: 🎯 TP2: 4541.53 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>🎯</span>
-                      <span>TP2:</span>
-                    </div>
-                    <div className="font-black text-pink-300 tracking-wide">
-                      {activeSetup.tp2.toFixed(2)}
+                    <div className="flex justify-between p-2 rounded bg-zinc-900 border border-zinc-800">
+                      <span className="text-zinc-400">Risk : Reward:</span>
+                      <span className="text-purple-400 font-bold">{setup1m?.rrRatioString}</span>
                     </div>
                   </div>
 
-                  {/* TP3 Row: 🎯 TP3: 4550.64 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>🎯</span>
-                      <span>TP3:</span>
-                    </div>
-                    <div className="font-black text-emerald-300 tracking-wide">
-                      {activeSetup.tp3.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* R:R Row: 📊 R:R: 1:3.0 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>📊</span>
-                      <span>R:R:</span>
-                    </div>
-                    <div className="font-black text-teal-300 tracking-wide">
-                      {activeSetup.rrRatioString}
-                    </div>
-                  </div>
-
-                  {/* Score Row: 🔥 Score: 70/100 */}
-                  <div className="flex items-center justify-between p-3 rounded-2xl bg-[#111827]/80 border border-slate-800">
-                    <div className="flex items-center gap-2 font-bold text-slate-300">
-                      <span>🔥</span>
-                      <span>Score:</span>
-                    </div>
-                    <div className="font-black text-amber-400 tracking-wide">
-                      {activeSetup.score}/100
-                    </div>
-                  </div>
-                </div>
-
-                {/* Short Setup Explanation */}
-                <div className="p-3 rounded-2xl bg-[#111827]/60 border border-slate-800/80 text-xs font-mono">
-                  <span className="font-bold text-slate-300">🧠 Reason: </span>
-                  <span className="text-slate-400">{activeSetup.shortReason}</span>
-                </div>
-
-                {/* Funny Line Row: 💬 “Jugaad chala, scene bana 💀” */}
-                <div className="pt-1">
-                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-amber-300 font-sans font-semibold text-xs sm:text-sm">
-                      <span className="text-base select-none">💬</span>
-                      <span className="italic font-bold">“{activeSetup.funnyLine}”</span>
-                    </div>
+                  {/* Action Buttons */}
+                  <div className="pt-2 flex flex-col gap-2">
                     <button
-                      onClick={handleShuffleFunnyLine}
-                      className="text-xs text-amber-400 hover:text-amber-200 p-1 transition-colors cursor-pointer"
-                      title="Rotate funny line"
+                      id="kj-execute-trade-blueprint-btn"
+                      onClick={handleExecuteTrade}
+                      disabled={!setup1m?.hasValidSetup}
+                      className="w-full py-2.5 px-3 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-950/60 transition-all"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
+                      <ArrowDownRight className="w-4 h-4" />
+                      <span>Execute 1M 2.6 Sell Trade</span>
+                    </button>
+                    <button
+                      onClick={handleCopySetup}
+                      className="w-full py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Info className="w-3.5 h-3.5 text-zinc-400" />}
+                      <span>{copied ? "Copied to Clipboard!" : "Copy Setup Blueprint"}</span>
                     </button>
                   </div>
                 </div>
-
-                {/* ACTION BUTTONS (Demo Trade, Telegram Broadcast, Copy Text) */}
-                <div className="pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      id="jugaad-demo-exec-btn"
-                      onClick={handleExecuteDemoTrade}
-                      className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95 transition-all cursor-pointer"
-                    >
-                      <Zap className="w-4 h-4" />
-                      <span>Execute Demo Trade ({activeSetup.riskManagement.recommendedLotSize}L)</span>
-                    </button>
-
-                    <button
-                      onClick={handleCopyCardText}
-                      className="px-3.5 py-2.5 bg-[#111827] hover:bg-slate-800 text-slate-300 font-semibold rounded-xl text-xs border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      {copied ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400 font-bold">Copied!</span>
-                        </>
-                      ) : (
-                        <span>Copy Setup</span>
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      id="jugaad-telegram-broadcast-btn"
-                      onClick={handleBroadcastTelegram}
-                      disabled={isBroadcasting}
-                      className="px-4 py-2.5 bg-[#182234] hover:bg-[#1E293B] text-[#74D8A0] border border-[#2C3E50] rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                    >
-                      <Send className="w-4 h-4 text-emerald-400" />
-                      <span>Broadcast Telegram</span>
-                    </button>
-
-                    <button
-                      onClick={() => setIsTelegramModalOpen(true)}
-                      className="p-2.5 bg-[#111827] hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 border border-slate-700 rounded-xl transition-all cursor-pointer"
-                      title="Telegram Settings & Alert Logs"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {telegramStatus && (
-                  <div className="text-center text-xs font-mono text-emerald-400 animate-fade-in pt-1">
-                    {telegramStatus}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ============================================================ */}
-      {/* 2. RISK MANAGEMENT TAB */}
-      {/* ============================================================ */}
-      {activeSubTab === "RISK" && activeSetup && (
-        <div className="bg-[#0D131F] border border-[#223049] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex items-center gap-2 border-b border-slate-800 pb-4">
-            <ShieldAlert className="w-6 h-6 text-amber-400" />
-            <div>
-              <h3 className="text-base font-bold font-mono text-white">
-                DYNAMIC RISK MANAGEMENT &amp; POSITION SIZER
-              </h3>
-              <p className="text-xs text-slate-400">
-                Separated risk calculations based on structural SL distance and balance.
-              </p>
-            </div>
-          </div>
-
-          {/* Account Balance & Risk Input */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <label className="block text-xs font-mono text-slate-400 mb-1.5">
-                Account Balance (USD)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-slate-500 font-mono">$</span>
-                <input
-                  type="number"
-                  value={accountBalance}
-                  onChange={(e) => setAccountBalance(Number(e.target.value) || 1000)}
-                  className="w-full bg-[#090D16] border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-amber-500"
-                />
               </div>
             </div>
 
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <label className="block text-xs font-mono text-slate-400 mb-1.5">
-                Risk Per Trade (%)
-              </label>
-              <div className="flex items-center gap-2">
-                {[0.5, 1.0, 1.5, 2.0].map((pct) => (
-                  <button
-                    key={pct}
-                    onClick={() => setRiskPercent(pct)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-mono font-bold transition-all ${
-                      riskPercent === pct
-                        ? "bg-amber-500 text-slate-950 font-black"
-                        : "bg-[#090D16] text-slate-400 border border-slate-700 hover:text-white"
+            {/* 11-Stage Decision Engine Flow Pipeline */}
+            <div className="mt-4 pt-4 border-t border-zinc-800">
+              <span className="text-xs font-mono uppercase text-zinc-400 font-bold block mb-3">
+                11-Stage Algorithmic Decision Pipeline
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {[
+                  { label: "1. Real-Time 1M Data", done: isLive },
+                  { label: "2. Sell LQ Detected", done: (setup1m?.scoreComponents.liquidityDetectionScore || 0) > 0 },
+                  { label: "3. Top Sweep", done: setup1m?.sellLqStatus === "SWEPT" },
+                  { label: "4. Impulse Displacement", done: (setup1m?.impulseRange || 0) >= (setup1m?.atr || 1) * 2 },
+                  { label: "5. Dynamic 2.6 Math", done: (setup1m?.delta26 || 0) > 0 },
+                  { label: "6. Golden Zone Align", done: (setup1m?.scoreComponents.confluence26Score || 0) > 0 },
+                  { label: "7. Retracement Wait", done: setup1m?.isRetracedTo26Zone || false },
+                  { label: "8. 1M Rejection Wick", done: setup1m?.isRejectionConfirmed || false },
+                  { label: "9. 1M CHOCH / BOS", done: setup1m?.isChochConfirmed || false },
+                  { label: "10. Score >= 80", done: (setup1m?.score || 0) >= 80 },
+                  { label: "11. 💀 SELL TRIGGER", done: setup1m?.status === "ENTRY TRIGGERED" || setup1m?.status === "RUNNING" },
+                ].map((step, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      step.done
+                        ? "bg-emerald-950/30 border-emerald-600/40 text-emerald-300"
+                        : "bg-zinc-900/50 border-zinc-800 text-zinc-500"
                     }`}
                   >
-                    {pct}%
-                  </button>
+                    <div className="text-[10px] font-mono font-bold flex items-center justify-center gap-1">
+                      {step.done ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Clock className="w-3 h-3 text-zinc-600" />}
+                      <span className="truncate">{step.label}</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Calculated Output Matrix */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            <div className="bg-[#111827] p-3.5 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Max Risk USD</div>
-              <div className="text-base font-bold font-mono text-rose-300">
-                ${activeSetup.riskManagement.riskAmountUSD}
+      {/* 3. SUBTAB: LIVE SIGNAL & EXECUTION MATRIX */}
+      {activeSubTab === "SIGNAL" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left Column: 100-Point Quality Score Matrix */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-red-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">100-Point Quality Matrix</h3>
+                </div>
+                <span className={`text-xs font-mono font-black px-2.5 py-1 rounded ${
+                  (setup1m?.score || 0) >= 80
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : (setup1m?.score || 0) >= 70
+                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                    : "bg-zinc-800 text-zinc-400"
+                }`}>
+                  {setup1m?.scoreLabel}
+                </span>
               </div>
-            </div>
 
-            <div className="bg-[#111827] p-3.5 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">SL Distance</div>
-              <div className="text-base font-bold font-mono text-amber-300">
-                ${activeSetup.riskManagement.slDistancePoints}
+              {/* Score Component Breakdown */}
+              <div className="space-y-3 text-xs">
+                {/* 1. Liquidity Detection */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">Sell LQ Detection & Top Sweep:</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.liquidityDetectionScore}/20 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-amber-400 h-full" style={{ width: `${((setup1m?.scoreComponents.liquidityDetectionScore || 0) / 20) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 2. 2.6 Confluence */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">Dynamic 2.6 & Golden Zone (0.62–0.81):</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.confluence26Score}/20 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-cyan-400 h-full" style={{ width: `${((setup1m?.scoreComponents.confluence26Score || 0) / 20) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 3. Structure & CHOCH */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">1M Structure Shift (CHOCH / BOS):</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.structureChochScore}/15 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-purple-400 h-full" style={{ width: `${((setup1m?.scoreComponents.structureChochScore || 0) / 15) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 4. Rejection Confirmation */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">1M Upper-Wick / Candle Rejection:</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.rejectionScore}/15 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-emerald-400 h-full" style={{ width: `${((setup1m?.scoreComponents.rejectionScore || 0) / 15) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 5. Momentum */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">1M RSI Exhaustion & Momentum:</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.momentumScore}/10 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-rose-400 h-full" style={{ width: `${((setup1m?.scoreComponents.momentumScore || 0) / 10) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 6. Volume Confirmation */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">1M Volume Surge / Tick Activity:</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.volumeScore}/10 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-blue-400 h-full" style={{ width: `${((setup1m?.scoreComponents.volumeScore || 0) / 10) * 100}%` }} />
+                  </div>
+                </div>
+
+                {/* 7. Risk / Reward */}
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-300">Minimum 1:2+ R:R Validation:</span>
+                    <span className="font-mono font-bold text-zinc-100">{setup1m?.scoreComponents.riskRewardScore}/10 pts</span>
+                  </div>
+                  <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-indigo-400 h-full" style={{ width: `${((setup1m?.scoreComponents.riskRewardScore || 0) / 10) * 100}%` }} />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="bg-[#111827] p-3.5 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Recommended Lot</div>
-              <div className="text-base font-black font-mono text-emerald-300">
-                {activeSetup.riskManagement.recommendedLotSize} Lots
-              </div>
-            </div>
-
-            <div className="bg-[#111827] p-3.5 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Est. R:R (TP2)</div>
-              <div className="text-base font-bold font-mono text-teal-300">
-                {activeSetup.rrRatioString}
+              {/* Quality Checklist Criteria */}
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] space-y-1.5 text-zinc-400">
+                <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+                  <Info className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Execution Thresholds:</span>
+                </div>
+                <div>• <strong>80–100</strong>: High-Confidence Institutional SELL → Active Execution.</div>
+                <div>• <strong>70–79</strong>: Wait for stronger 1M rejection / CHOCH confirmation.</div>
+                <div>• <strong>&lt; 70</strong>: No Trade. Preserve capital.</div>
               </div>
             </div>
           </div>
 
-          {/* Risk Warning */}
-          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs font-mono text-amber-300 flex items-center gap-2">
-            <Info className="w-4 h-4 flex-shrink-0" />
-            <span>{activeSetup.riskManagement.maxRiskWarning}</span>
+          {/* Right Column: Execution Order Card & Reasoning */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Crosshair className="w-5 h-5 text-red-500" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Institutional 2.6 SELL Execution
+                  </h3>
+                </div>
+                <div className="text-xs font-mono text-zinc-400">
+                  ID: <span className="text-zinc-200 font-bold">{setup1m?.id}</span>
+                </div>
+              </div>
+
+              {/* Key Execution Levels Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                {/* Best Sell Entry */}
+                <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/40 space-y-1">
+                  <span className="text-emerald-400 font-bold uppercase block text-[10px]">Best Sell Entry (2.6)</span>
+                  <span className="text-base font-black text-white font-mono">${setup1m?.bestSellEntry.toFixed(2)}</span>
+                  <span className="text-[10px] text-zinc-400 block">Zone: {setup1m?.entryFormatted}</span>
+                </div>
+
+                {/* Stop Loss */}
+                <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-500/40 space-y-1">
+                  <span className="text-rose-400 font-bold uppercase block text-[10px]">Stop Loss (Top + ATR)</span>
+                  <span className="text-base font-black text-white font-mono">${setup1m?.stopLoss.toFixed(2)}</span>
+                  <span className="text-[10px] text-zinc-400 block">Risk: {setup1m?.riskDistance.toFixed(2)} pts</span>
+                </div>
+
+                {/* Target 1 */}
+                <div className="p-3 rounded-lg bg-cyan-950/20 border border-cyan-500/40 space-y-1">
+                  <span className="text-cyan-400 font-bold uppercase block text-[10px]">TP1 (1.5R Scale Out)</span>
+                  <span className="text-base font-black text-white font-mono">${setup1m?.tp1.toFixed(2)}</span>
+                  <span className="text-[10px] text-emerald-400 block">+1.0R Auto-BE Trigger</span>
+                </div>
+
+                {/* Target 2 */}
+                <div className="p-3 rounded-lg bg-cyan-950/20 border border-cyan-500/40 space-y-1">
+                  <span className="text-cyan-400 font-bold uppercase block text-[10px]">TP2 (2.5R / Botam Low)</span>
+                  <span className="text-base font-black text-white font-mono">${setup1m?.tp2.toFixed(2)}</span>
+                  <span className="text-[10px] text-zinc-400 block">Reward: +{setup1m?.rewardTp2Distance.toFixed(2)} pts</span>
+                </div>
+
+                {/* Target 3 */}
+                <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-500/40 space-y-1">
+                  <span className="text-purple-400 font-bold uppercase block text-[10px]">TP3 (4.0R Runner)</span>
+                  <span className="text-base font-black text-white font-mono">${setup1m?.tp3.toFixed(2)}</span>
+                  <span className="text-[10px] text-zinc-400 block">Extended downside pool</span>
+                </div>
+
+                {/* Risk : Reward */}
+                <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-1">
+                  <span className="text-zinc-400 font-bold uppercase block text-[10px]">R:R Ratio</span>
+                  <span className="text-base font-black text-purple-300 font-mono">{setup1m?.rrRatioString}</span>
+                  <span className="text-[10px] text-emerald-400 block">Validated &gt; 1:2.0</span>
+                </div>
+              </div>
+
+              {/* Dynamic Reasons & Confluence Logs */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono uppercase text-zinc-400 font-bold">Confluence Evidence Checklist:</span>
+                <div className="space-y-1.5">
+                  {setup1m?.reasons.map((r, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-zinc-300 bg-zinc-900/60 p-2 rounded border border-zinc-800/80">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{r}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Execute Trade Button */}
+              <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <button
+                  id="kj-execute-trade-signal-btn"
+                  onClick={handleExecuteTrade}
+                  disabled={!setup1m?.hasValidSetup}
+                  className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-red-950/60 transition-all"
+                >
+                  <Flame className="w-4 h-4" />
+                  <span>Execute 1M Institutional 2.6 Sell</span>
+                </button>
+
+                <button
+                  onClick={handleManualTelegramBroadcast}
+                  disabled={isBroadcasting || !setup1m?.hasValidSetup}
+                  className="py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 border border-zinc-700 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Broadcast to Telegram</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* 3. SETUP HISTORY TAB */}
-      {/* ============================================================ */}
-      {activeSubTab === "HISTORY" && (
-        <div className="bg-[#0D131F] border border-[#223049] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      {/* 4. SUBTAB: DYNAMIC RISK & LOT SIZING */}
+      {activeSubTab === "RISK" && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-xl space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
-              <History className="w-5 h-5 text-amber-400" />
-              <h3 className="text-base font-bold font-mono text-white uppercase">
-                Setup History Log ({setupHistory.length})
+              <Sliders className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                Institutional Risk Management & Position Sizing
               </h3>
             </div>
-            {setupHistory.length > 0 && (
-              <button
-                onClick={() => setSetupHistory([])}
-                className="text-xs text-slate-500 hover:text-rose-400 font-mono transition-colors"
-              >
-                Clear History
-              </button>
-            )}
+            <span className="text-xs font-mono text-zinc-400">Formula: Risk USD ÷ (SL Points × Contract Value)</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Account Settings Input Form */}
+            <div className="space-y-4 bg-zinc-900/60 p-4 rounded-xl border border-zinc-800">
+              <span className="text-xs font-bold text-zinc-200 uppercase tracking-wide block">Account Parameters</span>
+              
+              <div>
+                <label className="text-xs text-zinc-400 block mb-1">Account Balance ($):</label>
+                <input
+                  type="number"
+                  value={accountBalance}
+                  onChange={(e) => setAccountBalance(Math.max(100, parseFloat(e.target.value) || 1000))}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-400 block mb-1">Risk Percentage (% per trade):</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0.25"
+                    max="5.0"
+                    step="0.25"
+                    value={riskPercent}
+                    onChange={(e) => setRiskPercent(parseFloat(e.target.value))}
+                    className="flex-1 accent-red-500"
+                  />
+                  <span className="font-mono text-sm font-bold text-white bg-zinc-950 px-2.5 py-1 rounded border border-zinc-700">
+                    {riskPercent.toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-zinc-400 space-y-1 pt-2 border-t border-zinc-800">
+                <div>• Recommended Institutional Risk: <strong>1.0% — 2.0%</strong> per trade.</div>
+                <div>• Automatic <strong>Break-Even (+1.0R)</strong> protection locks zero-loss state.</div>
+              </div>
+            </div>
+
+            {/* Sizing Results Card */}
+            <div className="space-y-3 bg-zinc-900/60 p-4 rounded-xl border border-zinc-800">
+              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide block">Calculated Lot Size Output</span>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+                  <span className="text-zinc-400 text-[10px] block">Max Risk Amount:</span>
+                  <span className="text-base font-black text-rose-400 font-mono">${setup1m?.riskManagement.riskAmountUSD.toFixed(2)}</span>
+                </div>
+
+                <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+                  <span className="text-zinc-400 text-[10px] block">SL Distance:</span>
+                  <span className="text-base font-black text-zinc-100 font-mono">{setup1m?.riskManagement.slDistancePoints.toFixed(2)} pts</span>
+                </div>
+
+                <div className="col-span-2 p-3 bg-emerald-950/20 rounded-lg border border-emerald-500/40 flex items-center justify-between">
+                  <div>
+                    <span className="text-emerald-400 text-[10px] uppercase font-bold block">Recommended Lot Size</span>
+                    <span className="text-xs text-zinc-400">Strictly managed for {assetKey}</span>
+                  </div>
+                  <span className="text-xl font-black text-emerald-300 font-mono">
+                    {setup1m?.riskManagement.recommendedLotSize.toFixed(2)} Lots
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{setup1m?.riskManagement.maxRiskWarning}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SUBTAB: SETUP HISTORY */}
+      {activeSubTab === "HISTORY" && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-cyan-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                1M 2.6 Executed Setup History Archive
+              </h3>
+            </div>
+            <button
+              onClick={() => {
+                if (confirm("Clear local setup history?")) {
+                  setSetupHistory([]);
+                  localStorage.removeItem("kj_1m_setup_history");
+                }
+              }}
+              className="text-xs text-zinc-500 hover:text-rose-400 transition-colors"
+            >
+              Clear History
+            </button>
           </div>
 
           {setupHistory.length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-sm font-mono">
-              No completed setups archived yet. Active setups will automatically log upon hitting SL,
-              TP, or Invalidation.
+            <div className="text-center py-10 text-zinc-500 text-xs">
+              No historical 1M 2.6 setups recorded in this session yet. Completed setups automatically archive here.
             </div>
           ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {setupHistory.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-[#111827] p-4 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-white">{item.setupId}</span>
-                      <span
-                        className={`font-bold ${
-                          item.signalType === "BUY" ? "text-emerald-400" : "text-rose-400"
-                        }`}
-                      >
-                        {item.signalType} 🟢
-                      </span>
-                      <span className="text-slate-400">{item.timeframe}</span>
-                      <span className="text-slate-500">• {item.asset}</span>
-                    </div>
-                    <div className="text-slate-400">
-                      Entry: {item.entryRange} | SL: {item.stopLoss.toFixed(2)} | TP2: {item.tp2.toFixed(2)}
-                    </div>
-                  </div>
-
-                  <div className="text-right space-y-1">
-                    <div className="font-bold text-amber-300">{item.result}</div>
-                    <div className="text-slate-500 text-[11px]">{item.dateTime}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-zinc-400">
+                    <th className="pb-2">Setup ID</th>
+                    <th className="pb-2">Time</th>
+                    <th className="pb-2">Impulse / 2.6</th>
+                    <th className="pb-2">Entry</th>
+                    <th className="pb-2">SL</th>
+                    <th className="pb-2">TP Targets</th>
+                    <th className="pb-2">Score</th>
+                    <th className="pb-2">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60">
+                  {setupHistory.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-900/50 transition-colors">
+                      <td className="py-2.5 font-bold text-zinc-200">{item.setupId}</td>
+                      <td className="py-2.5 text-zinc-400">{item.dateTime}</td>
+                      <td className="py-2.5 text-cyan-300">
+                        {item.impulseRange?.toFixed(1)} pts → {item.level26?.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 text-emerald-400 font-bold">${item.actualEntry?.toFixed(2)}</td>
+                      <td className="py-2.5 text-rose-400">${item.stopLoss?.toFixed(2)}</td>
+                      <td className="py-2.5 text-zinc-300">${item.tp1?.toFixed(2)} / ${item.tp2?.toFixed(2)}</td>
+                      <td className="py-2.5 font-bold text-purple-400">{item.score}/100</td>
+                      <td className="py-2.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          item.status.includes("TP") || item.result.includes("WIN")
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : item.status.includes("SL") || item.result.includes("LOSS")
+                            ? "bg-rose-500/20 text-rose-400"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* 4. PERFORMANCE DASHBOARD TAB */}
-      {/* ============================================================ */}
-      {activeSubTab === "PERFORMANCE" && (
-        <div className="bg-[#0D131F] border border-[#223049] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex items-center gap-2 border-b border-slate-800 pb-4">
-            <BarChart2 className="w-6 h-6 text-amber-400" />
-            <h3 className="text-base font-bold font-mono text-white uppercase">
-              Performance Analytics Dashboard
-            </h3>
+      {/* 6. SUBTAB: TELEGRAM TELEMETRY */}
+      {activeSubTab === "TELEMETRY" && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-purple-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                1M Telegram Broadcast Feed & Logs
+              </h3>
+            </div>
+            <button
+              onClick={() => setIsTelegramModalOpen(true)}
+              className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Configure Bot Credentials</span>
+            </button>
           </div>
 
-          {/* Primary Top Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Win Rate</div>
-              <div className="text-2xl font-black font-mono text-emerald-400">{winRate}%</div>
-            </div>
-
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Total Setups</div>
-              <div className="text-2xl font-black font-mono text-white">{totalCompleted}</div>
-            </div>
-
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Avg. R:R</div>
-              <div className="text-2xl font-black font-mono text-teal-300">1:3.2</div>
-            </div>
-
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800">
-              <div className="text-slate-400 text-xs font-mono mb-1">Avg. Score</div>
-              <div className="text-2xl font-black font-mono text-amber-400">82/100</div>
-            </div>
-          </div>
-
-          {/* Timeframe & Direction Segmentation */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800 space-y-2">
-              <h4 className="font-bold text-slate-300 border-b border-slate-800 pb-1.5">
-                TIMEFRAME PERFORMANCE
-              </h4>
-              <div className="flex justify-between text-slate-400">
-                <span>15M Setups Logged:</span>
-                <span className="font-bold text-white">{tf15History.length}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>5M Setups Logged:</span>
-                <span className="font-bold text-white">{tf5History.length}</span>
-              </div>
-            </div>
-
-            <div className="bg-[#111827] p-4 rounded-2xl border border-slate-800 space-y-2">
-              <h4 className="font-bold text-slate-300 border-b border-slate-800 pb-1.5">
-                DIRECTIONAL BIAS PERFORMANCE
-              </h4>
-              <div className="flex justify-between text-slate-400">
-                <span>BUY Setups:</span>
-                <span className="font-bold text-emerald-400">{buyHistory.length}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>SELL Setups:</span>
-                <span className="font-bold text-rose-400">{sellHistory.length}</span>
-              </div>
+          <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+            <span className="text-xs font-bold text-zinc-200 block">Telegram Live Broadcast Format Preview</span>
+            <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
+              {setup1m ? (
+                formatNewSetupTelegramMessage(setup1m)
+              ) : (
+                "Waiting for active 1M 2.6 setup calculation..."
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* TELEGRAM SETTINGS & ALERT LOGS MODAL */}
+      {/* Telegram Configuration Modal */}
       <KhatarnakTelegramSettingsModal
         isOpen={isTelegramModalOpen}
         onClose={() => setIsTelegramModalOpen(false)}
-        activeSetup15M={setup15m}
-        activeSetup5M={setup5m}
-        currentPrice={currentPrice}
       />
     </div>
   );

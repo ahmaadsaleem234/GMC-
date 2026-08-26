@@ -28,12 +28,19 @@ export interface TelegramBotUser {
   firstName?: string;
   lastName?: string;
   chatId: string;
-  status: "approved" | "pending" | "rejected" | "blocked";
+  status: "approved" | "pending" | "rejected" | "blocked" | "expired";
   joinedAt: string;
   lastActive: string;
   totalSignalsReceived: number;
   decisionAt?: string | null;
   languageCode?: string;
+  planType?: string;
+  approvalDuration?: string | null;
+  approvalDurationLabel?: string | null;
+  approvedAt?: string | null;
+  expiresAt?: number | null;
+  expiresAtIso?: string | null;
+  expiryNotified?: boolean;
 }
 
 export interface TelegramUsersStats {
@@ -61,6 +68,10 @@ export const TelegramBotUsersSection: React.FC = () => {
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // Duration / Approval Modal State
+  const [approveModalUser, setApproveModalUser] = useState<TelegramBotUser | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<string>("lifetime");
 
   // Custom Direct Message State
   const [directMsgUser, setDirectMsgUser] = useState<TelegramBotUser | null>(null);
@@ -114,7 +125,8 @@ export const TelegramBotUsersSection: React.FC = () => {
   const handleUserAction = async (
     userId: string,
     action: "approve" | "reject" | "block" | "unblock" | "revoke" | "delete" | "ping",
-    customMessage?: string
+    customMessage?: string,
+    duration?: string
   ) => {
     try {
       setActionInProgress(`${userId}-${action}`);
@@ -122,14 +134,14 @@ export const TelegramBotUsersSection: React.FC = () => {
       const res = await fetch("/api/admin/telegram/users/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action, customMessage }),
+        body: JSON.stringify({ userId, action, customMessage, duration }),
       });
       const data = await res.json();
       if (data.ok) {
         setUsers(data.users || []);
         setStats(data.stats);
         const actionLabels: Record<string, string> = {
-          approve: "APPROVED — User notified via Telegram & authorized for signals",
+          approve: `APPROVED (${duration ? duration.toUpperCase() : "LIFETIME"}) — User notified & authorized for signals`,
           reject: "REJECTED — User notified & signal access denied",
           block: "BLOCKED — User blacklisted & access terminated",
           unblock: "UNBLOCKED — User restored to approved status",
@@ -155,6 +167,7 @@ export const TelegramBotUsersSection: React.FC = () => {
       });
     } finally {
       setActionInProgress(null);
+      setApproveModalUser(null);
     }
   };
 
@@ -566,28 +579,53 @@ export const TelegramBotUsersSection: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Access Status Badge */}
+                      {/* Access Status Badge & Plan Duration */}
                       <td className="p-3.5">
-                        {u.status === "approved" && (
-                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> APPROVED
-                          </span>
-                        )}
-                        {u.status === "pending" && (
-                          <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/50 text-amber-300 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit animate-pulse">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" /> PENDING REVIEW
-                          </span>
-                        )}
-                        {u.status === "rejected" && (
-                          <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
-                            <XCircle className="w-3.5 h-3.5" /> REJECTED
-                          </span>
-                        )}
-                        {u.status === "blocked" && (
-                          <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
-                            <Ban className="w-3.5 h-3.5" /> BLOCKED
-                          </span>
-                        )}
+                        <div className="space-y-1">
+                          {u.status === "approved" && (
+                            <>
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> APPROVED
+                              </span>
+                              <div className="text-[10px] font-mono">
+                                {u.expiresAt ? (
+                                  Date.now() > u.expiresAt ? (
+                                    <span className="text-rose-400 font-bold">🔴 Expired</span>
+                                  ) : (
+                                    <span className="text-sky-300 font-medium">
+                                      ⏳ {u.approvalDurationLabel || "Active"} • Exp: {new Date(u.expiresAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-emerald-300/90 font-medium">♾️ Lifetime Access</span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          {u.status === "pending" && (
+                            <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/50 text-amber-300 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit animate-pulse">
+                              <Clock className="w-3.5 h-3.5 text-amber-400" /> PENDING REVIEW
+                            </span>
+                          )}
+                          {u.status === "expired" && (
+                            <>
+                              <span className="px-2.5 py-1 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-300 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
+                                <Clock className="w-3.5 h-3.5 text-rose-400" /> EXPIRED
+                              </span>
+                              <span className="text-[9px] text-slate-500 block">Needs Renewal</span>
+                            </>
+                          )}
+                          {u.status === "rejected" && (
+                            <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
+                              <XCircle className="w-3.5 h-3.5" /> REJECTED
+                            </span>
+                          )}
+                          {u.status === "blocked" && (
+                            <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-400 font-extrabold text-[10px] uppercase flex items-center gap-1.5 w-fit">
+                              <Ban className="w-3.5 h-3.5" /> BLOCKED
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Joined Date */}
@@ -618,24 +656,40 @@ export const TelegramBotUsersSection: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           {u.status !== "approved" && (
                             <button
-                              onClick={() => handleUserAction(u.userId, "approve")}
+                              onClick={() => {
+                                setApproveModalUser(u);
+                                setSelectedDuration("lifetime");
+                              }}
                               disabled={actionInProgress === `${u.userId}-approve`}
                               className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-1 shadow cursor-pointer disabled:opacity-50"
-                              title="Approve User Access"
+                              title="Approve User Access with Duration"
                             >
                               <UserCheck className="w-3 h-3" /> Approve
                             </button>
                           )}
 
                           {u.status === "approved" && (
-                            <button
-                              onClick={() => handleUserAction(u.userId, "revoke")}
-                              disabled={actionInProgress === `${u.userId}-revoke`}
-                              className="px-2.5 py-1.5 bg-amber-600/80 hover:bg-amber-500 text-white rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-1 shadow cursor-pointer disabled:opacity-50"
-                              title="Revoke Access (Reset to Pending)"
-                            >
-                              <UserX className="w-3 h-3" /> Revoke
-                            </button>
+                            <>
+                              <button
+                                onClick={() => {
+                                  setApproveModalUser(u);
+                                  setSelectedDuration(u.approvalDuration || "lifetime");
+                                }}
+                                className="px-2 py-1.5 bg-sky-900/60 hover:bg-sky-800 text-sky-200 border border-sky-500/30 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-1 cursor-pointer"
+                                title="Change or Extend Access Duration"
+                              >
+                                <span>⚡ Plan</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleUserAction(u.userId, "revoke")}
+                                disabled={actionInProgress === `${u.userId}-revoke`}
+                                className="px-2.5 py-1.5 bg-amber-600/80 hover:bg-amber-500 text-white rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-1 shadow cursor-pointer disabled:opacity-50"
+                                title="Revoke Access (Reset to Pending)"
+                              >
+                                <UserX className="w-3 h-3" /> Revoke
+                              </button>
+                            </>
                           )}
 
                           {u.status === "pending" && (
@@ -704,6 +758,105 @@ export const TelegramBotUsersSection: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Approve with Duration Modal */}
+      {approveModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in font-mono text-xs">
+          <div className="w-full max-w-md bg-[#080B14] border-2 border-emerald-500/50 rounded-3xl p-6 shadow-2xl space-y-5 text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-sm">
+                <UserCheck className="w-4 h-4" />
+                <span>Grant Telegram Access &amp; Set Duration</span>
+              </div>
+              <button
+                onClick={() => setApproveModalUser(null)}
+                className="text-slate-400 hover:text-white px-2 py-1 bg-slate-900 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* User Details */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-1.5">
+              <div className="text-white font-bold text-sm">
+                {approveModalUser.firstName} {approveModalUser.lastName} ({approveModalUser.username || "No @username"})
+              </div>
+              <div className="text-xs text-amber-300 flex items-center gap-2">
+                <span>Telegram ID: <code>{approveModalUser.userId}</code></span>
+                <span>•</span>
+                <span>Current: {approveModalUser.status.toUpperCase()}</span>
+              </div>
+            </div>
+
+            {/* Duration Options */}
+            <div className="space-y-2">
+              <label className="block text-slate-300 text-[11px] font-bold uppercase">
+                Select Access Duration
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "1d", label: "⚡ 1 Day", desc: "24 Hours access" },
+                  { id: "7d", label: "⚡ 7 Days", desc: "1 Week access" },
+                  { id: "30d", label: "⚡ 1 Month", desc: "30 Days access" },
+                  { id: "lifetime", label: "♾️ Lifetime", desc: "Permanent / Never expires" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedDuration(item.id)}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      selectedDuration === item.id
+                        ? "bg-emerald-500/20 border-emerald-500 text-white shadow-md shadow-emerald-500/20"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white"
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center justify-between">
+                      <span>{item.label}</span>
+                      {selectedDuration === item.id && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{item.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Calculated Expiry Preview */}
+            <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3 text-[11px] text-emerald-300 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Session Persistence Guarantee:</span>
+              </div>
+              <p className="text-[10px] text-slate-300">
+                User bot remains <strong>24/7 active</strong> until genuine duration expiration. Survives server restarts &amp; Telegram reconnections without requiring <code>/start</code>.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setApproveModalUser(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUserAction(approveModalUser.userId, "approve", undefined, selectedDuration)}
+                disabled={actionInProgress === `${approveModalUser.userId}-approve`}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+              >
+                {actionInProgress === `${approveModalUser.userId}-approve` ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                <span>Approve &amp; Activate</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Direct Message to User Modal */}
       {directMsgUser && (

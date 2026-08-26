@@ -234,20 +234,71 @@ export interface BlackSharkData {
 }
 
 // Historical Backtesting Interfaces
+export type BacktestStrategyType =
+  | "gmc_harami_ai"
+  | "gmc_war_room_7gate"
+  | "smc_orderblock"
+  | "khatarnak_jugaad"
+  | "black_shark_grid"
+  | "red_green_breakout"
+  | "ema_crossover"
+  | "supertrend"
+  | "custom_rules";
+
+export interface BacktestDateRange {
+  preset: "1M" | "3M" | "6M" | "YTD" | "1Y" | "2Y" | "CUSTOM";
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+}
+
+export interface BacktestTradingRules {
+  directionBias: "ALL" | "LONG_ONLY" | "SHORT_ONLY";
+  // Entry confirmation rules
+  useRsiFilter: boolean;
+  rsiPeriod: number;
+  rsiOversold: number;
+  rsiOverbought: number;
+  useEma200Trend: boolean;
+  useVolumeSpikeFilter: boolean;
+  volumeMultiplier: number;
+  useSessionFilter: boolean;
+  session: "ALL" | "LONDON" | "NEW_YORK" | "ASIAN" | "OVERLAP";
+  // Exit & trade management rules
+  exitMode: "FIXED_RR" | "ATR_DYNAMIC" | "MULTI_TP_PARTIAL" | "TRAILING_STOP";
+  riskRewardRatio: number;
+  stopLossATRMultiplier: number;
+  takeProfitATRMultiplier: number;
+  enableBreakevenAfterRR: boolean;
+  breakevenTriggerRR: number;
+  partialExitPctTP1: number;
+  trailingStopATRMultiplier: number;
+  maxHoldingBars: number;
+  // Slippage & Commission friction
+  spreadPips: number;
+  slippagePips: number;
+  commissionPerLot: number;
+}
+
 export interface BacktestConfig {
   assetKey: string;
-  strategy: "smc_orderblock" | "red_green_breakout" | "ema_crossover" | "supertrend" | "black_shark_grid";
+  strategy: BacktestStrategyType;
   timeframe: "1min" | "5min" | "15min" | "1h" | "4h" | "1d";
   initialCapital: number;
   riskPerTradePct: number;
+  riskModel?: "PERCENTAGE" | "FIXED_USD";
+  fixedRiskUSD?: number;
   leverage: number;
   periodBars: number;
+  dateRange?: BacktestDateRange;
+  rules?: BacktestTradingRules;
   stopLossATRMultiplier: number;
   takeProfitATRMultiplier: number;
 }
 
 export interface BacktestTrade {
   id: number;
+  tradeNumber?: number;
+  assetKey?: string;
   type: "BUY" | "SELL";
   entryTime: string;
   exitTime: string;
@@ -255,12 +306,45 @@ export interface BacktestTrade {
   exitPrice: number;
   stopLoss: number;
   takeProfit: number;
+  lotSize?: number;
   pnlUSD: number;
   pnlPct: number;
-  result: "TP_HIT" | "SL_HIT" | "EXPIRED";
+  pnlPips?: number;
+  feeUSD?: number;
+  result: "TP_HIT" | "TP1_PARTIAL" | "TP2_HIT" | "SL_HIT" | "TRAILING_SL_HIT" | "BREAKEVEN" | "EXPIRED";
+  ruleTriggered?: string;
+  exitReason?: string;
   barsHeld: number;
   balanceAfter: number;
+  drawdownAtClose?: number;
+  mfePips?: number;
+  maePips?: number;
   rr: number;
+}
+
+export interface BacktestMonthlyReturn {
+  yearMonth: string;
+  pnlUSD: number;
+  roiPct: number;
+  tradesCount: number;
+  winRatePct: number;
+}
+
+export interface BacktestSessionBreakdown {
+  session: string;
+  trades: number;
+  winRatePct: number;
+  pnlUSD: number;
+  profitFactor: number;
+}
+
+export interface BacktestMonteCarloSummary {
+  simulatedRuns: number;
+  medianFinalEquity: number;
+  ci95LowEquity: number;
+  ci95HighEquity: number;
+  maxSimulatedDrawdownPct: number;
+  probRuinPct: number;
 }
 
 export interface BacktestResult {
@@ -268,6 +352,7 @@ export interface BacktestResult {
   totalTrades: number;
   winningTrades: number;
   losingTrades: number;
+  breakevenTrades?: number;
   winRatePct: number;
   initialCapital: number;
   finalCapital: number;
@@ -277,13 +362,24 @@ export interface BacktestResult {
   maxDrawdownUSD: number;
   maxDrawdownPct: number;
   sharpeRatio: number;
+  sortinoRatio?: number;
+  calmarRatio?: number;
+  expectancyUSD?: number;
   avgTradeUSD: number;
   avgWinUSD: number;
   avgLossUSD: number;
+  winLossRatio?: number;
   maxConsecutiveWins: number;
   maxConsecutiveLosses: number;
+  avgBarsHeld?: number;
+  longWinRatePct?: number;
+  shortWinRatePct?: number;
+  totalFeesUSD?: number;
   trades: BacktestTrade[];
-  equityCurve: { time: string; balance: number; drawdown: number }[];
+  equityCurve: { time: string; balance: number; drawdown: number; highWaterMark?: number }[];
+  monthlyReturns?: BacktestMonthlyReturn[];
+  sessionBreakdown?: BacktestSessionBreakdown[];
+  monteCarlo?: BacktestMonteCarloSummary;
 }
 
 export interface PriceAlert {

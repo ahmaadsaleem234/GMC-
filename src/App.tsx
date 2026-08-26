@@ -679,12 +679,12 @@ export function App() {
               onExecuteDemoTrade={() =>
                 executeTabTrade("khatarnak_jugaad", {
                   assetKey: activeAssetKey,
-                  type: "BUY",
+                  type: "SELL",
                   entryPrice: currentPrice,
-                  stopLoss: currentPrice - 1.0,
-                  takeProfit: currentPrice + 12.0,
+                  stopLoss: currentPrice + 4.5,
+                  takeProfit: currentPrice - 12.0,
                   lotSize: 0.1,
-                  signalSource: "💀 KHATARNAK JUGAAD — Market Structure & Custom Fib Sniper",
+                  signalSource: "💀 KHATARNAK JUGAAD — 1M Institutional 2.6 Sell",
                 })
               }
             />

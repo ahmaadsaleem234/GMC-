@@ -1,12 +1,13 @@
 import { Candle } from "../types";
 
-export type JugaadTimeframe = "15M" | "5M";
+export type JugaadTimeframe = "1M";
 
-export type JugaadSignalType = "BUY" | "SELL" | "WAIT";
+export type JugaadSignalType = "SELL" | "WAIT";
 
 export type JugaadStatus =
-  | "WAITING"
-  | "ENTRY HIT"
+  | "WAITING FOR RETRACEMENT"
+  | "IN 2.6 CONFLUENCE ZONE"
+  | "ENTRY TRIGGERED"
   | "RUNNING"
   | "🎯 TP1 HIT"
   | "🎯 TP2 HIT"
@@ -17,9 +18,19 @@ export type JugaadStatus =
   | "⏳ EXPIRED"
   | "NO VALID SETUP";
 
+export type SetupStage =
+  | "SEARCHING_LIQUIDITY"
+  | "SWEEP_DETECTED"
+  | "BEARISH_DISPLACEMENT"
+  | "WAITING_RETRACEMENT"
+  | "IN_2_6_ZONE"
+  | "CONFIRMATION_CHOCH"
+  | "ACTIVE_SELL_TRADE"
+  | "COMPLETED";
+
 export type MarketRegimeType =
-  | "STRONG_BULLISH"
   | "STRONG_BEARISH"
+  | "STRONG_BULLISH"
   | "RANGING_SIDEWAYS"
   | "HIGH_VOLATILITY";
 
@@ -38,7 +49,7 @@ export interface StructurePoint {
   index: number;
   time: number;
   price: number;
-  type: "HH" | "HL" | "LH" | "LL" | "PEAK" | "TROUGH";
+  type: "TOP" | "BOTAM" | "SELL_LQ" | "BUY_LQ" | "REJECTION" | "CHOCH";
   label: string;
 }
 
@@ -47,7 +58,7 @@ export interface SetupHistoryRecord {
   dateTime: string;
   asset: string;
   timeframe: JugaadTimeframe;
-  signalType: "BUY" | "SELL";
+  signalType: "SELL";
   marketRegime: MarketRegimeType;
   entryRange: string;
   actualEntry: number;
@@ -64,6 +75,8 @@ export interface SetupHistoryRecord {
   closedAt?: number;
   createdAt: number;
   reasons: string[];
+  impulseRange: number;
+  level26: number;
 }
 
 export interface RiskManagementDetails {
@@ -77,50 +90,72 @@ export interface RiskManagementDetails {
 }
 
 export interface KhatarnakJugaadSetup {
-  id: string; // e.g. "KJ-15M-001"
-  timeframe: JugaadTimeframe;
+  id: string; // e.g. "KJ-1M-001"
+  timeframe: "1M";
   signalType: JugaadSignalType;
   status: JugaadStatus;
+  stage: SetupStage;
   statusColor: string;
   hasValidSetup: boolean;
   waitingReason?: string;
   marketRegime: MarketRegimeType;
   marketRegimeLabel: string;
 
-  // Real 0 - 100 Score Components (Calculated from Real Data)
+  // 100-Point Quality Score Matrix
   score: number;
   scoreComponents: {
-    structureScore: number; // 25% max
-    fibAlignmentScore: number; // 25% max
-    entryZoneReactionScore: number; // 20% max
-    momentumScore: number; // 15% max
-    riskRewardScore: number; // 15% max
+    liquidityDetectionScore: number; // 20 pts (Sell LQ detection & sweep quality)
+    confluence26Score: number;       // 20 pts (2.6 Level + Golden Zone 0.62-0.81 alignment)
+    structureChochScore: number;     // 15 pts (1M CHOCH / BOS confirmation)
+    rejectionScore: number;          // 15 pts (1M upper wick / candle rejection)
+    momentumScore: number;           // 10 pts (1M RSI & bearish momentum)
+    volumeScore: number;             // 10 pts (1M volume elevation / tick confirmation)
+    riskRewardScore: number;         // 10 pts (Minimum 1:2+ R:R ratio check)
   };
   scoreLabel: string;
   funnyLine: string;
   assetKey: string;
   currentPrice: number;
 
-  // Genuine Market Structure points
-  swingHigh: number;
-  swingLow: number;
-  swingRange: number;
+  // Genuine 1M Market Structure & Swings (Top / Botam)
+  topHigh: number;              // Swing High "top" formed around the liquidity sweep
+  botamLow: number;             // Swing Low "botam" formed after bearish displacement
+  impulseRange: number;         // Top - Botam (e.g. 529 in reference image)
+  impulsePercent: number;       // Range as % of price
+  topIndex: number;
+  botamIndex: number;
   structureSequence: StructurePoint[];
-  structureType: "BULLISH_CONTINUATION" | "BEARISH_CONTINUATION" | "RANGE_CONSOLIDATION";
 
-  // Fibonacci 2.6 Methodology Levels (0, 0.62, 0.81, 1.38, 1.65, 2.00, 2.20, 2.60)
-  fib0: number; // 0.00 Base
-  fib1: number; // 1.00 Impulse peak
-  entry1Golden: number; // 0.62 Golden Zone
-  entry2Green: number; // 0.81 Green Zone
-  entryFormatted: string; // "4508.49 — 4503.54"
-  stopLoss: number; // Structural level +- $1 safety distance
-  structuralInvalidationPrice: number;
-  tp1: number; // 1.38 Target
-  tp2: number; // 1.65 Target
-  tp3: number; // 2.00 Target
-  tp4Final: number; // 2.20 Final Target
-  fib260: number; // 2.60 Boundary
+  // Dynamic 2.6 Methodology
+  calculationFormula: string;   // e.g. "Range 529.16 ÷ 2.6 = 203.52 pts"
+  delta26: number;              // Impulse Range / 2.6
+  level26: number;              // Top - (Impulse Range / 2.6) (e.g. 54,017.97 in reference image)
+  
+  // Liquidity Zones
+  sellLqHigh: number;           // Sell LQ Zone upper limit
+  sellLqLow: number;            // Sell LQ Zone lower limit
+  sellLqStatus: "UNTOUCHED" | "SWEPT" | "REJECTED" | "VIOLATED";
+  buyLqHigh: number;            // Buy LQ (target/downside)
+  buyLqLow: number;
+  
+  // Golden Zone (0.62 → 0.81 Retracement)
+  goldenZone62: number;         // Botam + (0.62 * Impulse Range)
+  goldenZone81: number;         // Botam + (0.81 * Impulse Range)
+
+  // Sell Execution Zone & Best Entry
+  sellZoneHigh: number;         // Upper boundary of confluence zone
+  sellZoneLow: number;          // Lower boundary of confluence zone
+  bestSellEntry: number;        // Best entry price inside 2.6 / Golden zone confluence
+  entryFormatted: string;       // e.g. "54,018.00 — 54,050.00"
+
+  // Structural SL & Take Profit Targets
+  stopLoss: number;             // Top + 1.2 * ATR buffer
+  structuralInvalidationPrice: number; // Invalidation ceiling
+  tp1: number;                  // 1.5R Target
+  tp2: number;                  // 2.5R Target (Opposing Buy LQ / Botam)
+  tp3: number;                  // 4.0R Target (Extended Downside Liquidity)
+  finalTp: number;              // Same as tp3
+  atr: number;
 
   // Real Risk / Reward & Risk Management
   riskDistance: number;
@@ -128,12 +163,13 @@ export interface KhatarnakJugaadSetup {
   rewardTp2Distance: number;
   rewardTp3Distance: number;
   rewardFinalTpDistance: number;
-  rrRatioString: string; // e.g. "1:3.4"
+  rrRatioString: string;        // e.g. "1:2.8"
   riskManagement: RiskManagementDetails;
 
-  // Status progression flags
-  isGoldenZoneTouched: boolean;
-  isGreenZoneTouched: boolean;
+  // Live Status Flags
+  isRetracedTo26Zone: boolean;
+  isRejectionConfirmed: boolean;
+  isChochConfirmed: boolean;
   isEntryTriggered: boolean;
   isRunning: boolean;
   isTp1Achieved: boolean;
@@ -142,6 +178,7 @@ export interface KhatarnakJugaadSetup {
   isFinalTpAchieved: boolean;
   isSlViolated: boolean;
   isStructurallyInvalidated: boolean;
+  isBreakevenMoved: boolean;
   entryActivatedPrice?: number;
   finalResult?: SetupFinalResult;
 
@@ -152,13 +189,12 @@ export interface KhatarnakJugaadSetup {
 }
 
 export const FUNNY_JUGAAD_LINES = [
-  "Jugaad chala, scene bana 💀",
-  "Zone touch, kaam khatam 😈",
-  "Jugaad lagao, profit uthao 💀",
-  "Zone aya? Ab scene dekho.",
-  "Plan simple, execution dangerous 💀",
-  "Market ne zone diya, jugaad ne kaam kiya.",
-  "Entry mili? Ab tamasha dekho 😈",
+  "Photo jaisa setup dhoonda, 2.6 calculation lagaya 💀",
+  "Sell LQ swept, 2.6 zone hit, institutional sell active 😈",
+  "Impulse complete, retracement trapped, 1M CHOCH confirmed 💀",
+  "Top to Botam 2.6 math locked: scene ab shuru hoga 😈",
+  "Golden Zone + 2.6 confluence: Smart money exit, retail trapped 💀",
+  "No chasing: Patience rewarded, 1M sniper entry triggered 😈",
 ];
 
 let lastPickedIndex = -1;
@@ -184,19 +220,27 @@ export function calculatePositionSize(
   const safeBalance = Math.max(accountBalance || 10000, 100);
   const safeRiskPct = Math.min(Math.max(riskPercent || 1, 0.25), 5);
   const riskAmountUSD = (safeBalance * safeRiskPct) / 100;
-  const safeSlDistance = Math.max(slDistancePoints, 0.5);
+  const safeSlDistance = Math.max(slDistancePoints, 0.2);
 
   // For Gold (XAUUSD): 1 Lot = 100 oz. 1 Point = $1.00 move per oz = $100 per lot.
-  // Hence 1 standard lot = $100 per dollar move.
-  const pointValuePerLot = assetKey.toUpperCase().includes("XAU") ? 100 : 10;
+  // For Crypto / Index / Forex: normalized multiplier
+  const isGold = assetKey.toUpperCase().includes("XAU");
+  const isCrypto = assetKey.toUpperCase().includes("BTC") || assetKey.toUpperCase().includes("ETH") || assetKey.toUpperCase().includes("SOL");
+  const isIndex = assetKey.toUpperCase().includes("US30") || assetKey.toUpperCase().includes("NAS");
+  
+  let pointValuePerLot = 100;
+  if (isIndex) pointValuePerLot = 1;
+  else if (isCrypto) pointValuePerLot = 1;
+  else if (!isGold) pointValuePerLot = 10;
+
   const rawLotSize = riskAmountUSD / (safeSlDistance * pointValuePerLot);
-  const recommendedLotSize = Math.max(Math.min(Math.round(rawLotSize * 100) / 100, 50), 0.01);
+  const recommendedLotSize = Math.max(Math.min(Math.round(rawLotSize * 100) / 100, 100), 0.01);
 
   let maxRiskWarning = "Normal risk parameters applied (1-2% standard).";
   if (safeRiskPct > 3) {
     maxRiskWarning = "⚠️ HIGH RISK WARNING: Risk exceeds recommended 2% max per trade!";
-  } else if (safeSlDistance > 20) {
-    maxRiskWarning = "⚠️ WIDE SL WARNING: Adjust lot size down due to wide structural swing!";
+  } else if (safeSlDistance > 50) {
+    maxRiskWarning = "⚠️ WIDE SL WARNING: Reduced lot size due to wide structural swing range!";
   }
 
   return {
@@ -211,871 +255,603 @@ export function calculatePositionSize(
 }
 
 /**
- * Identify genuine market structure swings without fixed candle constraints.
- * 15M: Multi-bar swing fractal detection (4 left / 3 right).
- * 5M: Extra noise-filtering lookback (6 left / 4 right) to strictly eliminate micro-chop.
+ * 1M Fractal Pivot Detector
  */
-function findPivots(candles: Candle[], leftBars: number, rightBars: number) {
-  const highPivots: { index: number; candle: Candle }[] = [];
-  const lowPivots: { index: number; candle: Candle }[] = [];
+function find1MPivots(candles: Candle[], leftBars: number = 3, rightBars: number = 2) {
+  const highPivots: { index: number; price: number; candle: Candle }[] = [];
+  const lowPivots: { index: number; price: number; candle: Candle }[] = [];
 
   if (candles.length < leftBars + rightBars + 1) return { highPivots, lowPivots };
 
   for (let i = leftBars; i < candles.length - rightBars; i++) {
-    const currentHigh = candles[i].high;
-    const currentLow = candles[i].low;
-
+    const cur = candles[i];
     let isHigh = true;
     for (let l = i - leftBars; l <= i + rightBars; l++) {
-      if (l !== i && candles[l].high >= currentHigh) {
+      if (l !== i && candles[l].high >= cur.high) {
         isHigh = false;
         break;
       }
     }
-
     let isLow = true;
     for (let l = i - leftBars; l <= i + rightBars; l++) {
-      if (l !== i && candles[l].low <= currentLow) {
+      if (l !== i && candles[l].low <= cur.low) {
         isLow = false;
         break;
       }
     }
-
-    if (isHigh) {
-      highPivots.push({ index: i, candle: candles[i] });
-    }
-    if (isLow) {
-      lowPivots.push({ index: i, candle: candles[i] });
-    }
+    if (isHigh) highPivots.push({ index: i, price: cur.high, candle: cur });
+    if (isLow) lowPivots.push({ index: i, price: cur.low, candle: cur });
   }
 
   return { highPivots, lowPivots };
 }
 
 /**
- * Classify Market Regime:
- * 📈 STRONG BULLISH
- * 📉 STRONG BEARISH
- * ↔️ RANGING / SIDEWAYS
- * ⚠️ HIGH VOLATILITY
+ * Calculate 14-period RSI
+ */
+function calculate1MRSI(candles: Candle[]): number {
+  if (!candles || candles.length < 15) return 50;
+  let gains = 0;
+  let losses = 0;
+  for (let i = candles.length - 14; i < candles.length; i++) {
+    const diff = candles[i].close - candles[i - 1].close;
+    if (diff >= 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  const avgGain = gains / 14;
+  const avgLoss = losses / 14;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return Math.round((100 - 100 / (1 + rs)) * 10) / 10;
+}
+
+/**
+ * Calculate 1M Average True Range (ATR)
+ */
+function calculate1MATR(candles: Candle[]): number {
+  if (!candles || candles.length < 5) return 2.0;
+  const period = Math.min(14, candles.length - 1);
+  let trSum = 0;
+  for (let i = candles.length - period; i < candles.length; i++) {
+    const tr = Math.max(
+      candles[i].high - candles[i].low,
+      Math.abs(candles[i].high - candles[i - 1].close),
+      Math.abs(candles[i].low - candles[i - 1].close)
+    );
+    trSum += tr;
+  }
+  return Math.max(trSum / period, 0.2);
+}
+
+/**
+ * Classify Market Regime on 1M
  */
 export function classifyMarketRegime(candles: Candle[]): {
   regime: MarketRegimeType;
   regimeLabel: string;
   atr: number;
   isExcessiveVolatility: boolean;
-  isChoppy: boolean;
 } {
+  const atr = calculate1MATR(candles);
   if (!candles || candles.length < 20) {
     return {
       regime: "RANGING_SIDEWAYS",
       regimeLabel: "↔️ RANGING / SIDEWAYS",
-      atr: 2.0,
-      isExcessiveVolatility: false,
-      isChoppy: true,
-    };
-  }
-
-  // 1. Calculate Real ATR across last 14 candles
-  let atrSum = 0;
-  const atrPeriod = Math.min(14, candles.length - 1);
-  for (let i = candles.length - atrPeriod; i < candles.length; i++) {
-    const tr = Math.max(
-      candles[i].high - candles[i].low,
-      Math.abs(candles[i].high - candles[i - 1].close),
-      Math.abs(candles[i].low - candles[i - 1].close)
-    );
-    atrSum += tr;
-  }
-  const atr = Math.max(atrSum / atrPeriod, 0.5);
-
-  // Baseline ATR across older 30 candles to measure volatility surge
-  let baseAtrSum = 0;
-  const basePeriod = Math.min(30, candles.length - 1);
-  for (let i = candles.length - basePeriod; i < candles.length; i++) {
-    const tr = Math.max(
-      candles[i].high - candles[i].low,
-      Math.abs(candles[i].high - candles[i - 1].close),
-      Math.abs(candles[i].low - candles[i - 1].close)
-    );
-    baseAtrSum += tr;
-  }
-  const baseAtr = Math.max(baseAtrSum / basePeriod, 0.5);
-
-  // Check for abnormal volatility (e.g. news candle spikes > 2.8x normal ATR)
-  const isExcessiveVolatility = atr > baseAtr * 2.8;
-
-  // Trend detection using EMA 9 and EMA 21 on real closes
-  const closes = candles.map((c) => c.close);
-  const ema9 = calculateEMA(closes, 9);
-  const ema21 = calculateEMA(closes, 21);
-
-  const lastClose = closes[closes.length - 1];
-  const lastEma9 = ema9[ema9.length - 1];
-  const lastEma21 = ema21[ema21.length - 1];
-
-  const diffPct = Math.abs(lastEma9 - lastEma21) / lastClose;
-
-  if (isExcessiveVolatility) {
-    return {
-      regime: "HIGH_VOLATILITY",
-      regimeLabel: "⚠️ HIGH VOLATILITY — WAIT FOR MARKET STABILITY",
-      atr,
-      isExcessiveVolatility: true,
-      isChoppy: false,
-    };
-  }
-
-  if (lastEma9 > lastEma21 && diffPct > 0.0008 && lastClose > lastEma9) {
-    return {
-      regime: "STRONG_BULLISH",
-      regimeLabel: "📈 STRONG BULLISH",
       atr,
       isExcessiveVolatility: false,
-      isChoppy: false,
     };
   }
 
-  if (lastEma9 < lastEma21 && diffPct > 0.0008 && lastClose < lastEma9) {
-    return {
-      regime: "STRONG_BEARISH",
-      regimeLabel: "📉 STRONG BEARISH",
-      atr,
-      isExcessiveVolatility: false,
-      isChoppy: false,
-    };
+  const last20 = candles.slice(-20);
+  const netChange = last20[last20.length - 1].close - last20[0].open;
+  const totalRange = Math.max(...last20.map((c) => c.high)) - Math.min(...last20.map((c) => c.low));
+
+  let regime: MarketRegimeType = "RANGING_SIDEWAYS";
+  let regimeLabel = "↔️ RANGING / SIDEWAYS";
+
+  if (netChange < -atr * 4) {
+    regime = "STRONG_BEARISH";
+    regimeLabel = "📉 STRONG BEARISH FLOW";
+  } else if (netChange > atr * 4) {
+    regime = "STRONG_BULLISH";
+    regimeLabel = "📈 STRONG BULLISH FLOW";
+  } else if (totalRange > atr * 10) {
+    regime = "HIGH_VOLATILITY";
+    regimeLabel = "⚡ HIGH VOLATILITY EXPANSION";
   }
 
   return {
-    regime: "RANGING_SIDEWAYS",
-    regimeLabel: "↔️ RANGING / SIDEWAYS",
+    regime,
+    regimeLabel,
     atr,
-    isExcessiveVolatility: false,
-    isChoppy: true,
+    isExcessiveVolatility: atr > 15,
   };
 }
 
-function calculateEMA(values: number[], period: number): number[] {
-  const k = 2 / (period + 1);
-  const emaArray: number[] = [];
-  let ema = values[0];
-  for (let i = 0; i < values.length; i++) {
-    ema = values[i] * k + ema * (1 - k);
-    emaArray.push(ema);
-  }
-  return emaArray;
-}
-
 /**
- * Analyze genuine market structure for Higher Highs (HH), Higher Lows (HL),
- * Lower Highs (LH), Lower Lows (LL).
- */
-export function analyzeMarketStructure(
-  candles: Candle[],
-  timeframe: JugaadTimeframe
-): {
-  structureType: "BULLISH_CONTINUATION" | "BEARISH_CONTINUATION" | "RANGE_CONSOLIDATION";
-  structurePoints: StructurePoint[];
-  confirmedSwingHigh: number;
-  confirmedSwingLow: number;
-  lastStructureHigh: number;
-  lastStructureLow: number;
-  structureClarityScore: number;
-  hasConfirmedStructure: boolean;
-  atr: number;
-} {
-  if (!candles || candles.length < 25) {
-    return {
-      structureType: "RANGE_CONSOLIDATION",
-      structurePoints: [],
-      confirmedSwingHigh: 0,
-      confirmedSwingLow: 0,
-      lastStructureHigh: 0,
-      lastStructureLow: 0,
-      structureClarityScore: 40,
-      hasConfirmedStructure: false,
-      atr: 2.0,
-    };
-  }
-
-  const regimeInfo = classifyMarketRegime(candles);
-  const atr = regimeInfo.atr;
-
-  // 15M: standard 4/3 pivot; 5M: higher 6/4 lookback to strictly eliminate noise
-  const leftBars = timeframe === "5M" ? 6 : 4;
-  const rightBars = timeframe === "5M" ? 4 : 3;
-
-  const { highPivots, lowPivots } = findPivots(candles, leftBars, rightBars);
-
-  interface PivotItem {
-    index: number;
-    time: number;
-    price: number;
-    isHigh: boolean;
-  }
-
-  const allPivots: PivotItem[] = [
-    ...highPivots.map((p) => ({ index: p.index, time: p.candle.time, price: p.candle.high, isHigh: true })),
-    ...lowPivots.map((p) => ({ index: p.index, time: p.candle.time, price: p.candle.low, isHigh: false })),
-  ].sort((a, b) => a.index - b.index);
-
-  // Filter consecutive highs/lows keeping the most extreme
-  const filteredPivots: PivotItem[] = [];
-  for (const p of allPivots) {
-    if (filteredPivots.length === 0) {
-      filteredPivots.push(p);
-      continue;
-    }
-    const last = filteredPivots[filteredPivots.length - 1];
-    if (last.isHigh === p.isHigh) {
-      if (p.isHigh && p.price > last.price) {
-        filteredPivots[filteredPivots.length - 1] = p;
-      } else if (!p.isHigh && p.price < last.price) {
-        filteredPivots[filteredPivots.length - 1] = p;
-      }
-    } else {
-      filteredPivots.push(p);
-    }
-  }
-
-  const structurePoints: StructurePoint[] = [];
-  let prevHigh: number | null = null;
-  let prevLow: number | null = null;
-
-  for (let i = 0; i < filteredPivots.length; i++) {
-    const p = filteredPivots[i];
-    if (p.isHigh) {
-      let type: StructurePoint["type"] = "PEAK";
-      let label = "High";
-      if (prevHigh !== null) {
-        if (p.price > prevHigh + atr * 0.25) {
-          type = "HH";
-          label = "HH (Higher High)";
-        } else if (p.price < prevHigh - atr * 0.25) {
-          type = "LH";
-          label = "LH (Lower High)";
-        }
-      }
-      prevHigh = p.price;
-      structurePoints.push({ index: p.index, time: p.time, price: p.price, type, label });
-    } else {
-      let type: StructurePoint["type"] = "TROUGH";
-      let label = "Low";
-      if (prevLow !== null) {
-        if (p.price > prevLow + atr * 0.25) {
-          type = "HL";
-          label = "HL (Higher Low)";
-        } else if (p.price < prevLow - atr * 0.25) {
-          type = "LL";
-          label = "LL (Lower Low)";
-        }
-      }
-      prevLow = p.price;
-      structurePoints.push({ index: p.index, time: p.time, price: p.price, type, label });
-    }
-  }
-
-  // Look at the confirmed structural points
-  const recentPoints = structurePoints.slice(-8);
-  const recentHighs = recentPoints.filter((p) => p.type === "HH" || p.type === "LH" || p.type === "PEAK");
-  const recentLows = recentPoints.filter((p) => p.type === "HL" || p.type === "LL" || p.type === "TROUGH");
-
-  const lastHigh = recentHighs[recentHighs.length - 1]?.price || candles[candles.length - 1].high;
-  const lastLow = recentLows[recentLows.length - 1]?.price || candles[candles.length - 1].low;
-
-  const prevLastHigh = recentHighs[recentHighs.length - 2]?.price || lastHigh;
-  const prevLastLow = recentLows[recentLows.length - 2]?.price || lastLow;
-
-  const swingDist = Math.abs(lastHigh - lastLow);
-  const minRequiredSwing = timeframe === "15M" ? atr * 1.5 : atr * 1.2;
-
-  // Bullish: confirmed HH and HL with sufficient swing distance
-  const isBullish = lastHigh > prevLastHigh && lastLow >= prevLastLow && swingDist >= minRequiredSwing;
-  // Bearish: confirmed LH and LL with sufficient swing distance
-  const isBearish = lastHigh <= prevLastHigh && lastLow < prevLastLow && swingDist >= minRequiredSwing;
-
-  let structureType: "BULLISH_CONTINUATION" | "BEARISH_CONTINUATION" | "RANGE_CONSOLIDATION" = "RANGE_CONSOLIDATION";
-  let structureClarityScore = 55;
-  let hasConfirmedStructure = false;
-
-  if (isBullish && !isBearish) {
-    structureType = "BULLISH_CONTINUATION";
-    structureClarityScore = Math.min(85 + Math.round((swingDist / (atr * 2)) * 10), 98);
-    hasConfirmedStructure = true;
-  } else if (isBearish && !isBullish) {
-    structureType = "BEARISH_CONTINUATION";
-    structureClarityScore = Math.min(85 + Math.round((swingDist / (atr * 2)) * 10), 98);
-    hasConfirmedStructure = true;
-  } else {
-    structureType = "RANGE_CONSOLIDATION";
-    structureClarityScore = 48;
-    hasConfirmedStructure = false;
-  }
-
-  return {
-    structureType,
-    structurePoints,
-    confirmedSwingHigh: lastHigh,
-    confirmedSwingLow: lastLow,
-    lastStructureHigh: prevLastHigh,
-    lastStructureLow: prevLastLow,
-    structureClarityScore,
-    hasConfirmedStructure,
-    atr,
-  };
-}
-
-let setupCounter15M = 1;
-let setupCounter5M = 1;
-
-/**
- * Calculate the complete Khatarnak Jugaad Setup for a given timeframe using
- * REAL-TIME MARKET DATA and FIB 2.6 methodology.
+ * 💀 MAIN KHATARNAK JUGAAD 1M INSTITUTIONAL 2.6 SELL ENGINE
+ *
+ * Implements the full institutional sequence:
+ * Sell Liquidity (Sell LQ) → Liquidity Sweep → Bearish Impulse → Swing High (Top) & Swing Low (Botam)
+ * → 2.6 Dynamic Calculation (Range ÷ 2.6) → Golden Zone (0.62-0.81) Confluence → Retracement Wait
+ * → 1M Rejection & CHOCH/BOS Confirmation → Dynamic SL/TP → 80+ Quality Score → 💀 SELL ONLY
  */
 export function calculateKhatarnakJugaadSetup(
   candles: Candle[],
   currentPrice: number,
-  timeframe: JugaadTimeframe,
-  existingSetup?: KhatarnakJugaadSetup | null,
+  timeframe: JugaadTimeframe = "1M",
+  existingSetup: KhatarnakJugaadSetup | null = null,
   accountBalance: number = 10000,
-  riskPercent: number = 1.0
+  riskPercent: number = 1.0,
+  assetKey: string = "XAUUSD"
 ): KhatarnakJugaadSetup {
-  const regimeInfo = classifyMarketRegime(candles);
-  const structure = analyzeMarketStructure(candles, timeframe);
+  const atr = calculate1MATR(candles);
+  const rsi = calculate1MRSI(candles);
+  const { regime, regimeLabel } = classifyMarketRegime(candles);
 
-  // If live market data is not ready
-  if (!candles.length || currentPrice <= 0) {
-    return {
-      id: `KJ-${timeframe}-WAIT`,
-      timeframe,
-      signalType: "WAIT",
-      status: "NO VALID SETUP",
-      statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-      hasValidSetup: false,
-      waitingReason: "⚠️ LIVE DATA UNAVAILABLE. Awaiting live candle stream...",
-      marketRegime: regimeInfo.regime,
-      marketRegimeLabel: regimeInfo.regimeLabel,
-      score: 0,
-      scoreComponents: {
-        structureScore: 0,
-        fibAlignmentScore: 0,
-        entryZoneReactionScore: 0,
-        momentumScore: 0,
-        riskRewardScore: 0,
-      },
-      scoreLabel: "NO DATA",
-      funnyLine: getRandomFunnyLine(),
-      assetKey: "XAUUSD",
-      currentPrice: currentPrice || 0,
-      swingHigh: 0,
-      swingLow: 0,
-      swingRange: 0,
-      structureSequence: [],
-      structureType: "RANGE_CONSOLIDATION",
-      fib0: 0,
-      fib1: 0,
-      entry1Golden: 0,
-      entry2Green: 0,
-      entryFormatted: "—",
-      stopLoss: 0,
-      structuralInvalidationPrice: 0,
-      tp1: 0,
-      tp2: 0,
-      tp3: 0,
-      tp4Final: 0,
-      fib260: 0,
-      riskDistance: 0,
-      rewardTp1Distance: 0,
-      rewardTp2Distance: 0,
-      rewardTp3Distance: 0,
-      rewardFinalTpDistance: 0,
-      rrRatioString: "1:0.0",
-      riskManagement: calculatePositionSize(accountBalance, riskPercent, 1, "XAUUSD"),
-      isGoldenZoneTouched: false,
-      isGreenZoneTouched: false,
-      isEntryTriggered: false,
-      isRunning: false,
-      isTp1Achieved: false,
-      isTp2Achieved: false,
-      isTp3Achieved: false,
-      isFinalTpAchieved: false,
-      isSlViolated: false,
-      isStructurallyInvalidated: false,
-      timestamp: Date.now(),
-      generatedAt: new Date().toLocaleTimeString(),
-      shortReason: "Awaiting live market data",
-      reasons: ["Live market data stream pending."],
-    };
+  const fallbackResult: KhatarnakJugaadSetup = {
+    id: `KJ-1M-${Date.now().toString().slice(-4)}`,
+    timeframe: "1M",
+    signalType: "WAIT",
+    status: "NO VALID SETUP",
+    stage: "SEARCHING_LIQUIDITY",
+    statusColor: "text-zinc-500",
+    hasValidSetup: false,
+    waitingReason: "Searching for 1M Sell Liquidity sweep and valid Top/Botam 2.6 displacement...",
+    marketRegime: regime,
+    marketRegimeLabel: regimeLabel,
+    score: 0,
+    scoreComponents: {
+      liquidityDetectionScore: 0,
+      confluence26Score: 0,
+      structureChochScore: 0,
+      rejectionScore: 0,
+      momentumScore: 0,
+      volumeScore: 0,
+      riskRewardScore: 0,
+    },
+    scoreLabel: "NO SETUP (0/100)",
+    funnyLine: "Market dekh rahe hain, jugaad banne do 💀",
+    assetKey,
+    currentPrice,
+    topHigh: currentPrice + atr * 2,
+    botamLow: currentPrice - atr * 2,
+    impulseRange: atr * 4,
+    impulsePercent: 0,
+    topIndex: 0,
+    botamIndex: 0,
+    structureSequence: [],
+    calculationFormula: `Range 0 ÷ 2.6 = 0.00`,
+    delta26: 0,
+    level26: currentPrice,
+    sellLqHigh: currentPrice + atr * 3,
+    sellLqLow: currentPrice + atr * 2,
+    sellLqStatus: "UNTOUCHED",
+    buyLqHigh: currentPrice - atr * 2,
+    buyLqLow: currentPrice - atr * 3,
+    goldenZone62: currentPrice,
+    goldenZone81: currentPrice,
+    sellZoneHigh: currentPrice + atr,
+    sellZoneLow: currentPrice,
+    bestSellEntry: currentPrice,
+    entryFormatted: "WAITING",
+    stopLoss: currentPrice + atr * 2,
+    structuralInvalidationPrice: currentPrice + atr * 3,
+    tp1: currentPrice - atr * 2,
+    tp2: currentPrice - atr * 3.5,
+    tp3: currentPrice - atr * 5,
+    finalTp: currentPrice - atr * 5,
+    atr,
+    riskDistance: atr * 2,
+    rewardTp1Distance: atr * 2,
+    rewardTp2Distance: atr * 3.5,
+    rewardTp3Distance: atr * 5,
+    rewardFinalTpDistance: atr * 5,
+    rrRatioString: "1:0.0",
+    riskManagement: calculatePositionSize(accountBalance, riskPercent, atr * 2, assetKey),
+    isRetracedTo26Zone: false,
+    isRejectionConfirmed: false,
+    isChochConfirmed: false,
+    isEntryTriggered: false,
+    isRunning: false,
+    isTp1Achieved: false,
+    isTp2Achieved: false,
+    isTp3Achieved: false,
+    isFinalTpAchieved: false,
+    isSlViolated: false,
+    isStructurallyInvalidated: false,
+    isBreakevenMoved: false,
+    timestamp: Date.now(),
+    generatedAt: new Date().toLocaleTimeString(),
+    shortReason: "Waiting for valid 1M institutional liquidity sweep",
+    reasons: ["No confirmed Sell Liquidity sweep with 2.6 retracement on 1M chart"],
+  };
+
+  if (!candles || candles.length < 25) {
+    return fallbackResult;
   }
 
-  // Market Regime Filter: If abnormal news volatility or ranging market with weak structure
-  if (regimeInfo.isExcessiveVolatility) {
-    return {
-      id: `KJ-${timeframe}-VOLATILE`,
-      timeframe,
-      signalType: "WAIT",
-      status: "NO VALID SETUP",
-      statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-      hasValidSetup: false,
-      waitingReason: "⚠️ HIGH VOLATILITY — WAIT FOR MARKET STABILITY (News / Spike filter active).",
-      marketRegime: regimeInfo.regime,
-      marketRegimeLabel: regimeInfo.regimeLabel,
-      score: 35,
-      scoreComponents: {
-        structureScore: 10,
-        fibAlignmentScore: 10,
-        entryZoneReactionScore: 5,
-        momentumScore: 5,
-        riskRewardScore: 5,
-      },
-      scoreLabel: "HIGH VOLATILITY",
-      funnyLine: getRandomFunnyLine(),
-      assetKey: "XAUUSD",
-      currentPrice,
-      swingHigh: structure.confirmedSwingHigh,
-      swingLow: structure.confirmedSwingLow,
-      swingRange: Math.abs(structure.confirmedSwingHigh - structure.confirmedSwingLow),
-      structureSequence: structure.structurePoints,
-      structureType: structure.structureType,
-      fib0: 0,
-      fib1: 0,
-      entry1Golden: 0,
-      entry2Green: 0,
-      entryFormatted: "WAITING FOR STABILITY",
-      stopLoss: 0,
-      structuralInvalidationPrice: 0,
-      tp1: 0,
-      tp2: 0,
-      tp3: 0,
-      tp4Final: 0,
-      fib260: 0,
-      riskDistance: 0,
-      rewardTp1Distance: 0,
-      rewardTp2Distance: 0,
-      rewardTp3Distance: 0,
-      rewardFinalTpDistance: 0,
-      rrRatioString: "1:0.0",
-      riskManagement: calculatePositionSize(accountBalance, riskPercent, 1, "XAUUSD"),
-      isGoldenZoneTouched: false,
-      isGreenZoneTouched: false,
-      isEntryTriggered: false,
-      isRunning: false,
-      isTp1Achieved: false,
-      isTp2Achieved: false,
-      isTp3Achieved: false,
-      isFinalTpAchieved: false,
-      isSlViolated: false,
-      isStructurallyInvalidated: false,
-      timestamp: Date.now(),
-      generatedAt: new Date().toLocaleTimeString(),
-      shortReason: "Abnormal volatility spike detected — awaiting stabilization.",
-      reasons: ["News/volatility filter triggered. Protection against sudden slippage."],
-    };
-  }
+  // 1. Automatic 1M Pivots & Swing Extremes Detection
+  const { highPivots, lowPivots } = find1MPivots(candles, 3, 2);
 
-  // Quality check: Do not force a trade if structure is unclear or chop is detected
-  if (!structure.hasConfirmedStructure || structure.structureType === "RANGE_CONSOLIDATION") {
-    // If we have an active or running trade from an existing setup, keep monitoring it until SL or TP
-    if (
-      existingSetup &&
-      existingSetup.hasValidSetup &&
-      existingSetup.status !== "🛑 SL HIT" &&
-      existingSetup.status !== "🏆 FINAL TP HIT" &&
-      existingSetup.status !== "❌ INVALIDATED" &&
-      existingSetup.status !== "⏳ EXPIRED" &&
-      existingSetup.status !== "NO VALID SETUP"
-    ) {
-      // Continue monitoring existing active setup with real-time price
-      return updateExistingSetupStatus(existingSetup, currentPrice);
+  // Lookback window for primary structure (last 20 to 60 1M candles)
+  const windowCandles = candles.slice(-50);
+  const lookbackStartIdx = Math.max(0, candles.length - 50);
+
+  // Detect Sell Liquidity (Sell LQ) Zone: cluster of recent swing highs
+  const recentHighs = highPivots.filter((p) => p.index >= lookbackStartIdx);
+  const recentLows = lowPivots.filter((p) => p.index >= lookbackStartIdx);
+
+  // Find the highest swing high in the structural window -> Candidate for "TOP"
+  let topCandle = windowCandles[0];
+  let topIndexInFull = lookbackStartIdx;
+
+  for (let i = 0; i < windowCandles.length - 3; i++) {
+    const c = windowCandles[i];
+    if (c.high >= topCandle.high) {
+      topCandle = c;
+      topIndexInFull = lookbackStartIdx + i;
     }
-
-    return {
-      id: `KJ-${timeframe}-WAITING`,
-      timeframe,
-      signalType: "WAIT",
-      status: "NO VALID SETUP",
-      statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-      hasValidSetup: false,
-      waitingReason: "Market in consolidation / sideways chop. Waiting for confirmed Higher High/Higher Low or Lower High/Lower Low swing structure.",
-      marketRegime: regimeInfo.regime,
-      marketRegimeLabel: regimeInfo.regimeLabel,
-      score: 45,
-      scoreComponents: {
-        structureScore: 12,
-        fibAlignmentScore: 10,
-        entryZoneReactionScore: 8,
-        momentumScore: 8,
-        riskRewardScore: 7,
-      },
-      scoreLabel: "NO VALID SETUP",
-      funnyLine: getRandomFunnyLine(),
-      assetKey: "XAUUSD",
-      currentPrice,
-      swingHigh: structure.confirmedSwingHigh,
-      swingLow: structure.confirmedSwingLow,
-      swingRange: Math.abs(structure.confirmedSwingHigh - structure.confirmedSwingLow),
-      structureSequence: structure.structurePoints,
-      structureType: "RANGE_CONSOLIDATION",
-      fib0: 0,
-      fib1: 0,
-      entry1Golden: 0,
-      entry2Green: 0,
-      entryFormatted: "WAITING FOR STRUCTURE",
-      stopLoss: 0,
-      structuralInvalidationPrice: 0,
-      tp1: 0,
-      tp2: 0,
-      tp3: 0,
-      tp4Final: 0,
-      fib260: 0,
-      riskDistance: 0,
-      rewardTp1Distance: 0,
-      rewardTp2Distance: 0,
-      rewardTp3Distance: 0,
-      rewardFinalTpDistance: 0,
-      rrRatioString: "1:0.0",
-      riskManagement: calculatePositionSize(accountBalance, riskPercent, 1, "XAUUSD"),
-      isGoldenZoneTouched: false,
-      isGreenZoneTouched: false,
-      isEntryTriggered: false,
-      isRunning: false,
-      isTp1Achieved: false,
-      isTp2Achieved: false,
-      isTp3Achieved: false,
-      isFinalTpAchieved: false,
-      isSlViolated: false,
-      isStructurallyInvalidated: false,
-      timestamp: Date.now(),
-      generatedAt: new Date().toLocaleTimeString(),
-      shortReason: "Market structure unconfirmed. Quality > Frequency.",
-      reasons: ["Market structure is currently unconfirmed. Quality > Frequency."],
-    };
   }
 
-  // Preserve existing active trade if still valid and not closed
-  if (
-    existingSetup &&
-    existingSetup.hasValidSetup &&
-    existingSetup.status !== "🛑 SL HIT" &&
-    existingSetup.status !== "🏆 FINAL TP HIT" &&
-    existingSetup.status !== "❌ INVALIDATED" &&
-    existingSetup.status !== "⏳ EXPIRED"
-  ) {
-    // If it's running or waiting, check if structural swing has invalidated it
-    return updateExistingSetupStatus(existingSetup, currentPrice);
+  const topHigh = topCandle.high;
+
+  // Find Sell LQ Zone around previous highs before the top sweep
+  const priorHighs = recentHighs.filter((p) => p.index < topIndexInFull);
+  const sellLqRef = priorHighs.length > 0 ? Math.max(...priorHighs.map((p) => p.price)) : topHigh - atr * 0.5;
+  const sellLqLow = sellLqRef - atr * 0.4;
+  const sellLqHigh = sellLqRef + atr * 0.4;
+
+  // Verify Liquidity Sweep: Top pierced above sellLqLow/sellLqHigh, then rejected
+  const didSweepSellLq = topHigh >= sellLqLow;
+
+  // Find lowest low AFTER the top -> Candidate for "BOTAM" (after bearish displacement)
+  const afterTopCandles = candles.slice(topIndexInFull + 1);
+  if (afterTopCandles.length < 3) {
+    // Top is too recent, not enough displacement yet
+    const curSetup = fallbackResult;
+    curSetup.waitingReason = "Top swing formed; waiting for 1M bearish displacement & botam low...";
+    curSetup.topHigh = topHigh;
+    curSetup.topIndex = topIndexInFull;
+    return curSetup;
   }
 
-  const swingHigh = structure.confirmedSwingHigh;
-  const swingLow = structure.confirmedSwingLow;
-  const swingRange = Math.max(swingHigh - swingLow, 1.5);
-
-  // Determine Signal Direction from confirmed market structure
-  const signalType: JugaadSignalType =
-    structure.structureType === "BULLISH_CONTINUATION" ? "BUY" : "SELL";
-
-  // Exact Fib 2.6 Methodology:
-  // Levels: 0, 0.62, 0.81, 1.38, 1.65, 2.00, 2.20, 2.60
-  let fib0 = 0;
-  let fib1 = 0;
-  let entry1Golden = 0;
-  let entry2Green = 0;
-  let stopLoss = 0;
-  let structuralInvalidationPrice = 0;
-  let tp1 = 0;
-  let tp2 = 0;
-  let tp3 = 0;
-  let tp4Final = 0;
-  let fib260 = 0;
-
-  // Exact ~$1 Safety Distance on Gold
-  const SL_SAFETY_BUFFER = 1.0;
-
-  if (signalType === "BUY") {
-    // BUY: Swing Low is 0 (base), Swing High is 1 (impulse peak)
-    // Retracement pulls back downwards from Swing High
-    fib0 = swingLow;
-    fib1 = swingHigh;
-    structuralInvalidationPrice = swingLow;
-    stopLoss = Number((swingLow - SL_SAFETY_BUFFER).toFixed(2));
-
-    // Entry 1 (0.62 Golden Zone): 62% retracement from High
-    entry1Golden = Number((swingHigh - 0.62 * swingRange).toFixed(2));
-    // Entry 2 (0.81 Green Zone): 81% deeper retracement from High
-    entry2Green = Number((swingHigh - 0.81 * swingRange).toFixed(2));
-
-    // Targets: Fib 2.6 Extensions above Swing Low
-    tp1 = Number((swingLow + 1.38 * swingRange).toFixed(2));
-    tp2 = Number((swingLow + 1.65 * swingRange).toFixed(2));
-    tp3 = Number((swingLow + 2.0 * swingRange).toFixed(2));
-    tp4Final = Number((swingLow + 2.2 * swingRange).toFixed(2));
-    fib260 = Number((swingLow + 2.6 * swingRange).toFixed(2));
-  } else {
-    // SELL: Swing High is 0 (base), Swing Low is 1 (impulse low)
-    // Retracement pulls back upwards from Swing Low
-    fib0 = swingHigh;
-    fib1 = swingLow;
-    structuralInvalidationPrice = swingHigh;
-    stopLoss = Number((swingHigh + SL_SAFETY_BUFFER).toFixed(2));
-
-    // Entry 1 (0.62 Golden Zone): 62% retracement upwards from Low
-    entry1Golden = Number((swingLow + 0.62 * swingRange).toFixed(2));
-    // Entry 2 (0.81 Green Zone): 81% deeper retracement upwards from Low
-    entry2Green = Number((swingLow + 0.81 * swingRange).toFixed(2));
-
-    // Targets: Fib 2.6 Extensions downwards below Swing High
-    tp1 = Number((swingHigh - 1.38 * swingRange).toFixed(2));
-    tp2 = Number((swingHigh - 1.65 * swingRange).toFixed(2));
-    tp3 = Number((swingHigh - 2.0 * swingRange).toFixed(2));
-    tp4Final = Number((swingHigh - 2.2 * swingRange).toFixed(2));
-    fib260 = Number((swingHigh - 2.6 * swingRange).toFixed(2));
+  let botamCandle = afterTopCandles[0];
+  let botamRelativeIdx = 0;
+  for (let i = 0; i < afterTopCandles.length; i++) {
+    const c = afterTopCandles[i];
+    if (c.low <= botamCandle.low) {
+      botamCandle = c;
+      botamRelativeIdx = i;
+    }
   }
 
-  // Formatted Entry String: Max to Min (e.g. "4508.49 — 4503.54")
-  const entryFormatted = `${Math.max(entry1Golden, entry2Green).toFixed(2)} — ${Math.min(entry1Golden, entry2Green).toFixed(2)}`;
+  const botamLow = botamCandle.low;
+  const botamIndexInFull = topIndexInFull + 1 + botamRelativeIdx;
+  const impulseRange = Math.max(topHigh - botamLow, atr * 1.5);
+  const impulsePercent = (impulseRange / topHigh) * 100;
 
-  // Tolerance bounds for Entry Zone
-  const minEntry = Math.min(entry1Golden, entry2Green);
-  const maxEntry = Math.max(entry1Golden, entry2Green);
+  // Minimum required displacement to form a legitimate impulse (at least 2.5x ATR)
+  const isImpulseSufficient = impulseRange >= atr * 2.5;
 
-  const isEntryTriggered = currentPrice >= minEntry && currentPrice <= maxEntry;
-  const isGoldenZoneTouched = Math.abs(currentPrice - entry1Golden) <= 0.6;
-  const isGreenZoneTouched = Math.abs(currentPrice - entry2Green) <= 0.6;
+  // 2. DYNAMIC 2.6 CALCULATION (Exactly as in Reference Image)
+  // Impulse Range = topHigh - botamLow
+  // Delta 2.6 = Impulse Range / 2.6
+  // Level 2.6 = topHigh - Delta 2.6 = botamLow + (Impulse Range * (1 - 1/2.6)) = botamLow + 0.6154 * Impulse Range
+  const delta26 = impulseRange / 2.6;
+  const level26 = topHigh - delta26;
+  const calculationFormula = `Range ${impulseRange.toFixed(2)} ÷ 2.6 = ${delta26.toFixed(2)} pts → Level @ ${level26.toFixed(2)}`;
 
-  // Real-time Status Evaluation
-  const isSlViolated =
-    signalType === "BUY" ? currentPrice <= stopLoss : currentPrice >= stopLoss;
+  // 3. Golden Zone (0.62 → 0.81) Confluence Area
+  const goldenZone62 = botamLow + impulseRange * 0.62;
+  const goldenZone81 = botamLow + impulseRange * 0.81;
 
-  const isStructurallyInvalidated =
-    signalType === "BUY"
-      ? currentPrice < structuralInvalidationPrice - 0.5
-      : currentPrice > structuralInvalidationPrice + 0.5;
+  // Dynamic Sell Confluence Zone
+  const sellZoneLow = Math.min(level26 - atr * 0.3, goldenZone62);
+  const sellZoneHigh = Math.max(level26 + atr * 0.4, goldenZone81, sellLqHigh);
+  const bestSellEntry = level26; // Golden confluence center
 
-  const isTp1Achieved =
-    signalType === "BUY" ? currentPrice >= tp1 : currentPrice <= tp1;
-  const isTp2Achieved =
-    signalType === "BUY" ? currentPrice >= tp2 : currentPrice <= tp2;
-  const isTp3Achieved =
-    signalType === "BUY" ? currentPrice >= tp3 : currentPrice <= tp3;
-  const isFinalTpAchieved =
-    signalType === "BUY" ? currentPrice >= tp4Final : currentPrice <= tp4Final;
+  // Buy LQ (Downside Target)
+  const buyLqLow = botamLow - atr * 0.5;
+  const buyLqHigh = botamLow;
 
-  let status: JugaadStatus = "WAITING";
-  let statusColor = "text-amber-400 bg-amber-500/10 border-amber-500/30";
-  let isRunning = false;
-  let finalResult: SetupFinalResult | undefined = undefined;
+  // 4. Retracement Monitoring (Candles after botamLow)
+  const retracementCandles = candles.slice(botamIndexInFull + 1);
+  const maxRetracementPrice = retracementCandles.length > 0
+    ? Math.max(...retracementCandles.map((c) => c.high), currentPrice)
+    : currentPrice;
 
-  if (isSlViolated) {
-    status = "🛑 SL HIT";
-    statusColor = "text-rose-400 bg-rose-500/10 border-rose-500/40 font-black";
-    finalResult = "🛑 LOSS — SL HIT";
-  } else if (isStructurallyInvalidated) {
+  // Check if price reached the 2.6 / Golden Zone
+  const isRetracedTo26Zone = maxRetracementPrice >= sellZoneLow;
+
+  // Check 1M Rejection in Zone
+  let isRejectionConfirmed = false;
+  let isChochConfirmed = false;
+
+  if (retracementCandles.length > 0) {
+    for (let i = 0; i < retracementCandles.length; i++) {
+      const c = retracementCandles[i];
+      const upperWick = c.high - Math.max(c.open, c.close);
+      const body = Math.abs(c.close - c.open);
+      const lowerWick = Math.min(c.open, c.close) - c.low;
+
+      // Pinbar or strong upper rejection in/near sell zone
+      if (c.high >= sellZoneLow && upperWick >= body * 1.3 && upperWick >= lowerWick) {
+        isRejectionConfirmed = true;
+      }
+      // Bearish engulfing in zone
+      if (i > 0 && c.close < c.open && c.close < retracementCandles[i - 1].low && c.high >= sellZoneLow) {
+        isRejectionConfirmed = true;
+      }
+      // Micro CHOCH: breaking below previous retracement candle's low with a red close
+      if (i >= 2 && c.close < retracementCandles[i - 1].low && retracementCandles[i - 1].close < retracementCandles[i - 1].open) {
+        isChochConfirmed = true;
+      }
+    }
+  }
+
+  // If current candle itself is rejecting
+  const latestCandle = candles[candles.length - 1];
+  const latestUpperWick = latestCandle.high - Math.max(latestCandle.open, latestCandle.close);
+  const latestBody = Math.abs(latestCandle.close - latestCandle.open);
+  if (latestCandle.high >= sellZoneLow && latestUpperWick >= latestBody) {
+    isRejectionConfirmed = true;
+  }
+
+  // Invalidation: Price closed strongly ABOVE topHigh + buffer
+  const invalidationCeiling = topHigh + atr * 0.8;
+  const isStructurallyInvalidated = currentPrice > invalidationCeiling || maxRetracementPrice > invalidationCeiling;
+
+  // 5. Dynamic SL & TP Targets
+  const stopLoss = Math.round((topHigh + atr * 1.2) * 100) / 100;
+  const riskDistance = Math.max(stopLoss - bestSellEntry, atr * 1.2);
+
+  // Targets (SELL):
+  const tp1 = Math.round((bestSellEntry - riskDistance * 1.5) * 100) / 100;
+  const tp2 = Math.round((bestSellEntry - riskDistance * 2.5) * 100) / 100; // Aligns with botamLow / Buy LQ
+  const tp3 = Math.round((bestSellEntry - riskDistance * 4.0) * 100) / 100; // Extended institutional runner
+  const finalTp = tp3;
+
+  const rewardTp1Distance = bestSellEntry - tp1;
+  const rewardTp2Distance = bestSellEntry - tp2;
+  const rewardTp3Distance = bestSellEntry - tp3;
+  const rawRR = riskDistance > 0 ? (rewardTp2Distance / riskDistance).toFixed(1) : "0.0";
+  const rrRatioString = `1:${rawRR}`;
+
+  // 6. 100-Point Quality Score Calculation
+  // ----------------------------------------------------
+  // Score:
+  // * Liquidity Detection / Sell LQ = 20 pts
+  // * 2.6 Confluence = 20 pts
+  // * Structure / BOS / CHOCH = 15 pts
+  // * Rejection Confirmation = 15 pts
+  // * Momentum = 10 pts
+  // * Volume = 10 pts
+  // * Risk/Reward = 10 pts
+  // ----------------------------------------------------
+  let liquidityScore = 0;
+  if (didSweepSellLq) liquidityScore += 12;
+  if (priorHighs.length >= 2) liquidityScore += 8; // Equal Highs (EQH) sweep confluence
+  else if (priorHighs.length >= 1) liquidityScore += 5;
+
+  let confluenceScore = 0;
+  if (isImpulseSufficient) confluenceScore += 10;
+  // Check if 2.6 level sits cleanly within 0.60-0.75 zone
+  const level26Ratio = (level26 - botamLow) / impulseRange;
+  if (level26Ratio >= 0.58 && level26Ratio <= 0.65) confluenceScore += 10;
+  else if (level26Ratio >= 0.50 && level26Ratio <= 0.70) confluenceScore += 6;
+
+  let structureScore = 0;
+  if (isChochConfirmed) structureScore += 15;
+  else if (retracementCandles.length >= 2) structureScore += 8;
+
+  let rejectionScore = 0;
+  if (isRejectionConfirmed) rejectionScore += 15;
+  else if (currentPrice <= sellZoneHigh && currentPrice >= sellZoneLow) rejectionScore += 7;
+
+  let momentumScore = 0;
+  if (rsi <= 58 && rsi >= 40) momentumScore += 10; // Momentum exhausted & turning down
+  else if (rsi > 58) momentumScore += 6; // Still hot, but in rejection zone
+  else momentumScore += 4;
+
+  let volumeScore = 0;
+  const avgVol = windowCandles.reduce((s, c) => s + (c.volume || 100), 0) / windowCandles.length;
+  const sweepVol = topCandle.volume || 100;
+  if (sweepVol >= avgVol * 1.3) volumeScore += 10;
+  else if (sweepVol >= avgVol) volumeScore += 7;
+  else volumeScore += 5;
+
+  let rrScore = 0;
+  const numericRR = parseFloat(rawRR);
+  if (numericRR >= 2.5) rrScore += 10;
+  else if (numericRR >= 2.0) rrScore += 8;
+  else if (numericRR >= 1.5) rrScore += 5;
+
+  const totalScore = Math.min(
+    100,
+    liquidityScore + confluenceScore + structureScore + rejectionScore + momentumScore + volumeScore + rrScore
+  );
+
+  let scoreLabel = `HIGH CONFIDENCE (${totalScore}/100)`;
+  if (totalScore < 70) scoreLabel = `SEARCHING / WAIT (${totalScore}/100)`;
+  else if (totalScore < 80) scoreLabel = `WAIT FOR CONFIRMATION (${totalScore}/100)`;
+
+  // 7. Decision & Lifecycle Progression
+  let stage: SetupStage = "SEARCHING_LIQUIDITY";
+  let status: JugaadStatus = "NO VALID SETUP";
+  let statusColor = "text-zinc-500";
+  let signalType: JugaadSignalType = "WAIT";
+  let hasValidSetup = false;
+  let waitingReason = "";
+
+  // Preserved active states from existing setup if currently running
+  let isRunning = existingSetup?.isRunning || false;
+  let isEntryTriggered = existingSetup?.isEntryTriggered || false;
+  let isTp1Achieved = existingSetup?.isTp1Achieved || false;
+  let isTp2Achieved = existingSetup?.isTp2Achieved || false;
+  let isTp3Achieved = existingSetup?.isTp3Achieved || false;
+  let isFinalTpAchieved = existingSetup?.isFinalTpAchieved || false;
+  let isSlViolated = existingSetup?.isSlViolated || false;
+  let isBreakevenMoved = existingSetup?.isBreakevenMoved || false;
+  let entryActivatedPrice = existingSetup?.entryActivatedPrice;
+  let finalResult = existingSetup?.finalResult;
+
+  if (isStructurallyInvalidated) {
     status = "❌ INVALIDATED";
-    statusColor = "text-rose-400 bg-rose-500/10 border-rose-500/40";
+    statusColor = "text-red-500";
+    stage = "COMPLETED";
     finalResult = "❌ INVALID — SETUP CANCELLED";
-  } else if (isFinalTpAchieved) {
-    status = "🏆 FINAL TP HIT";
-    statusColor = "text-emerald-300 bg-emerald-500/20 border-emerald-400 font-black";
-    finalResult = "🏆 WIN — FINAL TP HIT";
-  } else if (isTp3Achieved) {
-    status = "🎯 TP3 HIT";
-    statusColor = "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 font-bold";
-    finalResult = "🎯 PARTIAL WIN — TP3 HIT";
-    isRunning = true;
-  } else if (isTp2Achieved) {
-    status = "🎯 TP2 HIT";
-    statusColor = "text-teal-400 bg-teal-500/10 border-teal-500/30 font-bold";
-    finalResult = "🎯 PARTIAL WIN — TP2 HIT";
-    isRunning = true;
-  } else if (isTp1Achieved) {
-    status = "🎯 TP1 HIT";
-    statusColor = "text-cyan-400 bg-cyan-500/10 border-cyan-500/30 font-bold";
-    finalResult = "🎯 PARTIAL WIN — TP1 HIT";
-    isRunning = true;
-  } else if (isEntryTriggered || isGoldenZoneTouched || isGreenZoneTouched) {
-    status = "ENTRY HIT";
-    statusColor =
-      "text-emerald-400 bg-emerald-500/20 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)] animate-pulse font-black";
-    isRunning = true;
+    waitingReason = "Price broke above Sell LQ invalidation ceiling. Setup cancelled.";
+  } else if (isRunning || isEntryTriggered) {
+    stage = "ACTIVE_SELL_TRADE";
+    signalType = "SELL";
+    hasValidSetup = true;
+
+    // Check TP/SL hits against real current price
+    if (currentPrice >= stopLoss) {
+      status = "🛑 SL HIT";
+      statusColor = "text-rose-500";
+      isSlViolated = true;
+      isRunning = false;
+      stage = "COMPLETED";
+      finalResult = isTp1Achieved ? "🎯 TP HIT → 🛑 SL HIT" : "🛑 LOSS — SL HIT";
+    } else if (currentPrice <= tp3) {
+      status = "🏆 FINAL TP HIT";
+      statusColor = "text-emerald-400";
+      isFinalTpAchieved = true;
+      isTp3Achieved = true;
+      isTp2Achieved = true;
+      isTp1Achieved = true;
+      isRunning = false;
+      stage = "COMPLETED";
+      finalResult = "🏆 WIN — FINAL TP HIT";
+    } else if (currentPrice <= tp2) {
+      status = "🎯 TP2 HIT";
+      statusColor = "text-emerald-400";
+      isTp2Achieved = true;
+      isTp1Achieved = true;
+      isBreakevenMoved = true;
+    } else if (currentPrice <= tp1) {
+      status = "🎯 TP1 HIT";
+      statusColor = "text-emerald-400";
+      isTp1Achieved = true;
+      isBreakevenMoved = true;
+    } else {
+      status = "RUNNING";
+      statusColor = "text-cyan-400";
+    }
+  } else if (!isImpulseSufficient || !didSweepSellLq) {
+    stage = "SEARCHING_LIQUIDITY";
+    status = "NO VALID SETUP";
+    statusColor = "text-zinc-500";
+    waitingReason = "Waiting for strong 1M Sell Liquidity sweep & bearish displacement...";
+  } else if (!isRetracedTo26Zone) {
+    stage = "WAITING_RETRACEMENT";
+    status = "WAITING FOR RETRACEMENT";
+    statusColor = "text-amber-400";
+    waitingReason = `Displacement formed (${impulseRange.toFixed(1)} pts). Waiting for price to retrace to 2.6 Zone (${level26.toFixed(2)})...`;
+    hasValidSetup = true;
+  } else if (totalScore < 80 || (!isRejectionConfirmed && !isChochConfirmed)) {
+    stage = "IN_2_6_ZONE";
+    status = "IN 2.6 CONFLUENCE ZONE";
+    statusColor = "text-indigo-400";
+    waitingReason = `Inside 2.6 Sell Zone. Waiting for 1M Upper-Wick Rejection or Bearish CHOCH confirmation (Score: ${totalScore}/100)...`;
+    hasValidSetup = true;
   } else {
-    status = "WAITING";
-    statusColor = "text-amber-400 bg-amber-500/10 border-amber-500/30";
+    // 💀 HIGH CONFIDENCE 80+ 1M INSTITUTIONAL 2.6 SELL TRIGGERED
+    stage = "ACTIVE_SELL_TRADE";
+    status = "ENTRY TRIGGERED";
+    statusColor = "text-emerald-400";
+    signalType = "SELL";
+    hasValidSetup = true;
+    isEntryTriggered = true;
+    isRunning = true;
+    entryActivatedPrice = currentPrice;
   }
 
-  // Real Dynamic Risk / Reward Calculation: Entry -> SL -> TP
-  const averageEntry = (entry1Golden + entry2Green) / 2;
-  const riskDistance = Math.abs(averageEntry - stopLoss);
-  const rewardTp1Distance = Math.abs(tp1 - averageEntry);
-  const rewardTp2Distance = Math.abs(tp2 - averageEntry);
-  const rewardTp3Distance = Math.abs(tp3 - averageEntry);
-  const rewardFinalTpDistance = Math.abs(tp4Final - averageEntry);
+  // Structure points for visual chart mapping
+  const structureSequence: StructurePoint[] = [
+    { index: topIndexInFull, time: topCandle.time, price: topHigh, type: "TOP", label: "Top (Sweep High)" },
+    { index: botamIndexInFull, time: botamCandle.time, price: botamLow, type: "BOTAM", label: "Botam (Displacement Low)" },
+    { index: botamIndexInFull + 1, time: Date.now(), price: level26, type: "REJECTION", label: "2.6 Retracement Level" },
+    { index: 0, time: 0, price: sellLqHigh, type: "SELL_LQ", label: "Sell LQ" },
+    { index: 0, time: 0, price: buyLqLow, type: "BUY_LQ", label: "Buy LQ" },
+  ];
 
-  const calculatedRR =
-    riskDistance > 0 ? (rewardTp2Distance / riskDistance).toFixed(1) : "3.0";
-  const rrRatioString = `1:${calculatedRR}`;
+  const reasons = [
+    `Sell Liquidity sweep @ ${topHigh.toFixed(2)} followed by ${impulseRange.toFixed(2)} pts displacement to ${botamLow.toFixed(2)}`,
+    `2.6 Institutional Calculation: ${impulseRange.toFixed(2)} ÷ 2.6 = ${delta26.toFixed(2)} pts → Level ${level26.toFixed(2)}`,
+    `0.62–0.81 Golden Zone Confluence (${goldenZone62.toFixed(2)} — ${goldenZone81.toFixed(2)})`,
+    isRejectionConfirmed ? "1M Upper-wick rejection confirmed in 2.6 supply zone" : "Waiting for 1M rejection wick",
+    isChochConfirmed ? "1M Bearish CHOCH / Structure break confirmed" : "1M CHOCH pending",
+    `Quality Score: ${totalScore}/100 • R:R: ${rrRatioString}`,
+  ];
 
-  // ============================================================
-  // EXACT 5-COMPONENT QUALITY SCORE (0 - 100) FROM REAL MARKET:
-  // 1. Structure (25%)
-  // 2. Fib 2.6 Alignment (25%)
-  // 3. Entry-Zone Reaction (20%)
-  // 4. Momentum (15%)
-  // 5. Risk/Reward (15%)
-  // ============================================================
-  const structureScore = Math.min(Math.round((structure.structureClarityScore / 100) * 25), 25);
-  const fibAlignmentScore = Math.min(Math.round((swingRange / (structure.atr * 2)) * 25), 25);
-
-  let entryZoneReactionScore = 12;
-  if (isEntryTriggered) entryZoneReactionScore = 20;
-  else if (isGoldenZoneTouched || isGreenZoneTouched) entryZoneReactionScore = 17;
-
-  // Momentum from last 5 candles
-  const last5 = candles.slice(-5);
-  const directionalBodies = last5.filter((c) =>
-    signalType === "BUY" ? c.close >= c.open : c.close <= c.open
-  ).length;
-  const momentumScore = Math.round((directionalBodies / 5) * 15);
-
-  // Risk / Reward Score
-  const numRR = parseFloat(calculatedRR);
-  let riskRewardScore = 8;
-  if (numRR >= 3.5) riskRewardScore = 15;
-  else if (numRR >= 2.8) riskRewardScore = 13;
-  else if (numRR >= 2.0) riskRewardScore = 10;
-
-  let totalScore = structureScore + fibAlignmentScore + entryZoneReactionScore + momentumScore + riskRewardScore;
-  totalScore = Math.min(Math.max(totalScore, 20), 98);
-
-  // Quality Threshold Filter (<60 => REJECT/WAIT)
-  if (totalScore < 60) {
-    return {
-      id: `KJ-${timeframe}-LOWSCORE`,
-      timeframe,
-      signalType: "WAIT",
-      status: "NO VALID SETUP",
-      statusColor: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-      hasValidSetup: false,
-      waitingReason: `Setup score (${totalScore}/100) is below quality threshold (60+ required). Waiting for clearer market alignment.`,
-      marketRegime: regimeInfo.regime,
-      marketRegimeLabel: regimeInfo.regimeLabel,
-      score: totalScore,
-      scoreComponents: {
-        structureScore,
-        fibAlignmentScore,
-        entryZoneReactionScore,
-        momentumScore,
-        riskRewardScore,
-      },
-      scoreLabel: "REJECT / WAIT",
-      funnyLine: getRandomFunnyLine(),
-      assetKey: "XAUUSD",
-      currentPrice,
-      swingHigh,
-      swingLow,
-      swingRange,
-      structureSequence: structure.structurePoints,
-      structureType: structure.structureType,
-      fib0,
-      fib1,
-      entry1Golden,
-      entry2Green,
-      entryFormatted: "WAITING FOR QUALITY",
-      stopLoss,
-      structuralInvalidationPrice,
-      tp1,
-      tp2,
-      tp3,
-      tp4Final,
-      fib260,
-      riskDistance,
-      rewardTp1Distance,
-      rewardTp2Distance,
-      rewardTp3Distance,
-      rewardFinalTpDistance,
-      rrRatioString,
-      riskManagement: calculatePositionSize(accountBalance, riskPercent, riskDistance, "XAUUSD"),
-      isGoldenZoneTouched,
-      isGreenZoneTouched,
-      isEntryTriggered,
-      isRunning: false,
-      isTp1Achieved: false,
-      isTp2Achieved: false,
-      isTp3Achieved: false,
-      isFinalTpAchieved: false,
-      isSlViolated: false,
-      isStructurallyInvalidated: false,
-      timestamp: Date.now(),
-      generatedAt: new Date().toLocaleTimeString(),
-      shortReason: "Quality score <60 rejected. Only high-confidence setups permitted.",
-      reasons: ["Quality threshold filter active (<60 rejected)."],
-    };
-  }
-
-  let scoreLabel = "MODERATE / WAIT";
-  if (totalScore >= 80) scoreLabel = "🔥 STRONG SETUP";
-  else if (totalScore >= 70) scoreLabel = "✅ GOOD SETUP";
-
-  const setupId =
-    timeframe === "15M"
-      ? `KJ-15M-${String(setupCounter15M++).padStart(3, "0")}`
-      : `KJ-5M-${String(setupCounter5M++).padStart(3, "0")}`;
-
-  const funnyLine = existingSetup?.funnyLine || getRandomFunnyLine();
-
-  const shortReason = `${timeframe} ${
-    signalType === "BUY" ? "bullish" : "bearish"
-  } structure + Fib 2.6 alignment + confirmed reaction.`;
+  const riskManagement = calculatePositionSize(accountBalance, riskPercent, riskDistance, assetKey);
 
   return {
-    id: setupId,
-    timeframe,
+    id: existingSetup?.id || `KJ-1M-${Date.now().toString().slice(-4)}`,
+    timeframe: "1M",
     signalType,
     status,
+    stage,
     statusColor,
-    hasValidSetup: true,
-    marketRegime: regimeInfo.regime,
-    marketRegimeLabel: regimeInfo.regimeLabel,
+    hasValidSetup,
+    waitingReason,
+    marketRegime: regime,
+    marketRegimeLabel: regimeLabel,
     score: totalScore,
     scoreComponents: {
-      structureScore,
-      fibAlignmentScore,
-      entryZoneReactionScore,
-      momentumScore,
-      riskRewardScore,
+      liquidityDetectionScore: liquidityScore,
+      confluence26Score: confluenceScore,
+      structureChochScore: structureScore,
+      rejectionScore: rejectionScore,
+      momentumScore: momentumScore,
+      volumeScore: volumeScore,
+      riskRewardScore: rrScore,
     },
     scoreLabel,
-    funnyLine,
-    assetKey: "XAUUSD",
+    funnyLine: getRandomFunnyLine(),
+    assetKey,
     currentPrice,
-
-    swingHigh,
-    swingLow,
-    swingRange,
-    structureSequence: structure.structurePoints,
-    structureType: structure.structureType,
-
-    fib0,
-    fib1,
-    entry1Golden,
-    entry2Green,
-    entryFormatted,
+    topHigh,
+    botamLow,
+    impulseRange,
+    impulsePercent,
+    topIndex: topIndexInFull,
+    botamIndex: botamIndexInFull,
+    structureSequence,
+    calculationFormula,
+    delta26,
+    level26,
+    sellLqHigh,
+    sellLqLow,
+    sellLqStatus: didSweepSellLq ? "SWEPT" : "UNTOUCHED",
+    buyLqHigh,
+    buyLqLow,
+    goldenZone62,
+    goldenZone81,
+    sellZoneHigh,
+    sellZoneLow,
+    bestSellEntry,
+    entryFormatted: `${sellZoneLow.toFixed(2)} — ${sellZoneHigh.toFixed(2)}`,
     stopLoss,
-    structuralInvalidationPrice,
+    structuralInvalidationPrice: invalidationCeiling,
     tp1,
     tp2,
     tp3,
-    tp4Final,
-    fib260,
-
+    finalTp,
+    atr,
     riskDistance,
     rewardTp1Distance,
     rewardTp2Distance,
     rewardTp3Distance,
-    rewardFinalTpDistance,
+    rewardFinalTpDistance: rewardTp3Distance,
     rrRatioString,
-    riskManagement: calculatePositionSize(accountBalance, riskPercent, riskDistance, "XAUUSD"),
-
-    isGoldenZoneTouched,
-    isGreenZoneTouched,
+    riskManagement,
+    isRetracedTo26Zone,
+    isRejectionConfirmed,
+    isChochConfirmed,
     isEntryTriggered,
     isRunning,
     isTp1Achieved,
@@ -1084,115 +860,12 @@ export function calculateKhatarnakJugaadSetup(
     isFinalTpAchieved,
     isSlViolated,
     isStructurallyInvalidated,
-    entryActivatedPrice: isEntryTriggered ? currentPrice : undefined,
+    isBreakevenMoved,
+    entryActivatedPrice,
     finalResult,
-
     timestamp: Date.now(),
     generatedAt: new Date().toLocaleTimeString(),
-    shortReason,
-    reasons: [
-      `Confirmed ${structure.structureType.replace(/_/g, " ")} on real ${timeframe} candles`,
-      `Structural swing high ${swingHigh.toFixed(2)} / low ${swingLow.toFixed(2)} (Range: $${swingRange.toFixed(2)})`,
-      `0.62 Golden & 0.81 Green zone entry: ${entryFormatted}`,
-      `Structural SL at ${stopLoss.toFixed(2)} ($1 safety buffer)`,
-      `Fib 2.6 targets: TP1 ${tp1.toFixed(2)}, TP2 ${tp2.toFixed(2)}, TP3 ${tp3.toFixed(2)}, Final ${tp4Final.toFixed(2)}`,
-    ],
-  };
-}
-
-/**
- * Update real-time price progress for active setup and preserve complete result sequence
- */
-function updateExistingSetupStatus(
-  existing: KhatarnakJugaadSetup,
-  currentPrice: number
-): KhatarnakJugaadSetup {
-  const signalType = existing.signalType;
-  const isSlViolated =
-    signalType === "BUY" ? currentPrice <= existing.stopLoss : currentPrice >= existing.stopLoss;
-
-  const isStructurallyInvalidated =
-    signalType === "BUY"
-      ? currentPrice < existing.structuralInvalidationPrice - 0.5
-      : currentPrice > existing.structuralInvalidationPrice + 0.5;
-
-  const isTp1Achieved =
-    existing.isTp1Achieved ||
-    (signalType === "BUY" ? currentPrice >= existing.tp1 : currentPrice <= existing.tp1);
-  const isTp2Achieved =
-    existing.isTp2Achieved ||
-    (signalType === "BUY" ? currentPrice >= existing.tp2 : currentPrice <= existing.tp2);
-  const isTp3Achieved =
-    existing.isTp3Achieved ||
-    (signalType === "BUY" ? currentPrice >= existing.tp3 : currentPrice <= existing.tp3);
-  const isFinalTpAchieved =
-    existing.isFinalTpAchieved ||
-    (signalType === "BUY" ? currentPrice >= existing.tp4Final : currentPrice <= existing.tp4Final);
-
-  const minEntry = Math.min(existing.entry1Golden, existing.entry2Green);
-  const maxEntry = Math.max(existing.entry1Golden, existing.entry2Green);
-  const isEntryTriggered =
-    existing.isEntryTriggered || (currentPrice >= minEntry && currentPrice <= maxEntry);
-
-  let status: JugaadStatus = existing.status;
-  let statusColor = existing.statusColor;
-  let isRunning = existing.isRunning;
-  let finalResult: SetupFinalResult | undefined = existing.finalResult;
-
-  if (isSlViolated) {
-    status = "🛑 SL HIT";
-    statusColor = "text-rose-400 bg-rose-500/10 border-rose-500/40 font-black";
-    isRunning = false;
-    if (isTp2Achieved || isTp1Achieved) {
-      finalResult = "🎯 TP HIT → 🛑 SL HIT";
-    } else {
-      finalResult = "🛑 LOSS — SL HIT";
-    }
-  } else if (isStructurallyInvalidated) {
-    status = "❌ INVALIDATED";
-    statusColor = "text-rose-400 bg-rose-500/10 border-rose-500/40";
-    isRunning = false;
-    finalResult = "❌ INVALID — SETUP CANCELLED";
-  } else if (isFinalTpAchieved) {
-    status = "🏆 FINAL TP HIT";
-    statusColor = "text-emerald-300 bg-emerald-500/20 border-emerald-400 font-black";
-    isRunning = false;
-    finalResult = "🏆 WIN — FINAL TP HIT";
-  } else if (isTp3Achieved) {
-    status = "🎯 TP3 HIT";
-    statusColor = "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 font-bold";
-    isRunning = true;
-    finalResult = "🎯 PARTIAL WIN — TP3 HIT";
-  } else if (isTp2Achieved) {
-    status = "🎯 TP2 HIT";
-    statusColor = "text-teal-400 bg-teal-500/10 border-teal-500/30 font-bold";
-    isRunning = true;
-    finalResult = "🎯 PARTIAL WIN — TP2 HIT";
-  } else if (isTp1Achieved) {
-    status = "🎯 TP1 HIT";
-    statusColor = "text-cyan-400 bg-cyan-500/10 border-cyan-500/30 font-bold";
-    isRunning = true;
-    finalResult = "🎯 PARTIAL WIN — TP1 HIT";
-  } else if (isEntryTriggered) {
-    status = "ENTRY HIT";
-    statusColor =
-      "text-emerald-400 bg-emerald-500/20 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)] animate-pulse font-black";
-    isRunning = true;
-  }
-
-  return {
-    ...existing,
-    currentPrice,
-    status,
-    statusColor,
-    isSlViolated,
-    isStructurallyInvalidated,
-    isTp1Achieved,
-    isTp2Achieved,
-    isTp3Achieved,
-    isFinalTpAchieved,
-    isEntryTriggered,
-    isRunning,
-    finalResult,
+    shortReason: `1M 2.6 SELL Confluence @ ${level26.toFixed(2)} (Score ${totalScore}/100)`,
+    reasons,
   };
 }

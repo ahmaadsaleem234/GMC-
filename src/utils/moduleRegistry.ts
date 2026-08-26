@@ -54,13 +54,13 @@ export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   },
   {
     id: "khatarnak_jugaad",
-    label: "💀 KHATARNAK JUGAAD — Custom Fibonacci & Market Structure Sniper Engine",
+    label: "💀 KHATARNAK JUGAAD — 1M Institutional 2.6 Sell Engine",
     icon: Flame,
     category: "Core",
-    desc: "Independent 15M / 5M genuine market structure (HH/HL/LH/LL) swing sniper with custom 0.62 Golden & 0.81 Green zone entries, structural $1 SL, and 1.38/1.65/2.0/2.2 profit targets.",
+    desc: "Strict 1-Minute SELL-ONLY institutional liquidity & 2.6 retracement engine: Sell LQ Sweep → Bearish Impulse (Top/Botam) → Dynamic 2.6 Calculation (Range ÷ 2.6) → Golden Zone 0.62–0.81 Confluence → 1M CHOCH Rejection → 80+ Quality Score SELL.",
     emoji: "💀",
-    tag: "KHATARNAK JUGAAD 💀",
-    tagColor: "bg-orange-500/30 text-orange-300 border-orange-400/80 shadow-[0_0_16px_rgba(249,115,22,0.6)] animate-pulse",
+    tag: "1M 2.6 SELL ENGINE 💀",
+    tagColor: "bg-red-500/30 text-red-300 border-red-400/80 shadow-[0_0_16px_rgba(239,68,68,0.6)] animate-pulse",
   },
   {
     id: "warroom",

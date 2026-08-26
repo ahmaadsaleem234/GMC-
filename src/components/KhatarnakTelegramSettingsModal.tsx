@@ -31,7 +31,7 @@ import {
 } from "../services/khatarnakJugaadEngine";
 import {
   dispatchNewJugaadSetupToTelegram,
-  dispatchJugaadStatusUpdateToTelegram,
+  dispatchStatusUpdateToTelegram,
   getRecentAlertLogs,
   clearDispatchedEventHistory,
   DispatchedJugaadAlert,
@@ -160,10 +160,8 @@ export const KhatarnakTelegramSettingsModal: React.FC<KhatarnakTelegramSettingsM
 
     setTestStatus({ loading: true, msg: `Dispatching setup #${activeSetup.id} to Telegram...` });
     try {
-      const res = await dispatchNewJugaadSetupToTelegram(activeSetup, {
-        botToken: cleanTelegramInput(config.botToken),
-        chatId: cleanTelegramInput(config.chatId),
-      });
+      saveTelegramConfig(config);
+      const res = await dispatchNewJugaadSetupToTelegram(activeSetup);
 
       if (res.success) {
         setTestStatus({
@@ -175,7 +173,7 @@ export const KhatarnakTelegramSettingsModal: React.FC<KhatarnakTelegramSettingsM
       } else {
         setTestStatus({
           loading: false,
-          msg: res.message || "❌ Failed to dispatch setup.",
+          msg: res.error || "❌ Failed to dispatch setup.",
           success: false,
         });
       }
@@ -542,25 +540,23 @@ export const KhatarnakTelegramSettingsModal: React.FC<KhatarnakTelegramSettingsM
                   <span>Exact Signal Format Broadcasted:</span>
                 </div>
                 <pre className="p-3 bg-black/50 border border-slate-800 rounded-xl text-[10px] font-mono text-slate-300 overflow-x-auto leading-relaxed">
-{`💀 KHATARNAK JUGAAD
+{`💀 KHATARNAK JUGAAD | 1M SELL
 
-XAUUSD • 15M • BUY 🟢
+XAUUSD • SELL ONLY 🔴
 
-🟢 Entry: 4508.49 — 4503.54
-🛑 SL: 4496.00
+🎯 ENTRY: 4516.82 – 4529.25
+📍 Best Entry: 4519.17
+🛑 SL: 4536.95
 
-🎯 TP1: 4522.40
-🎯 TP2: 4531.80
-🎯 TP3: 4544.10
+💰 TP1: 4492.50
+💰 TP2: 4474.72
+💰 TP3: 4448.05
 
-📊 R:R: 1:3.4
-🔥 Score: 88/100
+📊 R:R: 1:2.5
+🔥 Score: 73/100
+⚡ Confirmation: CHOCH + 1M Rejection Confirmed
 
-🧠 Reason: 15M bullish structure + Fib 2.6 alignment + confirmed reaction.
-
-💬 “Jugaad chala, scene bana 💀”
-
-SETUP ID: KJ-15M-001`}
+KJ • 1M Institutional Setup`}
                 </pre>
               </div>
             </div>

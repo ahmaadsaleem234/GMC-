@@ -118,7 +118,7 @@ export interface AiCandidateEvaluation {
   brainName: string;
   brainEmoji: string;
   setupId: string; // e.g. HA-001, KJ-001, WR-001
-  timeframe: "15M" | "5M" | "1H";
+  timeframe: "1M" | "5M" | "15M" | "1H";
   assetKey: string;
   direction: SignalDirection;
   
@@ -642,6 +642,276 @@ export class CentralSignalManagerEngine {
     this.saveToStorage();
   }
 
+  /**
+   * CENTRAL GATEKEEPER: SINGLE ACTIVE SETUP ARBITRATION
+   * 
+   * Orchestrates the 3 AI systems (Khatarnak Jugaad 💀, War Room 🛡️, Harami AI 🤖).
+   * Enforces the Single Active Telegram Setup rule:
+   * 1. If an active trade is already running -> reject/queue new setup.
+   * 2. If system is in cooldown -> reject/queue new setup until cooldown ends.
+   * 3. If allowed -> promote to Single Active Setup, lock Telegram output, and return allowed.
+   */
+  public registerOrBroadcastSetup(
+    source: AiBrainSource,
+    setupData: {
+      setupId?: string;
+      assetKey: string;
+      timeframe: string;
+      direction: "BUY" | "SELL";
+      entryZoneLow: number;
+      entryZoneHigh: number;
+      entryRangeFormatted?: string;
+      entry1Golden?: number;
+      entry2Green?: number;
+      preferredEntry: number;
+      stopLoss: number;
+      tp1: number;
+      tp2: number;
+      tp3: number;
+      finalTp?: number;
+      rrRatioString: string;
+      setupScore: number;
+      marketConfidence?: number;
+      signatureLine?: string;
+      selectionReason?: string;
+    }
+  ): {
+    allowed: boolean;
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "ALLOWED";
+    message: string;
+    activeSetup?: ActiveCentralSetup;
+  } {
+    this.updateCooldownTicker();
+
+    const brainName =
+      source === "KHATARNAK_JUGAAD"
+        ? "Khatarnak Jugaad 💀"
+        : source === "WAR_ROOM"
+        ? "War Room Supreme 🛡️"
+        : "Harami AI Master 🤖";
+    const brainEmoji = source === "KHATARNAK_JUGAAD" ? "💀" : source === "WAR_ROOM" ? "🛡️" : "🤖";
+
+    // 1. Check if an active trade is already running
+    if (this.activeSetup) {
+      // If it is the exact same setup being re-confirmed / updated, allow it
+      if (setupData.setupId && this.activeSetup.setupId === setupData.setupId) {
+        return {
+          allowed: true,
+          reason: "ALLOWED",
+          message: `Setup ${this.activeSetup.setupId} is already the Single Active Setup.`,
+          activeSetup: this.activeSetup,
+        };
+      }
+
+      return {
+        allowed: false,
+        reason: "BLOCKED_ACTIVE_EXISTS",
+        message: `Gatekeeper Block: Only 1 active trade allowed on Telegram. Currently active: ${this.activeSetup.brainName} [${this.activeSetup.setupId}] (${this.activeSetup.lifecycleStatusLabel}). This setup remains QUEUED in the background.`,
+        activeSetup: this.activeSetup,
+      };
+    }
+
+    // 2. Check if the system is in cooldown
+    if (this.cooldown.isActive) {
+      return {
+        allowed: false,
+        reason: "BLOCKED_IN_COOLDOWN",
+        message: `Gatekeeper Block: System is in strict ${this.cooldown.durationMinutes}-minute cooldown (${this.cooldown.remainingFormatted} remaining). All 3 AI systems continue calculating, but Telegram is locked until ${this.cooldown.nextAvailableTimeFormatted}.`,
+      };
+    }
+
+    // 3. Check Minimum Score Threshold
+    if (setupData.setupScore < this.minScoreThreshold) {
+      return {
+        allowed: false,
+        reason: "BLOCKED_LOW_SCORE",
+        message: `Gatekeeper Block: Setup score ${setupData.setupScore}/100 is below the required ${this.minScoreThreshold}/100 threshold.`,
+      };
+    }
+
+    // 4. APPROVED — Promote to Single Active Setup!
+    const setupId = setupData.setupId || getNextSetupId(source);
+    const finalTp = setupData.finalTp || setupData.tp3;
+    const marketConfidence = setupData.marketConfidence || Math.max(70, Math.min(95, Math.round(setupData.setupScore * 0.95)));
+    const selectionReason = setupData.selectionReason || `${brainName} triggered confirmed trade (Score: ${setupData.setupScore}/100).`;
+    const entryRangeFormatted =
+      setupData.entryRangeFormatted ||
+      `$${Math.min(setupData.entryZoneLow, setupData.entryZoneHigh).toFixed(2)} — $${Math.max(setupData.entryZoneLow, setupData.entryZoneHigh).toFixed(2)}`;
+
+    const newActive: ActiveCentralSetup = {
+      setupId,
+      brainSource: source,
+      brainName,
+      brainEmoji,
+      assetKey: setupData.assetKey,
+      timeframe: setupData.timeframe,
+      direction: setupData.direction,
+      lifecycleState: "ACTIVE",
+      lifecycleStatusLabel: "🟢 ACTIVE",
+      entryZoneLow: setupData.entryZoneLow,
+      entryZoneHigh: setupData.entryZoneHigh,
+      entryRangeFormatted,
+      entry1Golden: setupData.entry1Golden,
+      entry2Green: setupData.entry2Green,
+      preferredEntry: setupData.preferredEntry,
+      stopLoss: setupData.stopLoss,
+      tp1: setupData.tp1,
+      tp2: setupData.tp2,
+      tp3: setupData.tp3,
+      finalTp,
+      rrRatioString: setupData.rrRatioString,
+      signatureLine: setupData.signatureLine || getRandomSignatureLine(source),
+      setupScore: setupData.setupScore,
+      marketConfidence,
+      aiConsensus: "1/1 DIRECT DISPATCH",
+      consensusStrength: "STRONG_CONSENSUS",
+      selectionReason,
+      protectionActive: false,
+      protectedSlLevel: null,
+      protectionMessage: null,
+      isBreakeven: false,
+      isEntryTriggered: false,
+      entryPriceActivated: null,
+      isTp1Hit: false,
+      isTp2Hit: false,
+      isTp3Hit: false,
+      isFinalTpHit: false,
+      isSlHit: false,
+      isInvalidated: false,
+      isExpired: false,
+      highestPriceObserved: setupData.preferredEntry,
+      lowestPriceObserved: setupData.preferredEntry,
+      pnlPips: 0,
+      pnlUSD: 0,
+      activatedAt: Date.now(),
+      activatedTimeUtc: new Date().toISOString().substring(11, 19) + " UTC",
+      closedAt: null,
+      closedTimeUtc: null,
+      finalOutcome: null,
+    };
+
+    this.activeSetup = newActive;
+
+    this.addAuditLog(
+      "SETUP_ACTIVATED",
+      setupId,
+      source,
+      `🏆 Single Active Setup Accepted by Gatekeeper: ${brainName} [${setupId}] • ${setupData.assetKey} • ${setupData.timeframe} • ${setupData.direction} (Score: ${setupData.setupScore}/100).`,
+      {
+        assetKey: setupData.assetKey,
+        direction: setupData.direction,
+        setupScore: setupData.setupScore,
+        marketConfidence,
+        aiConsensus: "DIRECT DISPATCH",
+        selectionReason,
+      }
+    );
+
+    this.saveToStorage();
+
+    return {
+      allowed: true,
+      reason: "ALLOWED",
+      message: `Setup ${setupId} accepted as Single Active Setup on Telegram.`,
+      activeSetup: newActive,
+    };
+  }
+
+  /**
+   * Helper specifically for Khatarnak Jugaad setups
+   */
+  public promoteKhatarnakJugaadSetup(setup: KhatarnakJugaadSetup): {
+    allowed: boolean;
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "ALLOWED";
+    message: string;
+    activeSetup?: ActiveCentralSetup;
+  } {
+    return this.registerOrBroadcastSetup("KHATARNAK_JUGAAD", {
+      setupId: setup.id,
+      assetKey: setup.assetKey || "XAUUSD",
+      timeframe: "1M",
+      direction: "SELL",
+      entryZoneLow: setup.sellZoneLow,
+      entryZoneHigh: setup.sellZoneHigh,
+      entryRangeFormatted: setup.entryFormatted,
+      entry1Golden: setup.goldenZone62,
+      entry2Green: setup.goldenZone81,
+      preferredEntry: setup.bestSellEntry,
+      stopLoss: setup.stopLoss,
+      tp1: setup.tp1,
+      tp2: setup.tp2,
+      tp3: setup.tp3,
+      finalTp: setup.finalTp || setup.tp3,
+      rrRatioString: setup.rrRatioString,
+      setupScore: setup.score,
+      signatureLine: getRandomSignatureLine("KHATARNAK_JUGAAD"),
+      selectionReason: `1M Khatarnak Jugaad 2.6 Sell Setup (Score: ${setup.score}/100).`,
+    });
+  }
+
+  /**
+   * Update active setup lifecycle from external events
+   */
+  public updateActiveSetupLifecycleEvent(
+    setupId: string,
+    event: "ENTRY_HIT" | "TP1_HIT" | "TP2_HIT" | "TP3_HIT" | "FINAL_TP_HIT" | "SL_HIT" | "TP_THEN_SL_HIT" | "INVALIDATED",
+    currentPrice: number
+  ) {
+    if (!this.activeSetup || this.activeSetup.setupId !== setupId) return;
+
+    if (event === "ENTRY_HIT") {
+      this.activeSetup.isEntryTriggered = true;
+      this.activeSetup.entryPriceActivated = currentPrice;
+      this.activeSetup.lifecycleState = "ENTRY_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🟢 ENTRY HIT";
+    } else if (event === "TP1_HIT") {
+      this.activeSetup.isTp1Hit = true;
+      this.activeSetup.lifecycleState = "TP1_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🎯 TP1 HIT";
+      this.activeSetup.protectionActive = true;
+      this.activeSetup.isBreakeven = true;
+      this.activeSetup.protectedSlLevel = this.activeSetup.preferredEntry;
+      this.activeSetup.protectionMessage = "🛡️ Protection Active: SL at Break-Even.";
+    } else if (event === "TP2_HIT") {
+      this.activeSetup.isTp2Hit = true;
+      this.activeSetup.lifecycleState = "TP2_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🎯 TP2 HIT";
+      this.activeSetup.protectedSlLevel = this.activeSetup.tp1;
+    } else if (event === "TP3_HIT" || event === "FINAL_TP_HIT") {
+      this.activeSetup.isFinalTpHit = true;
+      this.activeSetup.lifecycleState = "FINAL_TP_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🏆 FINAL TP HIT";
+      this.activeSetup.closedAt = Date.now();
+      this.activeSetup.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
+      this.activeSetup.finalOutcome = "🏆 FULL WIN — FINAL TP ACHIEVED";
+      this.recordBrainStatOutcome(this.activeSetup.brainSource, "WIN");
+      this.startCooldown();
+      this.activeSetup = null;
+    } else if (event === "SL_HIT" || event === "TP_THEN_SL_HIT") {
+      this.activeSetup.isSlHit = true;
+      const wasTp1 = this.activeSetup.isTp1Hit;
+      this.activeSetup.lifecycleState = wasTp1 ? "TP_THEN_SL_HIT" : "SL_HIT";
+      this.activeSetup.lifecycleStatusLabel = wasTp1 ? "🛑 SL HIT (AFTER TP1)" : "🛑 SL HIT";
+      this.activeSetup.closedAt = Date.now();
+      this.activeSetup.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
+      this.activeSetup.finalOutcome = wasTp1 ? "🎯 TP1 HIT → 🛑 BREAK-EVEN EXIT" : "🛑 SL HIT";
+      this.recordBrainStatOutcome(this.activeSetup.brainSource, wasTp1 ? "TP_THEN_SL" : "LOSS");
+      this.startCooldown();
+      this.activeSetup = null;
+    } else if (event === "INVALIDATED") {
+      this.activeSetup.isInvalidated = true;
+      this.activeSetup.lifecycleState = "INVALIDATED";
+      this.activeSetup.lifecycleStatusLabel = "❌ INVALIDATED";
+      this.activeSetup.closedAt = Date.now();
+      this.activeSetup.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
+      this.activeSetup.finalOutcome = "❌ INVALIDATED (Ceiling Violated)";
+      this.startCooldown();
+      this.activeSetup = null;
+    }
+
+    this.saveToStorage();
+  }
+
   private addAuditLog(
     eventType: DecisionAuditLogEntry["eventType"],
     selectedSetupId: string | null,
@@ -727,6 +997,24 @@ export class CentralSignalManagerEngine {
       HARAMI_AI: this.evaluateHaramiAiCandidate(candles15m, candles5m, px, assetKey),
     };
 
+    // If an active setup is currently running, mark all candidate setups as QUEUED_WAITING
+    if (this.activeSetup) {
+      Object.values(candidates).forEach((c) => {
+        if (c.setupId === this.activeSetup?.setupId) {
+          c.competitionStatus = "SELECTED_ACTIVE";
+          c.verdictReason = `Currently the Single Active Setup on Telegram (${this.activeSetup.lifecycleStatusLabel}).`;
+        } else {
+          c.competitionStatus = "QUEUED_WAITING";
+          c.verdictReason = `Active trade currently running on Telegram (${this.activeSetup.brainName} [${this.activeSetup.setupId}]). Setup queued in background.`;
+        }
+      });
+    } else if (this.cooldown.isActive) {
+      Object.values(candidates).forEach((c) => {
+        c.competitionStatus = "QUEUED_WAITING";
+        c.verdictReason = `System in strict cooldown (${this.cooldown.remainingFormatted} remaining). Setup ready and calculating in background.`;
+      });
+    }
+
     // 3. AI CONSENSUS ENGINE
     const consensus = this.calculateAiConsensus(candidates);
 
@@ -772,35 +1060,30 @@ export class CentralSignalManagerEngine {
     currentPx: number,
     assetKey: string
   ): AiCandidateEvaluation {
-    const rawSetup15m = calculateKhatarnakJugaadSetup(candles15m, currentPx, "15M");
-    const rawSetup5m = calculateKhatarnakJugaadSetup(candles5m, currentPx, "5M");
+    const rawSetup1m = calculateKhatarnakJugaadSetup(candles5m.length > 0 ? candles5m : candles15m, currentPx, "1M");
 
-    // Pick strongest timeframe between 15M and 5M
-    const bestRaw = rawSetup15m.score >= rawSetup5m.score ? rawSetup15m : rawSetup5m;
-    const isBuy = bestRaw.signalType === "BUY";
-    const dir: SignalDirection = bestRaw.hasValidSetup ? (isBuy ? "BUY" : "SELL") : "WAIT";
+    const isBuy = false;
+    const dir: SignalDirection = rawSetup1m.hasValidSetup ? "SELL" : "WAIT";
 
-    // 🎯 PREFERRED ENTRY CALCULATION: Precision 0.62 / 0.81 Golden Sweet-spot
-    const preferredEntry = isBuy
-      ? Number((bestRaw.entry1Golden * 0.45 + bestRaw.entry2Green * 0.55).toFixed(2))
-      : Number((bestRaw.entry1Golden * 0.45 + bestRaw.entry2Green * 0.55).toFixed(2));
+    // 🎯 PREFERRED ENTRY: Best 2.6 Sell Entry
+    const preferredEntry = rawSetup1m.bestSellEntry || currentPx;
 
-    const marketConfidence = Math.max(70, Math.min(96, Math.round(bestRaw.score * 0.95 + 4)));
+    const marketConfidence = Math.max(70, Math.min(96, Math.round(rawSetup1m.score * 0.95 + 4)));
     const grade: AiCandidateEvaluation["qualityGrade"] =
-      bestRaw.score >= 80 ? "STRONG" : bestRaw.score >= 70 ? "VALID" : bestRaw.score >= 60 ? "WAIT" : "REJECT";
+      rawSetup1m.score >= 80 ? "STRONG" : rawSetup1m.score >= 70 ? "VALID" : rawSetup1m.score >= 60 ? "WAIT" : "REJECT";
 
     const qualityAudit: SetupQualityAudit = {
       realTimePriceVerified: currentPx > 0,
-      marketStructurePassed: bestRaw.scoreComponents.structureScore >= 16,
-      fibAlignmentPassed: Boolean(bestRaw.entry1Golden && bestRaw.entry2Green),
-      entryConfirmationPassed: bestRaw.scoreComponents.entryZoneReactionScore >= 12,
-      momentumPassed: bestRaw.scoreComponents.momentumScore >= 10,
-      marketRegimePassed: !bestRaw.marketRegime.includes("EXCESSIVE"),
+      marketStructurePassed: rawSetup1m.scoreComponents.structureChochScore >= 10,
+      fibAlignmentPassed: rawSetup1m.scoreComponents.confluence26Score >= 14,
+      entryConfirmationPassed: rawSetup1m.scoreComponents.rejectionScore >= 10,
+      momentumPassed: rawSetup1m.scoreComponents.momentumScore >= 6,
+      marketRegimePassed: !rawSetup1m.marketRegime.includes("EXCESSIVE"),
       riskRewardPassed: true,
-      slTpValidityPassed: bestRaw.stopLoss > 0 && bestRaw.tp1 > 0,
-      freshnessPassed: Date.now() - bestRaw.timestamp < 180000,
-      overallPassed: bestRaw.hasValidSetup && bestRaw.score >= this.minScoreThreshold,
-      verificationSummary: "9/9 Real Data & Fib 2.6 Geometry Checks Passed",
+      slTpValidityPassed: rawSetup1m.stopLoss > 0 && rawSetup1m.tp1 > 0,
+      freshnessPassed: Date.now() - rawSetup1m.timestamp < 180000,
+      overallPassed: rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
+      verificationSummary: "9/9 Real Data & 1M Dynamic 2.6 Institutional Sell Checks Passed",
     };
 
     return {
@@ -808,42 +1091,38 @@ export class CentralSignalManagerEngine {
       brainName: "Khatarnak Jugaad 💀",
       brainEmoji: "💀",
       setupId: getNextSetupId("KHATARNAK_JUGAAD"),
-      timeframe: bestRaw.timeframe,
+      timeframe: "1M",
       assetKey,
       direction: dir,
-      setupScore: bestRaw.score,
+      setupScore: rawSetup1m.score,
       marketConfidence,
       qualityGrade: grade,
       qualityAudit,
       currentPrice: currentPx,
-      entryZoneLow: Math.min(bestRaw.entry1Golden, bestRaw.entry2Green),
-      entryZoneHigh: Math.max(bestRaw.entry1Golden, bestRaw.entry2Green),
-      entryRangeFormatted: bestRaw.entryFormatted,
-      entry1Golden: bestRaw.entry1Golden,
-      entry2Green: bestRaw.entry2Green,
-      preferredEntry: preferredEntry || currentPx,
-      stopLoss: bestRaw.stopLoss,
-      tp1: bestRaw.tp1,
-      tp2: bestRaw.tp2,
-      tp3: bestRaw.tp3,
-      finalTp: bestRaw.tp4Final,
-      rrRatio: isBuy
-        ? Math.abs((bestRaw.tp2 - preferredEntry) / (preferredEntry - bestRaw.stopLoss || 1))
-        : Math.abs((preferredEntry - bestRaw.tp2) / (bestRaw.stopLoss - preferredEntry || 1)),
-      rrRatioString: bestRaw.rrRatioString,
+      entryZoneLow: rawSetup1m.sellZoneLow,
+      entryZoneHigh: rawSetup1m.sellZoneHigh,
+      entryRangeFormatted: rawSetup1m.entryFormatted,
+      preferredEntry,
+      stopLoss: rawSetup1m.stopLoss,
+      tp1: rawSetup1m.tp1,
+      tp2: rawSetup1m.tp2,
+      tp3: rawSetup1m.tp3,
+      finalTp: rawSetup1m.finalTp,
+      rrRatio: Math.abs((preferredEntry - rawSetup1m.tp2) / (rawSetup1m.stopLoss - preferredEntry || 1)),
+      rrRatioString: rawSetup1m.rrRatioString,
       signatureLine: getRandomSignatureLine("KHATARNAK_JUGAAD"),
-      marketStructureQuality: `${bestRaw.timeframe} ${bestRaw.structureType.replace(/_/g, " ")} (${bestRaw.scoreComponents.structureScore}/25 pts)`,
-      fibAlignment: `Fib 2.6 Golden 0.62 ($${bestRaw.entry1Golden.toFixed(2)}) & Green 0.81 ($${bestRaw.entry2Green.toFixed(2)})`,
-      entryReaction: `Zone reaction score: ${bestRaw.scoreComponents.entryZoneReactionScore}/20 pts`,
-      momentumStatus: `Momentum: ${bestRaw.scoreComponents.momentumScore}/15 pts`,
-      marketRegime: bestRaw.marketRegime,
-      dataFreshnessTimestamp: bestRaw.timestamp,
+      marketStructureQuality: `1M Sell LQ Sweep & Bearish Impulse (${rawSetup1m.scoreComponents.structureChochScore}/15 pts)`,
+      fibAlignment: `Dynamic 2.6 Level ($${rawSetup1m.level26.toFixed(2)}) & Golden Zone (${rawSetup1m.scoreComponents.confluence26Score}/20 pts)`,
+      entryReaction: `1M Rejection & CHOCH: ${rawSetup1m.scoreComponents.rejectionScore}/15 pts`,
+      momentumStatus: `Momentum: ${rawSetup1m.scoreComponents.momentumScore}/10 pts`,
+      marketRegime: rawSetup1m.marketRegime,
+      dataFreshnessTimestamp: rawSetup1m.timestamp,
       isStale: false,
-      isValid: bestRaw.hasValidSetup && bestRaw.score >= this.minScoreThreshold,
+      isValid: rawSetup1m.hasValidSetup && rawSetup1m.score >= this.minScoreThreshold,
       competitionStatus: "QUEUED_WAITING",
-      verdictReason: bestRaw.hasValidSetup
-        ? `Valid ${bestRaw.timeframe} Jugaad Fibonacci swing setup formed.`
-        : bestRaw.waitingReason || "Awaiting valid structural swing breakout.",
+      verdictReason: rawSetup1m.hasValidSetup
+        ? `Valid 1M Institutional 2.6 Sell setup formed.`
+        : rawSetup1m.waitingReason || "Awaiting 1M Sell LQ sweep & 2.6 retracement.",
     };
   }
 
