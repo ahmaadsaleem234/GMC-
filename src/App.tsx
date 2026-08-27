@@ -36,6 +36,7 @@ import { KhatarnakJugaadView } from "./components/KhatarnakJugaadView";
 import { CentralSignalManagerView } from "./components/CentralSignalManagerView";
 import { PrecisionHunterView } from "./components/PrecisionHunterView";
 import { ModuleRegistryView } from "./components/ModuleRegistryView";
+import { SentinelView } from "./components/SentinelView";
 import { useCentralSignalManagerWatcher } from "./services/useCentralSignalManagerWatcher";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
@@ -163,7 +164,7 @@ const INITIAL_TRADES: TradeLogEntry[] = [
 ];
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<string>("landing");
+  const [activeTab, setActiveTab] = useState<string>("gmcgold");
   const [tabHistory, setTabHistory] = useState<string[]>([]);
   const [activeAssetKey, setActiveAssetKey] = useState<string>("XAUUSD");
   const [timeframe, setTimeframe] = useState<string>("15min");
@@ -177,8 +178,8 @@ export function App() {
   // Terminal Auth & Enterprise Access State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] = useState<boolean>(false);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [loggedInUser, setLoggedInUser] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [loggedInUser, setLoggedInUser] = useState<string | null>("GMC Trader");
 
   // Telegram Integration Modal State
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState<boolean>(false);
@@ -189,13 +190,12 @@ export function App() {
   // Institutional D3 Heatmap Overlay State
   const [isHeatmapOverlayOpen, setIsHeatmapOverlayOpen] = useState<boolean>(false);
 
-  // 1. Restore Persistent Session automatically on page load / revisit (14-Day "Remember Me")
+  // 1. Restore Persistent Session automatically on page load / revisit
   useEffect(() => {
     const validSession = getValidSession();
     if (validSession) {
       setIsLoggedIn(true);
       setLoggedInUser(validSession.username);
-      setActiveTab("gmcgold");
     }
   }, []);
 
@@ -206,16 +206,13 @@ export function App() {
     setLoggedInUser(username);
     setIsLoginModalOpen(false);
     setIsEnterpriseModalOpen(false);
-    setActiveTab("gmcgold");
   };
 
   const handleLogout = () => {
     clearSession();
-    setIsLoggedIn(false);
-    setLoggedInUser(null);
+    setIsLoggedIn(true);
+    setLoggedInUser("GMC Trader");
     setIsLoginModalOpen(false);
-    setActiveTab("landing");
-    setIsEnterpriseModalOpen(true);
   };
 
   // 30-Minute Inactivity Tracker
@@ -335,14 +332,6 @@ export function App() {
     setIsCommunityPopupOpen(false);
   };
 
-  // 🔴 STRICT REDIRECT TO LUXURY INSTITUTIONAL ENTERPRISE ACCESS SCREEN IF NOT AUTHENTICATED
-  useEffect(() => {
-    if (!isLoggedIn && activeTab !== "landing") {
-      setActiveTab("landing");
-      setIsEnterpriseModalOpen(true);
-    }
-  }, [isLoggedIn, activeTab]);
-
   const { prices, currentPrice, isConnected, latencyMs } = useLiveData(activeAssetKey);
   const { candles, loading, appendTick } = useCandleData(activeAssetKey, timeframe);
   const { candles: candles15m } = useCandleData(activeAssetKey, "15min");
@@ -370,10 +359,6 @@ export function App() {
   useAutoTelegramBroadcaster();
 
   const handleOpenRiskCopilot = (assetKey?: string, type?: "BUY" | "SELL") => {
-    if (!isLoggedIn) {
-      setIsEnterpriseModalOpen(true);
-      return;
-    }
     if (assetKey) setCopilotAssetKey(assetKey);
     if (type) setCopilotType(type);
     setIsCopilotOpen(true);
@@ -399,15 +384,6 @@ export function App() {
   };
 
   const handleSelectTab = (newTab: string) => {
-    if (!isLoggedIn && newTab !== "landing") {
-      setIsEnterpriseModalOpen(true);
-      return;
-    }
-    // RBAC: Restrict Enterprise Admin Control Panel to Admin user (Ahmed)
-    if (newTab === "admin" && (!loggedInUser?.includes("Ahmed") && loggedInUser !== "Ahmed")) {
-      alert("Access Denied: GMC Enterprise Security & Admin Control Panel is strictly restricted to Super Admin (Ahmed).");
-      return;
-    }
     if (newTab !== activeTab) {
       setTabHistory((prev) => [...prev, activeTab]);
       setActiveTab(newTab);
@@ -431,71 +407,7 @@ export function App() {
     }
   };
 
-  // 🔴 STRICT PUBLIC LANDING PAGE FOR GUEST VISITORS
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-3d-obsidian text-slate-300 font-sans flex flex-col selection:bg-amber-500 selection:text-black">
-        {/* Enterprise Access Required Gate Modal */}
-        <EnterpriseAccessModal
-          isOpen={isEnterpriseModalOpen}
-          onClose={() => setIsEnterpriseModalOpen(false)}
-          onRequestWhatsApp={() => {
-            window.open("https://chat.whatsapp.com/sample-gmc-trading-ai", "_blank");
-          }}
-          onOpenLogin={() => {
-            setIsEnterpriseModalOpen(false);
-            setIsLoginModalOpen(true);
-          }}
-        />
-
-        {/* Live Terminal Authentication Modal */}
-        <LiveTerminalAuthModal
-          isOpen={isLoginModalOpen}
-          onClose={() => setIsLoginModalOpen(false)}
-          isLoggedIn={isLoggedIn}
-          loggedInUser={loggedInUser}
-          onLoginSuccess={handleLoginSuccess}
-          onLogout={handleLogout}
-          onContactWhatsApp={() => {
-            window.open("https://chat.whatsapp.com/sample-gmc-trading-ai", "_blank");
-          }}
-        />
-
-        {/* Institutional Marketing Landing Page (Strictly Public Website) */}
-        <GmcLandingPage
-          currentGoldPrice={currentPrice}
-          onOpenLiveTerminal={() => {
-            setIsEnterpriseModalOpen(true);
-          }}
-          onOpenWhatsApp={() => {
-            setIsCommunityPopupOpen(true);
-          }}
-          onOpenTelegram={() => {
-            setIsEnterpriseModalOpen(true);
-          }}
-        />
-
-        {/* Floating VIP WhatsApp Channel Link */}
-        <WhatsAppButton />
-
-        {/* 1. First Timed Popup (5 Seconds) */}
-        <WhatsAppChannelModal
-          isOpen={isFirstPopupOpen}
-          onClose={handleCloseFirstPopup}
-          onJoin={handleJoinWhatsApp}
-        />
-
-        {/* 2. Smart GMC WhatsApp Community Popup (1 Minute / Continued Usage) */}
-        <GmcWhatsAppCommunityModal
-          isOpen={isCommunityPopupOpen}
-          onClose={handleCloseCommunityPopup}
-          onJoin={handleJoinWhatsApp}
-        />
-      </div>
-    );
-  }
-
-  // 🟢 UNLOCKED PROFESSIONAL AI DASHBOARD FOR VERIFIED MEMBERS
+  // 🟢 UNLOCKED PROFESSIONAL AI DASHBOARD WITH ALL MODULES AND TABS ACCESSIBLE
   return (
     <div className="min-h-screen bg-3d-obsidian text-slate-300 font-sans flex flex-col selection:bg-amber-500 selection:text-black">
       {/* Main Top Navigation & Ticker Header */}
@@ -631,6 +543,33 @@ export function App() {
               assetKey={activeAssetKey}
             />
           </>
+        )}
+
+        {(activeTab === "sentinel" || activeTab === "gmc_sentinel") && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["sentinel"] || accounts["central_signal_manager"] || accounts["precision_hunter"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("sentinel", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice - 3.0,
+                  takeProfit: currentPrice + 12.0,
+                  lotSize: 0.15,
+                  signalSource: "⚡ GMC SENTINEL — Master AI Trading Terminal",
+                })
+              }
+            />
+            <SentinelView
+              currentPrice={currentPrice}
+              prices={prices}
+              latencyMs={latencyMs}
+              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+              onOpenCentralManager={() => setActiveTab("central_signal_manager")}
+              onExecuteDemoTrade={(tradeData) => executeTabTrade("sentinel", tradeData)}
+            />
+          </div>
         )}
 
         {(activeTab === "module_registry" || activeTab === "registry") && (
@@ -1362,6 +1301,19 @@ export function App() {
         isOpen={isTelegramModalOpen}
         onClose={() => setIsTelegramModalOpen(false)}
         loggedInUser={loggedInUser}
+      />
+
+      {/* Enterprise Access Modal (Optional) */}
+      <EnterpriseAccessModal
+        isOpen={isEnterpriseModalOpen}
+        onClose={() => setIsEnterpriseModalOpen(false)}
+        onRequestWhatsApp={() => {
+          window.open("https://chat.whatsapp.com/sample-gmc-trading-ai", "_blank");
+        }}
+        onOpenLogin={() => {
+          setIsEnterpriseModalOpen(false);
+          setIsLoginModalOpen(true);
+        }}
       />
 
       {/* 1. First Timed Popup (5 Seconds) */}

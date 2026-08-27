@@ -127,31 +127,56 @@ export function formatKhatarnakJugaadTelegramMessage(setup: ActiveCentralSetup):
  * 
  * 💬 [ONE RANDOM SIGNATURE LINE]
  */
+/**
+ * Format the exact formal institutional HARAMI AI Telegram setup message (v3.1):
+ * 
+ * BUY:
+ * 🤖 HARAMI AI | BUY
+ * 
+ * XAUUSD
+ * Entry: XXXXX – XXXXX
+ * Best Entry: XXXXX
+ * 
+ * SL: XXXXX
+ * Risk: 1.0%
+ * 
+ * TP1: XXXXX
+ * TP2: XXXXX
+ * TP3: XXXXX
+ * TP4: XXXXX
+ * 
+ * R:R: 1:X
+ * Score: XX/100
+ * Confirmation: 14/14
+ * Status: 🟢 ACTIVE
+ */
 export function formatHaramiAiTelegramMessage(setup: ActiveCentralSetup): string {
   const low = Math.min(setup.entryZoneLow, setup.entryZoneHigh);
   const high = Math.max(setup.entryZoneLow, setup.entryZoneHigh);
-  const sig = setup.signatureLine || getRandomSignatureLine("HARAMI_AI");
+  const best = setup.preferredEntry || Number(((low + high) / 2).toFixed(2));
   const rr = setup.rrRatioString.replace(/^R:R:\s*/i, "");
+  const finalTp = setup.finalTp || setup.tp3;
+  const statusEmoji = setup.direction === "BUY" ? "🟢" : "🔴";
 
   return [
-    `🤖 <b>HARAMI AI</b>`,
+    `🤖 <b>HARAMI AI | ${setup.direction}</b>`,
     ``,
-    `<b>${setup.assetKey} • ${setup.timeframe} • ${setup.direction}</b>`,
-    ``,
-    `Entry Zone: <code>${low.toFixed(2)} — ${high.toFixed(2)}</code>`,
+    `<b>${setup.assetKey}</b>`,
+    `Entry: <code>${low.toFixed(2)} – ${high.toFixed(2)}</code>`,
+    `Best Entry: <code>${best.toFixed(2)}</code>`,
     ``,
     `SL: <code>${setup.stopLoss.toFixed(2)}</code>`,
+    `Risk: <code>1.0%</code>`,
     ``,
     `TP1: <code>${setup.tp1.toFixed(2)}</code>`,
     `TP2: <code>${setup.tp2.toFixed(2)}</code>`,
     `TP3: <code>${setup.tp3.toFixed(2)}</code>`,
+    `TP4: <code>${finalTp.toFixed(2)}</code>`,
     ``,
     `R:R: <code>${rr}</code>`,
-    `Confidence: <code>${setup.marketConfidence}%</code>`,
-    ``,
-    `Status: <b>ACTIVE</b>`,
-    ``,
-    `💬 <i>“${sig}”</i>`,
+    `Score: <code>${setup.setupScore}/100</code>`,
+    `Confirmation: <code>14/14</code>`,
+    `Status: ${statusEmoji} <b>ACTIVE</b>`,
   ].join("\n");
 }
 

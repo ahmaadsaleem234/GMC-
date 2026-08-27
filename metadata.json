@@ -1,6 +1,6 @@
 {
   "name": "GMC AI Brain Trading Dashboard",
-  "description": "Institutional trading platform featuring Khatarnak Jugaad Live 3D AI Market Radar Engine with real-time tick visualization, Central Signal Manager, War Room AI consensus, and real-time market feeds.",
+  "description": "Institutional trading platform featuring GMC Sentinel Master AI Trading Terminal, Khatarnak Jugaad Live 3D AI Market Radar Engine, Precision Hunter AI, Central Signal Manager, and real-time market feeds.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

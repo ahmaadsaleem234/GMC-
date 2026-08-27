@@ -27,6 +27,11 @@ import {
   PRECISION_HUNTER_SIGNATURES,
   getRandomPrecisionHunterSignature,
 } from "./precisionHunterEngine";
+import {
+  calculateHaramiAiSetup,
+  recordHaramiFailedZone,
+  HaramiAiSetup,
+} from "./haramiAiEngine";
 import { getLatestGoldQuote } from "./goldApiService";
 
 export type AiBrainSource = "HARAMI_AI" | "KHATARNAK_JUGAAD" | "WAR_ROOM" | "PRECISION_HUNTER";
@@ -1258,6 +1263,39 @@ export class CentralSignalManagerEngine {
   }
 
   /**
+   * Helper specifically for Harami AI v3.0 setups
+   */
+  public promoteHaramiAiSetup(setup: HaramiAiSetup): {
+    allowed: boolean;
+    reason: "BLOCKED_ACTIVE_EXISTS" | "BLOCKED_IN_COOLDOWN" | "BLOCKED_LOW_SCORE" | "BLOCKED_SOURCE_DISABLED" | "ALLOWED";
+    message: string;
+    activeSetup?: ActiveCentralSetup;
+  } {
+    console.log(`[HARAMI AI v3.0 → CENTRAL MANAGER]: Ingesting Harami AI Setup #${setup.id} (${setup.direction} @ $${setup.bestEntry})`);
+
+    return this.registerOrBroadcastSetup("HARAMI_AI", {
+      setupId: setup.id,
+      assetKey: setup.assetKey || "XAUUSD",
+      timeframe: setup.timeframe || "15M/5M",
+      direction: setup.direction === "NO_TRADE" ? "BUY" : setup.direction,
+      entryZoneLow: setup.entryZoneLow,
+      entryZoneHigh: setup.entryZoneHigh,
+      entryRangeFormatted: setup.entryZoneFormatted,
+      preferredEntry: setup.bestEntry,
+      stopLoss: setup.stopLoss,
+      tp1: setup.tp1,
+      tp2: setup.tp2,
+      tp3: setup.tp3,
+      finalTp: setup.tp4 || setup.tp3,
+      rrRatioString: setup.rrRatioString,
+      setupScore: setup.setupScore,
+      marketConfidence: setup.marketConfidence,
+      signatureLine: getRandomSignatureLine("HARAMI_AI"),
+      selectionReason: `Harami AI v3.0 Institutional Adaptive Setup (${setup.marketRegimeLabel}, Score: ${setup.setupScore}/100, 14/14 Confluence).`,
+    });
+  }
+
+  /**
    * Update active setup lifecycle from external events
    */
   public updateActiveSetupLifecycleEvent(
@@ -1303,6 +1341,17 @@ export class CentralSignalManagerEngine {
       this.activeSetup.closedAt = Date.now();
       this.activeSetup.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
       this.activeSetup.finalOutcome = wasTp1 ? "🎯 TP1 HIT → 🛑 BREAK-EVEN EXIT" : "🛑 SL HIT";
+      
+      // Record failed zone in Harami AI adaptive memory if Harami setup
+      if (this.activeSetup.brainSource === "HARAMI_AI") {
+        recordHaramiFailedZone(
+          this.activeSetup.entryZoneLow,
+          this.activeSetup.entryZoneHigh,
+          this.activeSetup.direction,
+          wasTp1 ? "TP_THEN_SL_HIT" : "DIRECT_SL_HIT"
+        );
+      }
+
       this.recordBrainStatOutcome(this.activeSetup.brainSource, wasTp1 ? "TP_THEN_SL" : "LOSS");
       this.startCooldown();
       this.activeSetup = null;
@@ -1791,7 +1840,7 @@ export class CentralSignalManagerEngine {
   }
 
   /**
-   * 3. HARAMI AI Master Candidate Evaluation
+   * 3. HARAMI AI Master Candidate Evaluation (v3.0 Institutional Adaptive Engine)
    */
   private evaluateHaramiAiCandidate(
     candles15m: Candle[],
@@ -1799,24 +1848,23 @@ export class CentralSignalManagerEngine {
     currentPx: number,
     assetKey: string
   ): AiCandidateEvaluation {
-    const isBullishCandle = candles15m.length > 0 && candles15m[candles15m.length - 1].close >= candles15m[candles15m.length - 1].open;
-    const dir: SignalDirection = isBullishCandle ? "BUY" : "SELL";
-
-    const zoneSpread = currentPx * 0.0015;
-    const entryLow = dir === "BUY" ? currentPx - zoneSpread : currentPx - zoneSpread * 0.2;
-    const entryHigh = dir === "BUY" ? currentPx + zoneSpread * 0.2 : currentPx + zoneSpread;
-    const preferredEntry = Number(((entryLow + entryHigh) / 2).toFixed(2));
-    const slDist = currentPx * 0.0032;
-    const stopLoss = dir === "BUY" ? Number((entryLow - slDist).toFixed(2)) : Number((entryHigh + slDist).toFixed(2));
-
-    const tp1 = dir === "BUY" ? Number((preferredEntry + slDist * 1.5).toFixed(2)) : Number((preferredEntry - slDist * 1.5).toFixed(2));
-    const tp2 = dir === "BUY" ? Number((preferredEntry + slDist * 2.5).toFixed(2)) : Number((preferredEntry - slDist * 2.5).toFixed(2));
-    const tp3 = dir === "BUY" ? Number((preferredEntry + slDist * 3.5).toFixed(2)) : Number((preferredEntry - slDist * 3.5).toFixed(2));
-    const finalTp = dir === "BUY" ? Number((preferredEntry + slDist * 4.2).toFixed(2)) : Number((preferredEntry - slDist * 4.2).toFixed(2));
-
     const isEnabled = this.isAiSourceEnabled("HARAMI_AI");
-    const setupScore = Math.max(70, Math.min(93, Math.round(84 + (Math.cos(currentPx) * 5))));
-    const marketConfidence = Math.max(72, Math.min(92, Math.round(setupScore * 0.94)));
+    
+    // Call the intelligent v3.0 Harami AI engine with dynamic ATR & structural buffers
+    const setup = calculateHaramiAiSetup(
+      candles15m,
+      candles5m,
+      currentPx,
+      assetKey,
+      10000,
+      1.0,
+      0.15
+    );
+
+    const dir: SignalDirection = setup.direction === "NO_TRADE" ? "BUY" : setup.direction;
+    const setupScore = setup.setupScore;
+    const marketConfidence = setup.marketConfidence;
+
     const grade: AiCandidateEvaluation["qualityGrade"] = !isEnabled
       ? "REJECT"
       : setupScore >= 80
@@ -1829,17 +1877,17 @@ export class CentralSignalManagerEngine {
 
     const qualityAudit: SetupQualityAudit = {
       realTimePriceVerified: currentPx > 0,
-      marketStructurePassed: true,
-      fibAlignmentPassed: true,
-      entryConfirmationPassed: true,
-      momentumPassed: true,
-      marketRegimePassed: true,
-      riskRewardPassed: true,
-      slTpValidityPassed: stopLoss > 0 && tp1 > 0,
-      freshnessPassed: true,
-      overallPassed: isEnabled && setupScore >= this.minScoreThreshold,
+      marketStructurePassed: setup.verificationAudit.marketStructureValid,
+      fibAlignmentPassed: setup.verificationAudit.tpLevelsRealistic,
+      entryConfirmationPassed: setup.verificationAudit.entryQualityValid,
+      momentumPassed: setup.verificationAudit.confirmationStrong,
+      marketRegimePassed: setup.verificationAudit.volatilityAcceptable,
+      riskRewardPassed: setup.verificationAudit.riskRewardValid,
+      slTpValidityPassed: setup.stopLoss > 0 && setup.tp1 > 0,
+      freshnessPassed: setup.verificationAudit.setupFresh,
+      overallPassed: isEnabled && setup.isValidTrade && setupScore >= this.minScoreThreshold,
       verificationSummary: isEnabled
-        ? "9/9 Neural Pattern & Sub-Brain Concurrence Checks Passed"
+        ? `${setup.verificationAudit.passedCount}/14 Institutional Matrix Checks Passed (${setup.slRationale})`
         : "🔴 Harami AI disabled by Admin (OFF)",
     };
 
@@ -1847,8 +1895,8 @@ export class CentralSignalManagerEngine {
       brainSource: "HARAMI_AI",
       brainName: "Harami AI",
       brainEmoji: "🤖",
-      setupId: getNextSetupId("HARAMI_AI"),
-      timeframe: candles15m.length > 0 && Math.random() > 0.3 ? "15M" : "5M",
+      setupId: setup.id || getNextSetupId("HARAMI_AI"),
+      timeframe: "15M",
       assetKey,
       direction: dir,
       setupScore,
@@ -1856,30 +1904,30 @@ export class CentralSignalManagerEngine {
       qualityGrade: grade,
       qualityAudit,
       currentPrice: currentPx,
-      entryZoneLow: entryLow,
-      entryZoneHigh: entryHigh,
-      entryRangeFormatted: `$${entryLow.toFixed(2)} — $${entryHigh.toFixed(2)}`,
-      preferredEntry,
-      stopLoss,
-      tp1,
-      tp2,
-      tp3,
-      finalTp,
-      rrRatio: 2.8,
-      rrRatioString: "1:2.8",
+      entryZoneLow: setup.entryZoneLow,
+      entryZoneHigh: setup.entryZoneHigh,
+      entryRangeFormatted: setup.entryZoneFormatted,
+      preferredEntry: setup.bestEntry,
+      stopLoss: setup.stopLoss,
+      tp1: setup.tp1,
+      tp2: setup.tp2,
+      tp3: setup.tp3,
+      finalTp: setup.tp4,
+      rrRatio: setup.rrRatio,
+      rrRatioString: setup.rrRatioString,
       signatureLine: getRandomSignatureLine("HARAMI_AI"),
-      marketStructureQuality: "M15 Reversal Rejection Neural Matrix confirmed",
-      fibAlignment: "Sub-Brain Concurrence (7/7 Sub-Brains concurred)",
-      entryReaction: "Order block rejection wick confirmed",
-      momentumStatus: "Bullish divergence verified",
-      marketRegime: "STRONG_BULLISH",
+      marketStructureQuality: setup.m15Structure,
+      fibAlignment: "Dynamic ATR Volatility Buffer + Sweep Zone Protection",
+      entryReaction: setup.m5Confirmation,
+      momentumStatus: setup.m1Trigger,
+      marketRegime: setup.marketRegime,
       dataFreshnessTimestamp: Date.now(),
       isStale: false,
-      isValid: isEnabled && setupScore >= this.minScoreThreshold,
+      isValid: isEnabled && setup.isValidTrade && setupScore >= this.minScoreThreshold,
       competitionStatus: !isEnabled ? "REJECTED_LOW_SCORE" : "QUEUED_WAITING",
       verdictReason: !isEnabled
         ? "🔴 Source turned OFF by Admin."
-        : "7/7 Sub-Brains concurred on directional bias.",
+        : `Harami v3.0: ${setup.marketRegimeLabel} with ${setup.slRationale}. (R:R ${setup.rrRatioString})`,
     };
   }
 

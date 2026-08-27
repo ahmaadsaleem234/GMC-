@@ -34,6 +34,16 @@ export interface ModuleRegistryItem {
 
 export const MODULE_REGISTRY: ModuleRegistryItem[] = [
   {
+    id: "sentinel",
+    label: "⚡ GMC SENTINEL — Master AI Trading Terminal & Perception Command Center",
+    icon: Zap,
+    category: "Core",
+    desc: "Master AI Perception & Execution Terminal: 4-Brain Neural Synapse, Live Candlestick HUD Matrix, Multi-Asset Setup Radar, Opportunity Heatmap, Dynamic Risk Engine, and Sentinel Core Apex Gatekeeper.",
+    emoji: "⚡",
+    tag: "MASTER AI TERMINAL",
+    tagColor: "bg-cyan-500/30 text-cyan-300 border-cyan-400/80 shadow-[0_0_18px_rgba(6,182,212,0.7)] animate-pulse font-black",
+  },
+  {
     id: "module_registry",
     label: "📋 GMC MODULE REGISTRY — Complete AI Engine & Desk Directory",
     icon: LayoutGrid,

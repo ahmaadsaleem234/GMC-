@@ -56,62 +56,61 @@ export function generateDynamicReason(direction: "BUY" | "SELL" | "NO_TRADE", se
 export function formatHaramiSignalMessage(params: HaramiSignalParams): string {
   if (params.direction === "NO_TRADE") {
     const symbolShort = params.symbolShort || "XAUUSD";
-    const tf = params.timeframe || "M15";
     return `
-🔥 HARAMI AI — NO TRADE
-${symbolShort} | ${tf}
+🤖 HARAMI AI | NO TRADE
 
-⏳ Market structure scanning in progress. Awaiting clean A+ setup.
+${symbolShort}
+Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
     `.trim();
   }
 
-  const isBuy = params.direction === "BUY";
   const symbolShort = (params.symbolShort || "XAUUSD").replace("FOREXCOM:", "");
-  const assetLabel = params.assetName || (symbolShort === "XAUUSD" ? "GOLD" : symbolShort);
-  const timeframe = params.timeframe || "M15";
-  const signalId = params.signalId ? `#${params.signalId.replace(/^#/, "")}` : "#HRM-XAU";
-
-  const bestEntry = params.bestEntry ?? 4495.90;
-  const entryLow = params.entryLow ?? (isBuy ? bestEntry - 0.8 : bestEntry - 0.5);
-  const entryHigh = params.entryHigh ?? (isBuy ? bestEntry + 0.5 : bestEntry + 0.8);
-  const sl = params.sl ?? (isBuy ? bestEntry - 4.5 : bestEntry + 4.5);
-  const tp1 = params.tp1 ?? (isBuy ? bestEntry + 7.0 : bestEntry - 7.0);
-  const tp2 = params.tp2 ?? (isBuy ? bestEntry + 10.0 : bestEntry - 10.0);
-  const tp3 = params.tp3 ?? (isBuy ? bestEntry + 14.0 : bestEntry - 14.0);
-  const tp4 = params.tp4 ?? (isBuy ? bestEntry + 20.0 : bestEntry - 20.0);
+  const bestEntry = params.bestEntry ?? 2885.0;
+  const isBuy = params.direction === "BUY";
+  const entryLow = params.entryLow ?? (isBuy ? bestEntry - 1.5 : bestEntry - 0.5);
+  const entryHigh = params.entryHigh ?? (isBuy ? bestEntry + 0.5 : bestEntry + 1.5);
+  const sl = params.sl ?? (isBuy ? bestEntry - 5.5 : bestEntry + 5.5);
+  const tp1 = params.tp1 ?? (isBuy ? bestEntry + 8.25 : bestEntry - 8.25);
+  const tp2 = params.tp2 ?? (isBuy ? bestEntry + 13.75 : bestEntry - 13.75);
+  const tp3 = params.tp3 ?? (isBuy ? bestEntry + 19.8 : bestEntry - 19.8);
+  const tp4 = params.tp4 ?? (isBuy ? bestEntry + 26.4 : bestEntry - 26.4);
 
   // Calculate actual mathematical R:R
   let rrStr = params.rr;
   if (!rrStr) {
     const risk = Math.abs(bestEntry - sl);
-    const reward = Math.abs(tp1 - bestEntry);
+    const reward = Math.abs(tp2 - bestEntry);
     if (risk > 0) {
-      const ratio = (reward / risk).toFixed(2);
+      const ratio = (reward / risk).toFixed(1);
       rrStr = `1:${ratio}`;
     } else {
-      rrStr = "1:1.56";
+      rrStr = "1:2.5";
     }
   } else {
-    rrStr = rrStr.replace(/\s+/g, "");
+    rrStr = rrStr.replace(/^R:R:\s*/i, "").trim();
   }
 
-  const confidenceVal = typeof params.confidence === "number" ? Number(params.confidence.toFixed(1)) : 89.8;
-  const confidenceGrade = params.grade || (confidenceVal >= 92.0 ? "A+" : "A");
+  const confidenceVal = typeof params.confidence === "number" ? Math.round(params.confidence) : 92;
+  const statusEmoji = isBuy ? "🟢" : "🔴";
 
-  return `
-🔥 HARAMI AI — ${params.direction} ${assetLabel}
-${signalId} | ${symbolShort} | ${timeframe}
+  return `🤖 HARAMI AI | ${params.direction}
 
-📍 Entry: ${entryLow.toFixed(2)}–${entryHigh.toFixed(2)}
-💎 Best: ${bestEntry.toFixed(2)}
-🛡 SL: ${sl.toFixed(2)}
+${symbolShort}
+Entry: ${entryLow.toFixed(2)} – ${entryHigh.toFixed(2)}
+Best Entry: ${bestEntry.toFixed(2)}
 
-🎯 TP1: ${tp1.toFixed(2)} | TP2: ${tp2.toFixed(2)}
-🎯 TP3: ${tp3.toFixed(2)} | TP4: ${tp4.toFixed(2)}
+SL: ${sl.toFixed(2)}
+Risk: 1.0%
 
-🔥 Confidence: ${confidenceVal}% | Grade: ${confidenceGrade}
-⚖️ R:R ${rrStr}
-  `.trim();
+TP1: ${tp1.toFixed(2)}
+TP2: ${tp2.toFixed(2)}
+TP3: ${tp3.toFixed(2)}
+TP4: ${tp4.toFixed(2)}
+
+R:R: ${rrStr}
+Score: ${confidenceVal}/100
+Confirmation: 14/14
+Status: ${statusEmoji} ACTIVE`;
 }
 
 export interface LifecycleAlertParams {

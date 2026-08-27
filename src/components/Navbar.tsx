@@ -122,6 +122,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
+          {/* ⚡ GMC SENTINEL MASTER AI TERMINAL APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-gmc-sentinel-btn"
+            onClick={() => setActiveTab("sentinel")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "sentinel"
+                ? "bg-gradient-to-r from-cyan-400 via-teal-400 to-blue-500 text-slate-950 border border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.8)] animate-pulse"
+                : "bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 hover:bg-cyan-500/30"
+            }`}
+            title="Launch ⚡ GMC SENTINEL Master AI Trading Terminal"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span className="tracking-wide">GMC SENTINEL</span>
+          </button>
+
           {/* 📋 GMC MODULE REGISTRY APEX SHORTCUT BUTTON */}
           <button
             id="header-nav-module-registry-btn"
