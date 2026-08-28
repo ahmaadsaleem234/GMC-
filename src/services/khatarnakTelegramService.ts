@@ -1,6 +1,7 @@
-import { KhatarnakJugaadSetup, JugaadTimeframe, SetupFinalResult } from "./khatarnakJugaadEngine";
-import { getTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram";
-import { centralSignalManager } from "./centralSignalManager";
+import { KhatarnakJugaadSetup, JugaadTimeframe, SetupFinalResult } from "./khatarnakJugaadEngine.js";
+import { getTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram.js";
+import { centralSignalManager } from "./centralSignalManager.js";
+import { safeLocalStorage } from "../utils/safeStorage.js";
 
 export type JugaadTelegramEventType =
   | "NEW_SETUP"
@@ -36,15 +37,13 @@ const ALERT_LOGS_STORAGE_KEY = "kj_telegram_alert_logs_v2";
  */
 export function getDispatchedEventKeys(): Set<string> {
   try {
-    if (typeof localStorage !== "undefined") {
-      const raw = localStorage.getItem(DISPATCHED_EVENTS_STORAGE_KEY);
-      if (raw) {
-        const parsed: string[] = JSON.parse(raw);
-        return new Set(parsed);
-      }
+    const raw = safeLocalStorage.getItem(DISPATCHED_EVENTS_STORAGE_KEY);
+    if (raw) {
+      const parsed: string[] = JSON.parse(raw);
+      return new Set(parsed);
     }
   } catch (e) {
-    console.error("Failed to load dispatched event keys", e);
+    // Graceful fallback
   }
   return new Set();
 }
@@ -57,11 +56,9 @@ export function recordDispatchedEventKey(setupId: string, event: JugaadTelegramE
     const keys = getDispatchedEventKeys();
     keys.add(`${setupId}::${event}`);
     const array = Array.from(keys).slice(-500);
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(DISPATCHED_EVENTS_STORAGE_KEY, JSON.stringify(array));
-    }
+    safeLocalStorage.setItem(DISPATCHED_EVENTS_STORAGE_KEY, JSON.stringify(array));
   } catch (e) {
-    console.error("Failed to save dispatched event key", e);
+    // Graceful fallback
   }
 }
 
@@ -78,14 +75,12 @@ export function isEventAlreadyDispatched(setupId: string, event: JugaadTelegramE
  */
 export function getRecentAlertLogs(): DispatchedJugaadAlert[] {
   try {
-    if (typeof localStorage !== "undefined") {
-      const raw = localStorage.getItem(ALERT_LOGS_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
+    const raw = safeLocalStorage.getItem(ALERT_LOGS_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw);
     }
   } catch (e) {
-    console.error("Failed to load alert logs", e);
+    // Graceful fallback
   }
   return [];
 }
@@ -97,11 +92,9 @@ export function saveAlertLog(log: DispatchedJugaadAlert): void {
   try {
     const prev = getRecentAlertLogs();
     const updated = [log, ...prev].slice(0, 100);
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(ALERT_LOGS_STORAGE_KEY, JSON.stringify(updated));
-    }
+    safeLocalStorage.setItem(ALERT_LOGS_STORAGE_KEY, JSON.stringify(updated));
   } catch (e) {
-    console.error("Failed to save alert log", e);
+    // Graceful fallback
   }
 }
 
@@ -110,10 +103,8 @@ export function saveAlertLog(log: DispatchedJugaadAlert): void {
  */
 export function clearDispatchedEventHistory(): void {
   try {
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem(DISPATCHED_EVENTS_STORAGE_KEY);
-      localStorage.removeItem(ALERT_LOGS_STORAGE_KEY);
-    }
+    safeLocalStorage.removeItem(DISPATCHED_EVENTS_STORAGE_KEY);
+    safeLocalStorage.removeItem(ALERT_LOGS_STORAGE_KEY);
   } catch (e) {}
 }
 

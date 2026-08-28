@@ -1,5 +1,6 @@
 // Telegram Bot Signal Alert Dispatcher
-import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter";
+import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter.js";
+import { safeLocalStorage } from "./safeStorage.js";
 
 export interface TelegramConfig {
   botToken: string;
@@ -18,7 +19,7 @@ export function cleanTelegramInput(str?: string): string {
 
 export function getTelegramConfig(): TelegramConfig {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = safeLocalStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       parsed.botToken = cleanTelegramInput(parsed.botToken);
@@ -35,7 +36,7 @@ export function getTelegramConfig(): TelegramConfig {
       return parsed;
     }
   } catch (e) {
-    console.error("Failed to load Telegram config", e);
+    // Graceful fallback without crashing
   }
   const defaultConfig: TelegramConfig = {
     botToken: "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
@@ -55,10 +56,10 @@ export function saveTelegramConfig(config: TelegramConfig): void {
       botToken: cleanTelegramInput(config.botToken),
       chatId: cleanTelegramInput(config.chatId),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+    safeLocalStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
 
-    // Sync credentials directly to 24/7 server background broadcaster
-    if (cleaned.botToken || cleaned.chatId) {
+    // Sync credentials directly to 24/7 server background broadcaster if in browser
+    if (typeof window !== "undefined" && typeof fetch === "function" && (cleaned.botToken || cleaned.chatId)) {
       fetch("/api/telegram/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,16 +70,16 @@ export function saveTelegramConfig(config: TelegramConfig): void {
       }).catch(() => {});
     }
   } catch (e) {
-    console.error("Failed to save Telegram config", e);
+    // Graceful fallback
   }
 }
 
-// Track sent messages to prevent duplicates / spam (persisted in localStorage)
+// Track sent messages to prevent duplicates / spam (persisted in safeLocalStorage)
 const STORAGE_SENT_ALERTS_KEY = "gmc_telegram_sent_alert_ids_v1";
 
 function getClientSentAlertCache(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_SENT_ALERTS_KEY);
+    const raw = safeLocalStorage.getItem(STORAGE_SENT_ALERTS_KEY);
     if (raw) {
       return new Set(JSON.parse(raw));
     }
@@ -91,7 +92,7 @@ function recordClientSentAlert(alertId: string) {
     const cache = getClientSentAlertCache();
     cache.add(alertId);
     const arr = Array.from(cache).slice(-500);
-    localStorage.setItem(STORAGE_SENT_ALERTS_KEY, JSON.stringify(arr));
+    safeLocalStorage.setItem(STORAGE_SENT_ALERTS_KEY, JSON.stringify(arr));
   } catch (e) {}
 }
 
@@ -117,38 +118,40 @@ export async function sendTelegramMessage(
       }
     }
 
-    // Method 1: Server Proxy Route /api/telegram/send with Idempotency Protection
-    try {
-      const response = await fetch("/api/telegram/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: messageText,
-          alertId: alertId || undefined,
-          botToken: token,
-          chatId: chatId,
-        }),
-      });
+    // Method 1: Server Proxy Route /api/telegram/send with Idempotency Protection (Only in browser or resolved URL)
+    if (typeof window !== "undefined" && typeof fetch === "function") {
+      try {
+        const response = await fetch("/api/telegram/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: messageText,
+            alertId: alertId || undefined,
+            botToken: token,
+            chatId: chatId,
+          }),
+        });
 
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await response.json();
-        if (data.ok) {
-          if (alertId) recordClientSentAlert(alertId);
-          if (data.duplicateSuppressed) {
-            return { success: true, duplicateSuppressed: true, message: "Duplicate signal suppressed by server idempotency guard." };
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          if (data.ok) {
+            if (alertId) recordClientSentAlert(alertId);
+            if (data.duplicateSuppressed) {
+              return { success: true, duplicateSuppressed: true, message: "Duplicate signal suppressed by server idempotency guard." };
+            }
+            return { success: true, message: "✅ Telegram signal dispatched successfully to channel!" };
           }
-          return { success: true, message: "✅ Telegram signal dispatched successfully to channel!" };
+          if (data.error) {
+            console.warn("Server route returned error:", data.error);
+          }
         }
-        if (data.error) {
-          console.warn("Server route returned error:", data.error);
-        }
+      } catch (serverErr) {
+        console.warn("Server proxy Telegram send failed, trying direct browser API...", serverErr);
       }
-    } catch (serverErr) {
-      console.warn("Server proxy Telegram send failed, trying direct browser API...", serverErr);
     }
 
-    // Method 2: Direct Telegram Bot API Call fallback (only if server unreachable)
+    // Method 2: Direct Telegram Bot API Call
     try {
       const directUrl = `https://api.telegram.org/bot${token}/sendMessage`;
       const directRes = await fetch(directUrl, {

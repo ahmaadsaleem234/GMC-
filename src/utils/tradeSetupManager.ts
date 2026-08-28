@@ -1,4 +1,5 @@
 // Unified State Management Engine for Active Locked Trade Setups Across GMC Modules
+import { safeLocalStorage } from "./safeStorage.js";
 import { playAlertChime } from "./audioAlert";
 import { evaluateKeystoneDualSetup } from "./gmcMasterAiBrainCore";
 import {
@@ -101,24 +102,24 @@ export interface LockedTradeSetup {
 
 const STORAGE_KEY = "gmc_locked_trade_setups_v2";
 
-// Load from localStorage or initialize
+// Load from safeLocalStorage or initialize
 function loadSetupRegistry(): Record<string, LockedTradeSetup> {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
+    const data = safeLocalStorage.getItem(STORAGE_KEY);
     if (data) {
       return JSON.parse(data);
     }
   } catch (e) {
-    console.error("Failed to load locked setup registry from localStorage", e);
+    // Graceful fallback
   }
   return {};
 }
 
 function saveSetupRegistry(registry: Record<string, LockedTradeSetup>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
+    safeLocalStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   } catch (e) {
-    console.error("Failed to save locked setup registry to localStorage", e);
+    // Graceful fallback
   }
 }
 

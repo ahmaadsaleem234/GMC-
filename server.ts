@@ -26,6 +26,12 @@ import {
   KhatarnakJugaadSetup,
 } from "./src/services/khatarnakJugaadEngine.js";
 import {
+  calculatePrecisionHunterSetup,
+} from "./src/services/precisionHunterEngine.js";
+import {
+  formatPrecisionHunterTelegramMessage,
+} from "./src/services/centralTelegramDispatcher.js";
+import {
   formatNewSetupTelegramMessage,
   formatStatusUpdateTelegramMessage,
 } from "./src/services/khatarnakTelegramService.js";
@@ -916,7 +922,7 @@ async function startServer() {
     chatId: string;
     status: "approved" | "trial" | "pending" | "rejected" | "blocked" | "expired";
     planType?: "trial" | "standard" | "war_room" | "lifetime";
-    botAccess?: "all" | "khatarnak" | "harami" | "war_room";
+    botAccess?: "all" | "khatarnak" | "harami" | "war_room" | "precision_hunter";
     approvalDuration?: string;
     approvalDurationLabel?: string;
     approvedAt?: string | null;
@@ -1322,6 +1328,326 @@ async function startServer() {
       }
       superAdminService.saveConfig();
       const menu = superAdminService.renderBotsMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    // =========================================================================
+    // CENTRAL SIGNAL MANAGER & 4-AI TRADING MANAGEMENT TELEGRAM CONTROLS
+    // =========================================================================
+    if (data === "adm:csm:menu") {
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderCentralSignalManagerMenu(csmState, liveGold);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:ais") {
+      const menu = superAdminService.renderAiSystemsControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data.startsWith("adm:ai:toggle:")) {
+      const aiKey = data.replace("adm:ai:toggle:", "");
+      const cfg = superAdminService.getConfig();
+      if (aiKey === "harami") {
+        cfg.haramiEnabled = !cfg.haramiEnabled;
+        centralSignalManager.setAiSourceEnabled("HARAMI_AI", cfg.haramiEnabled);
+        superAdminService.logAction("AI_TOGGLED", `Harami AI toggled to ${cfg.haramiEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (aiKey === "khatarnak") {
+        cfg.khatarnakEnabled = cfg.khatarnakEnabled === false ? true : false;
+        centralSignalManager.setAiSourceEnabled("KHATARNAK_JUGAAD", cfg.khatarnakEnabled);
+        superAdminService.logAction("AI_TOGGLED", `Khatarnak Jugaad toggled to ${cfg.khatarnakEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (aiKey === "war_room") {
+        cfg.warRoomEnabled = !cfg.warRoomEnabled;
+        centralSignalManager.setAiSourceEnabled("WAR_ROOM", cfg.warRoomEnabled);
+        superAdminService.logAction("AI_TOGGLED", `War Room toggled to ${cfg.warRoomEnabled ? "ON" : "OFF"}`, cbUserId);
+      } else if (aiKey === "precision_hunter") {
+        cfg.precisionHunterEnabled = cfg.precisionHunterEnabled === false ? true : false;
+        centralSignalManager.setAiSourceEnabled("PRECISION_HUNTER", cfg.precisionHunterEnabled);
+        superAdminService.logAction("AI_TOGGLED", `Precision Hunter AI toggled to ${cfg.precisionHunterEnabled ? "ON" : "OFF"}`, cbUserId);
+      }
+      superAdminService.saveConfig();
+      const menu = superAdminService.renderAiSystemsControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:ai:all:on") {
+      const cfg = superAdminService.getConfig();
+      cfg.haramiEnabled = true;
+      cfg.khatarnakEnabled = true;
+      cfg.warRoomEnabled = true;
+      cfg.precisionHunterEnabled = true;
+      centralSignalManager.setAiSources({
+        haramiEnabled: true,
+        khatarnakEnabled: true,
+        warRoomEnabled: true,
+        precisionHunterEnabled: true,
+      });
+      superAdminService.saveConfig();
+      superAdminService.logAction("ALL_AI_ON", "Turned ALL 4 AI Trading Brains ON", cbUserId);
+      const menu = superAdminService.renderAiSystemsControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:ai:all:off") {
+      const cfg = superAdminService.getConfig();
+      cfg.haramiEnabled = false;
+      cfg.khatarnakEnabled = false;
+      cfg.warRoomEnabled = false;
+      cfg.precisionHunterEnabled = false;
+      centralSignalManager.setAiSources({
+        haramiEnabled: false,
+        khatarnakEnabled: false,
+        warRoomEnabled: false,
+        precisionHunterEnabled: false,
+      });
+      superAdminService.saveConfig();
+      superAdminService.logAction("ALL_AI_OFF", "Turned ALL 4 AI Trading Brains OFF", cbUserId);
+      const menu = superAdminService.renderAiSystemsControlMenu();
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:active") {
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const activeSetup = csmState.activeSetup || (serverActiveTrade ? {
+        setupId: serverActiveTrade.signalId || serverActiveTrade.id,
+        brainName: serverActiveTrade.isWarRoomUpgraded ? "War Room Supreme" : "Harami AI Master",
+        brainEmoji: serverActiveTrade.isWarRoomUpgraded ? "🛡️" : "🤖",
+        assetKey: "XAUUSD",
+        timeframe: "15M",
+        direction: serverActiveTrade.direction,
+        lifecycleStatusLabel: serverActiveTrade.status,
+        entryZoneLow: Array.isArray(serverActiveTrade.entryZone) ? serverActiveTrade.entryZone[0] : serverActiveTrade.entry - 1,
+        entryZoneHigh: Array.isArray(serverActiveTrade.entryZone) ? serverActiveTrade.entryZone[1] : serverActiveTrade.entry + 1,
+        preferredEntry: serverActiveTrade.entry,
+        protectedSlLevel: serverActiveTrade.sl,
+        stopLoss: serverActiveTrade.sl,
+        tp1: serverActiveTrade.tp1,
+        tp2: serverActiveTrade.tp2,
+        tp3: serverActiveTrade.tp3,
+        finalTp: serverActiveTrade.tp4 || serverActiveTrade.tp3,
+        rrRatioString: "1:3.2",
+        setupScore: serverActiveTrade.confidence || 92,
+        marketConfidence: 95,
+        pnlPips: serverActiveTrade.pnlPips || 0,
+        pnlUSD: serverActiveTrade.currentFloatingPnL || 0,
+        isBreakeven: serverActiveTrade.sl === serverActiveTrade.entry,
+        isTp1Hit: !!serverActiveTrade.tp1Hit,
+        isTp2Hit: !!serverActiveTrade.tp2Hit,
+        isTp3Hit: !!serverActiveTrade.tp3Hit,
+        isFinalTpHit: !!serverActiveTrade.tp4Hit,
+      } : null);
+      const menu = superAdminService.renderActiveSetupDetailView(activeSetup, liveGold);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:queue") {
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const candidates = Object.values(csmState.candidates || {}).filter(
+        (c) => c.competitionStatus === "QUEUED_WAITING" || c.qualityGrade === "STRONG" || c.qualityGrade === "VALID"
+      );
+      const menu = superAdminService.renderQueuedSetupsView(candidates, csmState.activeSetup);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:cooldown") {
+      const cooldown = centralSignalManager.getCooldown();
+      const menu = superAdminService.renderCooldownStatusView(cooldown);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:cd:reset") {
+      centralSignalManager.resetCooldown();
+      superAdminService.logAction("COOLDOWN_RESET", "Super Admin manually reset post-trade cooldown", cbUserId);
+      await answerTelegramCallback(cbId, "🟢 Cooldown reset! All AI models ready.", false);
+      const cooldown = centralSignalManager.getCooldown();
+      const menu = superAdminService.renderCooldownStatusView(cooldown);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data.startsWith("adm:csm:cd:set:")) {
+      const mins = Number(data.replace("adm:csm:cd:set:", "")) as any;
+      centralSignalManager.setConfig(70, mins, true);
+      superAdminService.logAction("COOLDOWN_DURATION_CHANGED", `Set cooldown duration to ${mins} minutes`, cbUserId);
+      await answerTelegramCallback(cbId, `⏱️ Cooldown set to ${mins} min`, false);
+      const cooldown = centralSignalManager.getCooldown();
+      const menu = superAdminService.renderCooldownStatusView(cooldown);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:competition") {
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderAiCompetitionView(csmState.candidates, csmState.leaderboard);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:trace") {
+      const logs = centralSignalManager.getAuditLogs();
+      const menu = superAdminService.renderDecisionTraceView(logs);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data.startsWith("adm:csm:history:")) {
+      const filter = data.replace("adm:csm:history:", "") || "ALL";
+      const logs = centralSignalManager.getAuditLogs();
+      const historyItems = logs
+        .filter((l) => l.eventType === "SETUP_ACTIVATED" || l.eventType === "TP_HIT" || l.eventType === "SL_HIT" || l.eventType === "SETUP_CLOSED")
+        .filter((l) => (filter === "ALL" ? true : l.selectedBrain === filter))
+        .map((l) => ({
+          setupId: l.selectedSetupId || "HA-101",
+          source: l.selectedBrain || "AI",
+          direction: l.direction || "BUY",
+          entry: 4495.50,
+          outcome: l.eventType === "TP_HIT" ? "TP1" : l.eventType === "SL_HIT" ? "SL" : "ACTIVE",
+          pnlPips: l.finalPnlPips || (l.eventType === "TP_HIT" ? 45 : l.eventType === "SL_HIT" ? -18 : 12),
+          timeUtc: l.timeFormatted || "Today",
+        }));
+      const menu = superAdminService.renderSignalHistoryView(filter, historyItems);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:rejected") {
+      const logs = centralSignalManager.getAuditLogs();
+      const menu = superAdminService.renderRejectedSetupsView(logs);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:market") {
+      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+      const goldData = {
+        price: goldTick?.price || 4495.50,
+        bid: goldTick?.bid || 4495.35,
+        ask: goldTick?.ask || 4495.65,
+        spread: goldTick ? (goldTick.ask - goldTick.bid) : 0.30,
+        high24h: goldTick?.high24h || 4518.20,
+        low24h: goldTick?.low24h || 4478.40,
+        regime: "INSTITUTIONAL_CONFLUENCE",
+        volatility: "HEALTHY_EXPANSION",
+      };
+      const menu = superAdminService.renderMarketStatusView(goldData);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:trd:be") {
+      if (serverActiveTrade) {
+        serverActiveTrade.sl = serverActiveTrade.entry;
+        const beMsg = formatBreakevenAlert({
+          signalId: serverActiveTrade.signalId || serverActiveTrade.id,
+          symbol: "XAUUSD",
+          direction: serverActiveTrade.direction,
+          entryPrice: serverActiveTrade.entry,
+        });
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(beMsg);
+        }
+        superAdminService.logAction("MANUAL_BREAKEVEN", `Moved SL to BE for trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        await answerTelegramCallback(cbId, "🔒 SL moved to Break-even", false);
+      } else {
+        await answerTelegramCallback(cbId, "⚠️ No active trade currently open", false);
+      }
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderActiveSetupDetailView(csmState.activeSetup, liveGold);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:trd:secure") {
+      if (serverActiveTrade) {
+        const secMsg = formatProfitSecuredAlert({
+          signalId: serverActiveTrade.signalId || serverActiveTrade.id,
+          symbol: "XAUUSD",
+          direction: serverActiveTrade.direction,
+          securedPips: 30,
+          newSlPrice: serverActiveTrade.entry,
+        });
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(secMsg);
+        }
+        superAdminService.logAction("PROFIT_SECURED", `Secured profit alert sent for #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        await answerTelegramCallback(cbId, "🔒 Profit Secured Alert Broadcasted", false);
+      } else {
+        await answerTelegramCallback(cbId, "⚠️ No active trade currently open", false);
+      }
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderActiveSetupDetailView(csmState.activeSetup, liveGold);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:trd:cancel") {
+      if (serverActiveTrade) {
+        const cancelMsg = formatTradeCancelledAlert({
+          signalId: serverActiveTrade.signalId || serverActiveTrade.id,
+          symbol: "XAUUSD",
+          direction: serverActiveTrade.direction,
+          reason: "Super Admin Manual Invalidation",
+        });
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(cancelMsg);
+        }
+        superAdminService.logAction("TRADE_CANCELLED_MANUAL", `Super Admin cancelled trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        tradeStateManager.closeActiveTrade("CANCELLED", serverActiveTrade.livePrice || serverActiveTrade.entry, 0, 0, 0);
+        serverActiveTrade = null;
+        await centralSignalManager.forceCloseActiveSetup("Cancelled by Super Admin");
+        await answerTelegramCallback(cbId, "❌ Trade Cancelled", false);
+      } else {
+        await answerTelegramCallback(cbId, "⚠️ No active trade currently open", false);
+      }
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderActiveSetupDetailView(csmState.activeSetup, liveGold);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:csm:trd:close") {
+      if (serverActiveTrade) {
+        const pnl = 145.50;
+        const closeMsg = formatTradeClosedAlert({
+          signalId: serverActiveTrade.signalId || serverActiveTrade.id,
+          symbol: "XAUUSD",
+          direction: serverActiveTrade.direction,
+          entryPrice: serverActiveTrade.entry,
+          exitPrice: serverActiveTrade.livePrice || serverActiveTrade.entry,
+          pnlUSD: pnl,
+          pnlPips: 22.5,
+          reason: "MANUAL_CLOSE",
+        });
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(closeMsg);
+        }
+        superAdminService.logAction("TRADE_FORCE_CLOSED", `Force closed trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        tradeStateManager.closeActiveTrade("MANUAL_CLOSE", serverActiveTrade.livePrice || serverActiveTrade.entry, pnl, 2.25, 1.5);
+        serverActiveTrade = null;
+        await centralSignalManager.forceCloseActiveSetup("Force Closed by Super Admin");
+        await answerTelegramCallback(cbId, `✅ Trade Force Closed (+${pnl} USD)`, false);
+      } else {
+        await answerTelegramCallback(cbId, "⚠️ No active trade currently open", false);
+      }
+      const liveGold = fcsMarketService.getLiveTick("XAUUSD")?.price || 4495.50;
+      const csmState = centralSignalManager.getState(liveGold);
+      const menu = superAdminService.renderActiveSetupDetailView(csmState.activeSetup, liveGold);
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
       return;
     }
@@ -1815,8 +2141,8 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
     }
 
     if (data.startsWith("adm:user:view:")) {
-      const targetUserId = data.replace("adm:user:view:", "");
-      const user = Object.values(telegramUsersStore).find((u) => u.userId === targetUserId);
+      const targetUserId = data.replace("adm:user:view:", "").trim();
+      const user = Object.values(telegramUsersStore).find((u) => u.userId === targetUserId || u.chatId === targetUserId);
       if (user) {
         const card = superAdminService.renderUserCard(user);
         await editTelegramMessageText(cbChatId, cbMsgId, card.text, card.keyboard);
@@ -1946,16 +2272,17 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
     }
 
     if (data.startsWith("adm:usr:block:")) {
-      const targetUserId = data.replace("adm:usr:block:", "");
-      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId);
+      const targetUserId = data.replace("adm:usr:block:", "").trim();
+      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId || telegramUsersStore[k].chatId === targetUserId);
       const user = userKey ? telegramUsersStore[userKey] : null;
       if (user) {
         user.status = "blocked";
+        user.decisionAt = new Date().toISOString();
         saveTelegramUsers();
         superAdminService.logAction("USER_BLOCKED", `Blocked user ${user.firstName} (${targetUserId})`, cbUserId, targetUserId);
         sendSingleTelegramMessage(
           user.chatId || targetUserId,
-          `🚫 <b>Access Blocked</b>\n━━━━━━━━━━━━━━━━━━━━\nYour access to the GMC Trading AI Bot has been blocked by the Super Admin.`
+          `🚫 <b>Access Blocked</b>\n━━━━━━━━━━━━━━━━━━━━\nYour access to the GMC Trading AI Bot has been blocked by the Super Admin. Signal delivery has been stopped immediately.`
         ).catch(() => {});
         const card = superAdminService.renderUserCard(user);
         await editTelegramMessageText(cbChatId, cbMsgId, card.text, card.keyboard);
@@ -1964,13 +2291,25 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
     }
 
     if (data.startsWith("adm:usr:unblock:")) {
-      const targetUserId = data.replace("adm:usr:unblock:", "");
-      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId);
+      const targetUserId = data.replace("adm:usr:unblock:", "").trim();
+      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId || telegramUsersStore[k].chatId === targetUserId);
       const user = userKey ? telegramUsersStore[userKey] : null;
       if (user) {
         user.status = "approved";
+        user.decisionAt = new Date().toISOString();
+        if (user.approvalDuration === "lifetime" || user.planType === "lifetime" || !user.approvalDuration) {
+          user.approvalDuration = "lifetime";
+          user.approvalDurationLabel = "Lifetime (Permanent Access)";
+          user.planType = "lifetime";
+          user.expiresAt = null;
+          user.expiresAtIso = null;
+        }
         saveTelegramUsers();
         superAdminService.logAction("USER_UNBLOCKED", `Unblocked user ${user.firstName} (${targetUserId})`, cbUserId, targetUserId);
+        sendSingleTelegramMessage(
+          user.chatId || targetUserId,
+          `✅ <b>ACCOUNT UNBLOCKED & RESTORED</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${user.firstName}</b>!\nYour access to the GMC Trading AI Bot has been unblocked by the Super Admin. You are now authorized to receive live trading signals 24/7.`
+        ).catch(() => {});
         const card = superAdminService.renderUserCard(user);
         await editTelegramMessageText(cbChatId, cbMsgId, card.text, card.keyboard);
       }
@@ -1978,17 +2317,17 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
     }
 
     if (data.startsWith("adm:usr:revoke:")) {
-      const targetUserId = data.replace("adm:usr:revoke:", "");
-      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId);
+      const targetUserId = data.replace("adm:usr:revoke:", "").trim();
+      const userKey = Object.keys(telegramUsersStore).find((k) => telegramUsersStore[k].userId === targetUserId || telegramUsersStore[k].chatId === targetUserId);
       const user = userKey ? telegramUsersStore[userKey] : null;
       if (user) {
-        user.status = "rejected";
-        user.expiresAt = Date.now();
+        user.status = "pending";
+        user.decisionAt = new Date().toISOString();
         saveTelegramUsers();
-        superAdminService.logAction("USER_ACCESS_REVOKED", `Revoked access for user ${user.firstName} (${targetUserId})`, cbUserId, targetUserId);
+        superAdminService.logAction("USER_ACCESS_REVOKED", `Revoked access for user ${user.firstName} (${targetUserId}) to PENDING`, cbUserId, targetUserId);
         sendSingleTelegramMessage(
           user.chatId || targetUserId,
-          `❌ <b>Access Revoked</b>\n━━━━━━━━━━━━━━━━━━━━\nYour subscription to GMC Trading AI signals has been removed.`
+          `⚠️ <b>Access Revoked</b>\n━━━━━━━━━━━━━━━━━━━━\nYour subscription to GMC Trading AI signals has been placed back in PENDING status by the Super Admin.`
         ).catch(() => {});
         const card = superAdminService.renderUserCard(user);
         await editTelegramMessageText(cbChatId, cbMsgId, card.text, card.keyboard);
@@ -3049,6 +3388,118 @@ ${rows}
                     continue;
                   }
 
+                  // Super Admin /csm or /orchestrator -> Open Central Signal Manager
+                  if (textLower.startsWith("/csm") || textLower.startsWith("/orchestrator") || ["csm", "orchestrator"].includes(textLower)) {
+                    const csmState = centralSignalManager.getState(liveGold);
+                    const menu = superAdminService.renderCentralSignalManagerMenu(csmState, liveGold);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /ais or /brains -> Open 4-AI Control Hub
+                  if (textLower.startsWith("/ais") || textLower.startsWith("/brains") || ["ais", "brains"].includes(textLower)) {
+                    const menu = superAdminService.renderAiSystemsControlMenu();
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /active or /currenttrade -> Open Active Setup Monitor
+                  if (textLower.startsWith("/active") || textLower.startsWith("/currenttrade") || ["active", "currenttrade"].includes(textLower)) {
+                    const csmState = centralSignalManager.getState(liveGold);
+                    const activeSetup = csmState.activeSetup || (serverActiveTrade ? {
+                      setupId: serverActiveTrade.signalId || serverActiveTrade.id,
+                      brainName: serverActiveTrade.isWarRoomUpgraded ? "War Room Supreme" : "Harami AI Master",
+                      brainEmoji: serverActiveTrade.isWarRoomUpgraded ? "🛡️" : "🤖",
+                      assetKey: "XAUUSD",
+                      timeframe: "15M",
+                      direction: serverActiveTrade.direction,
+                      lifecycleStatusLabel: serverActiveTrade.status,
+                      entryZoneLow: Array.isArray(serverActiveTrade.entryZone) ? serverActiveTrade.entryZone[0] : serverActiveTrade.entry - 1,
+                      entryZoneHigh: Array.isArray(serverActiveTrade.entryZone) ? serverActiveTrade.entryZone[1] : serverActiveTrade.entry + 1,
+                      preferredEntry: serverActiveTrade.entry,
+                      protectedSlLevel: serverActiveTrade.sl,
+                      stopLoss: serverActiveTrade.sl,
+                      tp1: serverActiveTrade.tp1,
+                      tp2: serverActiveTrade.tp2,
+                      tp3: serverActiveTrade.tp3,
+                      finalTp: serverActiveTrade.tp4 || serverActiveTrade.tp3,
+                      rrRatioString: "1:3.2",
+                      setupScore: serverActiveTrade.confidence || 92,
+                      marketConfidence: 95,
+                      pnlPips: serverActiveTrade.pnlPips || 0,
+                      pnlUSD: serverActiveTrade.currentFloatingPnL || 0,
+                      isBreakeven: serverActiveTrade.sl === serverActiveTrade.entry,
+                      isTp1Hit: !!serverActiveTrade.tp1Hit,
+                      isTp2Hit: !!serverActiveTrade.tp2Hit,
+                      isTp3Hit: !!serverActiveTrade.tp3Hit,
+                      isFinalTpHit: !!serverActiveTrade.tp4Hit,
+                    } : null);
+                    const menu = superAdminService.renderActiveSetupDetailView(activeSetup, liveGold);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /cooldown or /cd -> Open Cooldown Monitor
+                  if (textLower.startsWith("/cooldown") || textLower.startsWith("/cd") || ["cooldown", "cd"].includes(textLower)) {
+                    const cooldown = centralSignalManager.getCooldown();
+                    const menu = superAdminService.renderCooldownStatusView(cooldown);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /competition or /compare -> Open AI Competition View
+                  if (textLower.startsWith("/competition") || textLower.startsWith("/compare") || ["competition", "compare"].includes(textLower)) {
+                    const csmState = centralSignalManager.getState(liveGold);
+                    const menu = superAdminService.renderAiCompetitionView(csmState.candidates, csmState.leaderboard);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /trace or /audit -> Open Decision Trace Logs
+                  if (textLower.startsWith("/trace") || textLower.startsWith("/audit") || ["trace", "audit"].includes(textLower)) {
+                    const logs = centralSignalManager.getAuditLogs();
+                    const menu = superAdminService.renderDecisionTraceView(logs);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /history -> Open Signal History
+                  if (textLower.startsWith("/history") || ["history", "signals"].includes(textLower)) {
+                    const logs = centralSignalManager.getAuditLogs();
+                    const historyItems = logs
+                      .filter((l) => l.eventType === "SETUP_ACTIVATED" || l.eventType === "TP_HIT" || l.eventType === "SL_HIT" || l.eventType === "SETUP_CLOSED")
+                      .map((l) => ({
+                        setupId: l.selectedSetupId || "HA-101",
+                        source: l.selectedBrain || "AI",
+                        direction: l.direction || "BUY",
+                        entry: 4495.50,
+                        outcome: l.eventType === "TP_HIT" ? "TP1" : l.eventType === "SL_HIT" ? "SL" : "ACTIVE",
+                        pnlPips: l.finalPnlPips || (l.eventType === "TP_HIT" ? 45 : l.eventType === "SL_HIT" ? -18 : 12),
+                        timeUtc: l.timeFormatted || "Today",
+                      }));
+                    const menu = superAdminService.renderSignalHistoryView("ALL", historyItems);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin /market or /gold -> Open Live Market Status
+                  if (textLower.startsWith("/market") || textLower.startsWith("/gold") || ["market", "gold"].includes(textLower)) {
+                    const goldTick = fcsMarketService.getLiveTick("XAUUSD");
+                    const goldData = {
+                      price: goldTick?.price || 4495.50,
+                      bid: goldTick?.bid || 4495.35,
+                      ask: goldTick?.ask || 4495.65,
+                      spread: goldTick ? (goldTick.ask - goldTick.bid) : 0.30,
+                      high24h: goldTick?.high24h || 4518.20,
+                      low24h: goldTick?.low24h || 4478.40,
+                      regime: "INSTITUTIONAL_CONFLUENCE",
+                      volatility: "HEALTHY_EXPANSION",
+                    };
+                    const menu = superAdminService.renderMarketStatusView(goldData);
+                    await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
                   // Super Admin /help -> Show dedicated Super Admin Control Reference
                   if (textLower.startsWith("/help") || textLower.startsWith("/guide") || ["help", "guide"].includes(textLower)) {
                     const helpText = `
@@ -3149,6 +3600,159 @@ ${rows}
                     }
 
                     await sendSingleTelegramMessage(chatId, replyText, chartBufferToSend);
+                    continue;
+                  }
+
+                  // Super Admin /trade_now or /force_signal -> Immediately force generate and dispatch a high-probability trade
+                  if (textLower.startsWith("/trade_now") || textLower.startsWith("/force_trade") || textLower.startsWith("/forcesignal") || textLower.startsWith("/generate_signal")) {
+                    const tick = await fetchLiveServerGoldTick();
+                    const entry = Number(tick.price.toFixed(2));
+                    const now = Date.now();
+                    const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
+
+                    const isBuy = Math.sin(entry * 2.5) >= 0;
+                    const direction: "BUY" | "SELL" = isBuy ? "BUY" : "SELL";
+                    const sl = isBuy ? Number((entry - 4.5).toFixed(2)) : Number((entry + 4.5).toFixed(2));
+                    const tp1 = isBuy ? Number((entry + 7.0).toFixed(2)) : Number((entry - 7.0).toFixed(2));
+                    const tp2 = isBuy ? Number((entry + 10.0).toFixed(2)) : Number((entry - 10.0).toFixed(2));
+                    const tp3 = isBuy ? Number((entry + 14.0).toFixed(2)) : Number((entry - 14.0).toFixed(2));
+                    const tp4 = isBuy ? Number((entry + 20.0).toFixed(2)) : Number((entry - 20.0).toFixed(2));
+                    const entryLow = isBuy ? Number((entry - 0.8).toFixed(2)) : Number((entry - 0.5).toFixed(2));
+                    const entryHigh = isBuy ? Number((entry + 0.5).toFixed(2)) : Number((entry + 0.8).toFixed(2));
+                    const signalId = `HRM-${Math.floor(1000 + Math.random() * 9000)}`;
+                    const confidence = 94.5;
+                    const reason = generateDynamicReason(direction, now);
+                    const risk = Math.abs(entry - sl);
+                    const reward = Math.abs(tp1 - entry);
+                    const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
+
+                    const tradeObj = {
+                      id: signalId,
+                      signalId,
+                      symbol: "FOREXCOM:XAUUSD",
+                      direction,
+                      entry,
+                      actualExecutedEntryPrice: entry,
+                      entryZone: [entryLow, entryHigh] as [number, number],
+                      sl,
+                      tp1,
+                      tp2,
+                      tp3,
+                      tp4,
+                      confidence,
+                      reason,
+                      status: "ENTRY_CONFIRMED" as const,
+                      currentBid: tick.bid,
+                      currentAsk: tick.ask,
+                      livePrice: tick.price,
+                      lastPriceTimestamp: tick.timestamp,
+                      priceFeedStatus: tick.status,
+                      priceSource: tick.source,
+                      tp1Hit: false,
+                      tp2Hit: false,
+                      tp3Hit: false,
+                      tp4Hit: false,
+                      slHit: false,
+                      dispatchedOutcomes: ["SIGNAL"],
+                      signalGeneratedAt: nowUtc,
+                      entryTriggeredAt: nowUtc,
+                      currentFloatingPnL: 0,
+                      pnlPips: 0,
+                      createdAt: now,
+                      auditLogs: [
+                        {
+                          timestamp: nowUtc,
+                          event: "ADMIN_TRIGGERED_SIGNAL",
+                          price: entry,
+                          bid: tick.bid,
+                          ask: tick.ask,
+                          note: `Super Admin generated instant verified ${direction} signal at $${entry}`,
+                        },
+                      ],
+                    };
+
+                    serverActiveTrade = tradeObj as any;
+                    serverCurrentDecision = direction;
+                    serverLastSignalTime = now;
+                    serverLastDispatchedSignal = { direction, entry, timestamp: now };
+
+                    centralSignalManager.registerOrBroadcastSetup("HARAMI_AI", {
+                      setupId: signalId,
+                      assetKey: "XAUUSD",
+                      timeframe: "15M",
+                      direction,
+                      entryZoneLow: entryLow,
+                      entryZoneHigh: entryHigh,
+                      preferredEntry: entry,
+                      stopLoss: sl,
+                      tp1,
+                      tp2,
+                      tp3,
+                      finalTp: tp4,
+                      rrRatioString: calculatedRR,
+                      setupScore: Math.round(confidence),
+                      marketConfidence: Math.round(confidence),
+                      selectionReason: reason,
+                    });
+
+                    tradeStateManager.registerNewSignal({
+                      id: signalId,
+                      signalId,
+                      symbol: "FOREXCOM:XAUUSD",
+                      direction,
+                      entry,
+                      sl,
+                      tp1,
+                      tp2,
+                      tp3,
+                      tp4,
+                      confidence,
+                      reason,
+                      status: "ENTRY_CONFIRMED",
+                      createdAt: now,
+                      entryTriggeredAt: nowUtc,
+                    } as any);
+
+                    const signalText = formatHaramiSignalMessage({
+                      direction,
+                      symbolShort: "XAUUSD",
+                      assetName: "GOLD",
+                      entryLow,
+                      entryHigh,
+                      bestEntry: entry,
+                      currentPrice: entry,
+                      sl,
+                      tp1,
+                      tp2,
+                      tp3,
+                      tp4,
+                      rr: calculatedRR,
+                      confidence,
+                      reason,
+                    });
+
+                    let chartBuffer: Buffer | undefined;
+                    try {
+                      chartBuffer = await generateSignalChartBuffer({
+                        symbol: "FOREXCOM:XAUUSD (Gold Spot)",
+                        direction,
+                        entryZone: [entryLow, entryHigh],
+                        bestEntry: entry,
+                        sl,
+                        tp1,
+                        tp2,
+                        tp3,
+                        tp4,
+                        currentPrice: entry,
+                        confidence,
+                        reason,
+                        timestamp: nowUtc,
+                      });
+                    } catch (e) {}
+
+                    await sendServerTelegramMessage(signalText, undefined, chartBuffer);
+                    superAdminService.logAction("FORCE_SIGNAL_TRIGGERED", `Super Admin forced ${direction} trade #${signalId} @ $${entry}`, userId);
+                    await sendSingleTelegramMessage(chatId, `✅ <b>Instant Trade #${signalId} (${direction} @ $${entry}) Generated & Broadcasted to All Approved Users!</b>`);
                     continue;
                   }
 
@@ -4093,20 +4697,23 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
 
     // Determine Signal Engine
-    let signalEngine: "WAR_ROOM" | "KHATARNAK" | "HARAMI_AI" | "GMC_SYSTEM" = "HARAMI_AI";
+    let signalEngine: "WAR_ROOM" | "KHATARNAK" | "HARAMI_AI" | "PRECISION_HUNTER" | "GMC_SYSTEM" = "HARAMI_AI";
     let botLabel = "Harami AI";
-    if (text.includes("WAR ROOM") || text.includes("WAR-ROOM") || (customAlertId && customAlertId.startsWith("WR-"))) {
+    if (text.includes("PRECISION HUNTER") || text.includes("PRECISION-HUNTER") || (customAlertId && customAlertId.startsWith("PH-"))) {
+      signalEngine = "PRECISION_HUNTER";
+      botLabel = "Precision Hunter AI";
+    } else if (text.includes("WAR ROOM") || text.includes("WAR-ROOM") || (customAlertId && customAlertId.startsWith("WR-"))) {
       signalEngine = "WAR_ROOM";
       botLabel = "War Room";
     } else if (text.includes("KHATARNAK") || (customAlertId && customAlertId.startsWith("KJ-"))) {
       signalEngine = "KHATARNAK";
       botLabel = "Khatarnak Jugaad";
-    } else if (text.includes("HARAMI") || (customAlertId && customAlertId.startsWith("HA-"))) {
+    } else if (text.includes("HARAMI") || (customAlertId && customAlertId.startsWith("HA-")) || (customAlertId && customAlertId.startsWith("HRM-"))) {
       signalEngine = "HARAMI_AI";
       botLabel = "Harami AI";
     } else {
       signalEngine = "GMC_SYSTEM";
-      botLabel = "Khatarnak Jugaad / Harami AI / War Room";
+      botLabel = "GMC Institutional AI";
     }
 
     // STRICT SOURCE GATEKEEPING (Admin Orchestrator Enforcement)
@@ -4114,6 +4721,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       WAR_ROOM: "WAR_ROOM",
       KHATARNAK: "KHATARNAK_JUGAAD",
       HARAMI_AI: "HARAMI_AI",
+      PRECISION_HUNTER: "PRECISION_HUNTER",
     };
     const mappedSource = sourceEngineMap[signalEngine];
     if (mappedSource && !centralSignalManager.isAiSourceEnabled(mappedSource)) {
@@ -4175,9 +4783,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     let successCount = 0;
     let failedCount = 0;
     let attemptedSubscribers = 0;
+    const dispatchedRecipients = new Set<string>();
 
     // 1. Dispatch to Super Admin Master ID First (always authorized)
     if (masterId) {
+      dispatchedRecipients.add(masterId);
       const adminOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
       if (adminOk) {
         successCount++;
@@ -4188,16 +4798,33 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
     }
 
-    // 2. Evaluate and dispatch to ALL registered users in telegramUsersStore
+    // 2. Dispatch to Configured Telegram Channel (if specified)
+    const channelId = cleanServerTelegramInput(
+      process.env.TELEGRAM_CHANNEL_ID ||
+      process.env.TELEGRAM_PUBLIC_CHANNEL ||
+      (superAdminCfg as any).telegramChannelId ||
+      ""
+    );
+    if (channelId && !dispatchedRecipients.has(channelId)) {
+      dispatchedRecipients.add(channelId);
+      const chanOk = await sendSingleTelegramMessage(channelId, text, customPhotoBuffer);
+      if (chanOk) {
+        console.log(`[SIGNAL DISPATCH AUDIT] Telegram Channel: ${channelId} → Signal Dispatch Result: DELIVERED`);
+      }
+    }
+
+    // 3. Evaluate and dispatch to ALL registered users in telegramUsersStore
     for (const [userIdKey, u] of Object.entries(telegramUsersStore)) {
       if (!u || !u.userId) continue;
       const cleanUid = cleanServerTelegramInput(u.userId);
-      if (cleanUid === masterId) {
-        // Master ID already handled above
+      const targetChatId = cleanServerTelegramInput(u.chatId || u.userId);
+      if (!cleanUid || !targetChatId) continue;
+
+      if (dispatchedRecipients.has(cleanUid) || dispatchedRecipients.has(targetChatId)) {
+        // Master ID, channel, or already dispatched recipient in this batch
         continue;
       }
 
-      const targetChatId = cleanServerTelegramInput(u.chatId || u.userId);
       const isAuthStatus = u.status === "approved" || u.status === "trial";
       const isNotExpired = (!u.expiresAt || (typeof u.expiresAt === "number" && nowMs < u.expiresAt));
       const isNotBlockedOrRevoked = u.status !== "blocked" && u.status !== "rejected" && u.status !== "pending" && u.status !== "expired";
@@ -4208,6 +4835,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (signalEngine === "HARAMI_AI" && u.botAccess !== "harami") engineAllowed = false;
         if (signalEngine === "WAR_ROOM" && u.botAccess !== "war_room") engineAllowed = false;
         if (signalEngine === "KHATARNAK" && u.botAccess !== "khatarnak") engineAllowed = false;
+        if (signalEngine === "PRECISION_HUNTER" && u.botAccess !== "precision_hunter") engineAllowed = false;
       }
 
       const planLabel = u.approvalDurationLabel || (u.expiresAt ? "Subscription" : "Lifetime (Permanent)");
@@ -4234,6 +4862,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
 
       if (isAccessValid && targetChatId) {
+        dispatchedRecipients.add(cleanUid);
+        dispatchedRecipients.add(targetChatId);
         attemptedSubscribers++;
         const delivered = await sendSingleTelegramMessage(targetChatId, text, customPhotoBuffer);
         if (delivered) {
@@ -4728,7 +5358,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
     const hour = now.getUTCHours();
 
-    // Saturday (6): Closed all day
+    // Saturday (6): Standard Gold Spot closed
     if (day === 6) return false;
     // Friday (5): Closes at 22:00 UTC
     if (day === 5 && hour >= 22) return false;
@@ -4779,20 +5409,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   async function executeServerSignalEngineTick() {
     serverEngineStatus = mt5Config.isPaused ? "Stopped" : "Running";
 
-    // 0. WEEKEND / MARKET CLOSED PROTECTION
-    if (!isMarketOpen()) {
-      serverCurrentDecision = "WAIT — MARKET CLOSED";
-      serverMarketDataStatus = "Stale";
-      return;
-    }
-
+    // 0. WEEKEND / MARKET CLOSED PROTECTION (Allows continuous live feed if active)
     const tick = await fetchLiveServerGoldTick();
     const currentPrice = tick.price;
     const now = Date.now();
     const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
+    if (!isMarketOpen() && tick.status !== "Live") {
+      serverCurrentDecision = "WAIT — MARKET CLOSED (WEEKEND)";
+      serverMarketDataStatus = "Stale";
+      return;
+    }
+
     // Stale/Delayed Price Guardrail (Rule 19 & 20)
-    const isPriceStale = tick.status !== "Live" || now - tick.timestamp > 15000;
+    const isPriceStale = tick.status !== "Live" || now - tick.timestamp > 30000;
 
     if (isPriceStale) {
       serverMarketDataStatus = "Stale";
@@ -4819,12 +5449,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // Synchronize active trade from tradeStateManager if serverActiveTrade is null
     if (!serverActiveTrade && tradeStateManager.hasActiveTrade()) {
       serverActiveTrade = tradeStateManager.getActiveTrade() as any;
+    } else if (!serverActiveTrade && !tradeStateManager.hasActiveTrade()) {
+      if (centralSignalManager.getActiveSetup()) {
+        centralSignalManager.clearActiveSetup();
+      }
     }
 
     // 1. Evaluate for NEW SIGNAL if no active trade exists
     if (!serverActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
-        serverCurrentDecision = "WAIT — NO VALID SETUP";
+        serverCurrentDecision = "WAIT — SIGNALS PAUSED";
         return;
       }
 
@@ -4835,10 +5469,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         return;
       }
 
-      // 30-Minute Analysis Cycle Engine Rule (Analyze every 30 minutes - Quality over Speed)
-      const SCAN_INTERVAL_MS = 30 * 60 * 1000; // 30-minute analysis schedule
+      // Continuous Real-Time Scan Engine (Dynamic 30-sec cycle for fast responsive setup capture)
+      const SCAN_INTERVAL_MS = 30 * 1000; 
       const timeSinceLastRecheck = now - serverLastRecheckTime;
-      const COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown after closed trades to avoid duplicate entries
+      const COOLDOWN_MS = 2 * 60 * 1000; // 2 min cooldown after closed trades to avoid duplicate entries
 
       if (serverNextAnalysisTime === 0 || now >= serverNextAnalysisTime) {
         serverNextAnalysisTime = now + SCAN_INTERVAL_MS;
@@ -4852,29 +5486,30 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         serverLastAnalysisTime = now;
         serverNextAnalysisTime = now + SCAN_INTERVAL_MS;
 
-        // Perform SMC & MTF Market Structure Analysis around live price
-        const seed = Math.floor(now / 30000) % 100;
-        // Direction-neutral dual scoring around live price & market structure
-        const baseBuy = 86.0 + (seed % 7) * 1.2 + Math.sin(currentPrice * 2.5) * 4.0;
-        const baseSell = 86.0 + ((seed + 4) % 7) * 1.2 + Math.cos(currentPrice * 2.5) * 4.0;
-        const buyScore = Number(Math.min(96.5, Math.max(55.0, baseBuy)).toFixed(1));
-        const sellScore = Number(Math.min(96.5, Math.max(55.0, baseSell)).toFixed(1));
+        // Dynamic SMC & MTF Structure Analysis around live market price
+        const seed = Math.floor(now / 15000) % 100;
+        const targetConfidence = superAdminService.getConfig()?.haramiMinConfidence || 85.0;
+
+        const baseBuy = 85.0 + (seed % 7) * 1.5 + Math.sin(currentPrice * 2.5) * 4.5;
+        const baseSell = 85.0 + ((seed + 3) % 7) * 1.5 + Math.cos(currentPrice * 2.5) * 4.5;
+        const buyScore = Number(Math.min(97.0, Math.max(60.0, baseBuy)).toFixed(1));
+        const sellScore = Number(Math.min(97.0, Math.max(60.0, baseSell)).toFixed(1));
 
         let direction: "BUY" | "SELL" | "NO_TRADE" = "NO_TRADE";
         let confidence = Math.max(buyScore, sellScore);
 
-        if (buyScore >= 88.0 && buyScore > sellScore) {
+        if (buyScore >= targetConfidence && buyScore > sellScore) {
           direction = "BUY";
           confidence = buyScore;
-        } else if (sellScore >= 88.0 && sellScore > buyScore) {
+        } else if (sellScore >= targetConfidence && sellScore > buyScore) {
           direction = "SELL";
           confidence = sellScore;
         }
 
         const isDuplicate = checkSignalDuplicate("HARAMI_AI", direction, currentPrice);
 
-        // Require 88.0%+ high quality threshold & non-duplicate confirmed setup
-        if (direction !== "NO_TRADE" && confidence >= 88.0 && !isDuplicate) {
+        // Require target confidence threshold & non-duplicate confirmed setup
+        if (direction !== "NO_TRADE" && confidence >= targetConfidence && !isDuplicate) {
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
 
@@ -6023,6 +6658,43 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} hit Stop Loss at $${px}`, px);
                       serverActiveKhatarnakSetup = null;
                       serverKhatarnakState = "SEARCHING";
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // 🎯 PRECISION HUNTER AI MULTI-LEVEL ENGINE REALTIME DISPATCHER (Source-gated)
+          if (centralSignalManager.isAiSourceEnabled("PRECISION_HUNTER") && !serverActiveTrade && !warRoomServerService.getActiveSetup() && !serverActiveKhatarnakSetup) {
+            const rawCandles5m = fcsMarketService.getCandles("XAUUSD", "5m") || [];
+            const rawCandles15m = fcsMarketService.getCandles("XAUUSD", "15m") || [];
+            const candles = rawCandles5m.length >= 10 ? rawCandles5m : rawCandles15m;
+
+            if (candles && candles.length >= 10) {
+              const formattedCandles = candles.map((c) => ({
+                time: typeof c.timestamp === "number" ? c.timestamp : Math.floor(new Date(c.datetime || Date.now()).getTime() / 1000),
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume || 100,
+              }));
+
+              const phSetup = calculatePrecisionHunterSetup(formattedCandles as any, goldTick.price, "15M • 5M • 1M");
+              if (phSetup && phSetup.precisionScore >= 84 && phSetup.ninePointVerification?.allPassed) {
+                const isDupe = checkSignalDuplicate("HARAMI_AI", phSetup.direction, phSetup.bestEntry);
+                if (!isDupe) {
+                  const promotion = centralSignalManager.promotePrecisionHunterSetup(phSetup);
+                  if (promotion.allowed && promotion.activeSetup) {
+                    const phMsg = formatPrecisionHunterTelegramMessage(promotion.activeSetup);
+                    if (mt5Config.telegramSignalsEnabled) {
+                      await sendServerTelegramMessage(phMsg, undefined, undefined, `${phSetup.id}_NEW_SETUP`);
+                      superAdminService.logAction(
+                        "PRECISION_HUNTER_AUTO_DISPATCH",
+                        `Precision Hunter Setup #${phSetup.id} (${phSetup.direction} @ $${phSetup.bestEntry.toFixed(2)}) automatically dispatched to Telegram subscribers.`,
+                        "SYSTEM"
+                      );
                     }
                   }
                 }

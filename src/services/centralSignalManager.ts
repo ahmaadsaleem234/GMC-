@@ -819,6 +819,11 @@ export class CentralSignalManagerEngine {
     return true;
   }
 
+  public clearActiveSetup() {
+    this.activeSetup = null;
+    this.saveToStorage();
+  }
+
   public getState(currentPrice: number = 2945.80): CentralSignalManagerState {
     return this.evaluateState([], [], currentPrice, undefined, "XAUUSD");
   }
