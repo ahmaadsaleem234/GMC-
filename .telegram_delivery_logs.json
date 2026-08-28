@@ -1,0 +1,375 @@
+{
+  "logs": [
+    {
+      "id": "DELIV-1787948410925",
+      "signalId": "GMC-WAR-20260828-005",
+      "engine": "GMC_SYSTEM",
+      "timestampUtc": "2026-08-28T20:20:10.104Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787948204821",
+      "signalId": "HRM-2889",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-08-28T20:16:44.352Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787948204350",
+      "signalId": "SIG-1787948204099",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-08-28T20:16:44.099Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787948168674",
+      "signalId": "GMC-WAR-20260828-005",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-08-28T20:16:08.046Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787937215059",
+      "signalId": "SIG-1787937214218",
+      "engine": "GMC_SYSTEM",
+      "timestampUtc": "2026-08-28T17:13:34.218Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787937181762",
+      "signalId": "GMC-WAR-20260828-005",
+      "engine": "GMC_SYSTEM",
+      "timestampUtc": "2026-08-28T17:13:01.325Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936975750",
+      "signalId": "GMC-WAR-20260828-005",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-08-28T17:09:35.252Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936965214",
+      "signalId": "PH-8529_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:09:24.282Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936954280",
+      "signalId": "PH-8528_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:09:13.820Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936943816",
+      "signalId": "PH-8527_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:09:03.212Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936933208",
+      "signalId": "PH-8526_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:08:52.389Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936922387",
+      "signalId": "PH-8525_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:08:41.930Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936911926",
+      "signalId": "PH-8524_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:08:31.497Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936901493",
+      "signalId": "PH-8523_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:08:21.009Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936891006",
+      "signalId": "PH-8522_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:08:10.169Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936880167",
+      "signalId": "PH-8521_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:59.543Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936869540",
+      "signalId": "PH-8520_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:49.069Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936859066",
+      "signalId": "PH-8519_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:38.584Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936848580",
+      "signalId": "PH-8518_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:27.873Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936837868",
+      "signalId": "PH-8517_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:17.395Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936827392",
+      "signalId": "PH-8516_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:07:06.886Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936816882",
+      "signalId": "PH-8515_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:55.980Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936805975",
+      "signalId": "PH-8514_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:45.469Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936795466",
+      "signalId": "PH-8513_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:34.781Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936784778",
+      "signalId": "PH-8512_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:24.061Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936774058",
+      "signalId": "PH-8511_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:13.286Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936763283",
+      "signalId": "PH-8510_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:06:02.469Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936752465",
+      "signalId": "PH-8509_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:05:52.034Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936742029",
+      "signalId": "PH-8508_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:05:41.637Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936731630",
+      "signalId": "PH-8507_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:05:30.775Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936720770",
+      "signalId": "PH-8506_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:05:19.979Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936709974",
+      "signalId": "PH-8505_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:05:09.269Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936699265",
+      "signalId": "PH-8504_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:04:58.778Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936688773",
+      "signalId": "PH-8503_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:04:48.271Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936678267",
+      "signalId": "PH-8502_NEW_SETUP",
+      "engine": "PRECISION_HUNTER",
+      "timestampUtc": "2026-08-28T17:04:37.755Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936617735",
+      "signalId": "HRM-5675",
+      "engine": "GMC_SYSTEM",
+      "timestampUtc": "2026-08-28T17:03:36.864Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1787936586849",
+      "signalId": "SIG-1787936586475",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-08-28T17:03:06.475Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    }
+  ],
+  "failures": []
+}

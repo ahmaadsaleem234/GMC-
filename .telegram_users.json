@@ -23,5 +23,26 @@
     "lastActive": "2026-08-22T13:04:30.276Z",
     "totalSignalsReceived": 1,
     "languageCode": "en"
+  },
+  "7124285012": {
+    "userId": "7124285012",
+    "username": "@ahmaadit",
+    "firstName": "Ahamd",
+    "lastName": "Ahmed",
+    "chatId": "7124285012",
+    "status": "approved",
+    "planType": "lifetime",
+    "joinedAt": "2026-08-28T17:02:04.620Z",
+    "lastActive": "2026-08-28T20:20:10.104Z",
+    "totalSignalsReceived": 37,
+    "decisionAt": "2026-08-28T17:02:10.018Z",
+    "languageCode": "en",
+    "lastAdminRequestAt": 1787936524620,
+    "approvalDuration": "lifetime",
+    "approvalDurationLabel": "Lifetime (Permanent Access)",
+    "approvedAt": "2026-08-28T17:02:10.018Z",
+    "expiresAt": null,
+    "expiresAtIso": null,
+    "expiryNotified": false
   }
 }
