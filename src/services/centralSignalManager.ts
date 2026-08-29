@@ -493,7 +493,7 @@ export class CentralSignalManagerEngine {
   private haramiEnabled: boolean = true;
   private khatarnakEnabled: boolean = true;
   private warRoomEnabled: boolean = true;
-  private precisionHunterEnabled: boolean = true;
+  private precisionHunterEnabled: boolean = false;
 
   private isInitialized = false;
   private onSetupPromotedListeners: Set<(setup: ActiveCentralSetup) => void> = new Set();
@@ -1001,6 +1001,15 @@ export class CentralSignalManagerEngine {
         : "🤖";
 
     console.log(`[${source} → CENTRAL GATEKEEPER]: Evaluating setup ${setupData.setupId || "NEW"} (${setupData.direction} @ $${setupData.preferredEntry}, Score: ${setupData.setupScore}/100)`);
+
+    // 0. Precision Hunter is strictly quarantined from Telegram/Central Active Setup
+    if (source === "PRECISION_HUNTER") {
+      return {
+        allowed: false,
+        reason: "BLOCKED_SOURCE_DISABLED",
+        message: "Precision Hunter is permanently disabled from occupying Active Setup & Telegram dispatch.",
+      };
+    }
 
     // 0. Check if this AI Trading Source is enabled by Admin
     if (!this.isAiSourceEnabled(source)) {
@@ -1944,7 +1953,13 @@ export class CentralSignalManagerEngine {
     let sellCount = 0;
     let waitCount = 0;
 
-    Object.values(candidates).forEach((c) => {
+    // Only count ENABLED AI sources (Exclude disabled engines like Precision Hunter)
+    const activeCandidates = Object.values(candidates).filter(
+      (c) => this.isAiSourceEnabled(c.brainSource) && c.brainSource !== "PRECISION_HUNTER"
+    );
+    const totalActive = activeCandidates.length || 1;
+
+    activeCandidates.forEach((c) => {
       if (c.direction === "BUY") buyCount++;
       else if (c.direction === "SELL") sellCount++;
       else waitCount++;
@@ -1952,55 +1967,50 @@ export class CentralSignalManagerEngine {
 
     let dominantDirection: AiConsensusState["dominantDirection"] = "MIXED";
     let consensusStrength: ConsensusStrength = "WEAK_CONSENSUS";
-    let consensusRatio = "1/4";
-    let consensusLabel = "1/4 Mixed (25% Weak Consensus)";
+    let consensusRatio = `${buyCount}/${totalActive}`;
+    let consensusLabel = `${buyCount}/${totalActive} Mixed`;
     let consensusEmoji = "⚠️";
     let conflictDetected = false;
     let conflictReason: string | null = null;
 
-    if (buyCount >= 3) {
+    if (buyCount >= 2 && sellCount === 0) {
       dominantDirection = "BUY";
-      consensusStrength = buyCount === 4 ? "STRONG_CONSENSUS" : "STRONG_CONSENSUS";
-      consensusRatio = `${buyCount}/4`;
-      consensusLabel = `${buyCount}/4 BUY (${buyCount === 4 ? "100%" : "75%"} Strong Consensus)`;
+      consensusStrength = buyCount === totalActive ? "STRONG_CONSENSUS" : "CONFIRMED_BIAS";
+      consensusRatio = `${buyCount}/${totalActive}`;
+      consensusLabel = `${buyCount}/${totalActive} BUY (${buyCount === totalActive ? "100%" : "66%"} Consensus)`;
       consensusEmoji = "🔥";
-      if (sellCount > 0) {
-        conflictDetected = true;
-        conflictReason = `${sellCount} AI in SELL conflict against ${buyCount} BUY consensus.`;
-      }
-    } else if (sellCount >= 3) {
+    } else if (sellCount >= 2 && buyCount === 0) {
       dominantDirection = "SELL";
-      consensusStrength = sellCount === 4 ? "STRONG_CONSENSUS" : "STRONG_CONSENSUS";
-      consensusRatio = `${sellCount}/4`;
-      consensusLabel = `${sellCount}/4 SELL (${sellCount === 4 ? "100%" : "75%"} Strong Consensus)`;
+      consensusStrength = sellCount === totalActive ? "STRONG_CONSENSUS" : "CONFIRMED_BIAS";
+      consensusRatio = `${sellCount}/${totalActive}`;
+      consensusLabel = `${sellCount}/${totalActive} SELL (${sellCount === totalActive ? "100%" : "66%"} Consensus)`;
       consensusEmoji = "🔥";
-      if (buyCount > 0) {
-        conflictDetected = true;
-        conflictReason = `${buyCount} AI in BUY conflict against ${sellCount} SELL consensus.`;
-      }
-    } else if (buyCount === 2 && sellCount === 0) {
+    } else if (buyCount === 1 && sellCount === 0) {
       dominantDirection = "BUY";
       consensusStrength = "CONFIRMED_BIAS";
-      consensusRatio = "2/4";
-      consensusLabel = "2/4 BUY (50% Confirmed Bias, No Counter-Trend)";
+      consensusRatio = `1/${totalActive}`;
+      consensusLabel = `1/${totalActive} BUY (Institutional Edge)`;
       consensusEmoji = "✅";
-    } else if (sellCount === 2 && buyCount === 0) {
+    } else if (sellCount === 1 && buyCount === 0) {
       dominantDirection = "SELL";
       consensusStrength = "CONFIRMED_BIAS";
-      consensusRatio = "2/4";
-      consensusLabel = "2/4 SELL (50% Confirmed Bias, No Counter-Trend)";
+      consensusRatio = `1/${totalActive}`;
+      consensusLabel = `1/${totalActive} SELL (Institutional Edge)`;
       consensusEmoji = "✅";
-    } else if (buyCount === 2 && sellCount === 2) {
+    } else if (buyCount > 0 && sellCount > 0) {
       dominantDirection = "MIXED";
       consensusStrength = "WEAK_CONSENSUS";
-      consensusRatio = "2/2 Split";
-      consensusLabel = "2 BUY vs 2 SELL (50/50 Deadlock Conflict)";
+      consensusRatio = `${buyCount}/${sellCount} Split`;
+      consensusLabel = `${buyCount} BUY vs ${sellCount} SELL Conflict`;
       consensusEmoji = "⚔️";
       conflictDetected = true;
-      conflictReason = "Direct 2 vs 2 directional conflict between AI brains.";
+      conflictReason = `Directional conflict between active AI brains.`;
     } else {
-      conflictDetected = true;
-      conflictReason = "Directional split across AI systems without decisive edge.";
+      dominantDirection = "MIXED";
+      consensusStrength = "WEAK_CONSENSUS";
+      consensusRatio = `0/${totalActive}`;
+      consensusLabel = "Scanning Active Markets";
+      consensusEmoji = "🔍";
     }
 
     return {

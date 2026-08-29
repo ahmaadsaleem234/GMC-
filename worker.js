@@ -19,7 +19,7 @@ var DEFAULT_SUPER_ADMIN_CONFIG = {
   warRoomEnabled: true,
   warRoomMinScore: 90,
   khatarnakEnabled: true,
-  precisionHunterEnabled: true,
+  precisionHunterEnabled: false,
   autoApproveSignals: true,
   allowedMarkets: {
     XAUUSD: true,

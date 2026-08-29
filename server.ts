@@ -3482,6 +3482,20 @@ ${rows}
                     continue;
                   }
 
+                  // Super Admin /reset_cooldown, /unblock, /clear_cooldown -> Instantly clear cooldown
+                  if (textLower.startsWith("/reset_cooldown") || textLower.startsWith("/unblock") || textLower.startsWith("/clear_cooldown") || textLower.startsWith("/clear_cd") || ["unblock", "reset cooldown"].includes(textLower)) {
+                    centralSignalManager.resetCooldown();
+                    tradeStateManager.resetCooldown();
+                    serverLastClosedTime = 0;
+                    serverCurrentDecision = "SCANNING LIVE (UNBLOCKED)";
+                    superAdminService.logAction("COOLDOWN_RESET", "Super Admin manually reset cooldown via Telegram command", userId);
+                    await sendSingleTelegramMessage(
+                      chatId,
+                      `🟢 <b>COOLDOWN RESET & SYSTEM UNBLOCKED!</b>\n━━━━━━━━━━━━━━━━━━━\n✅ All 4 AI Engines (Harami, Khatarnak, War Room, Precision Hunter) are now actively scanning 24/7.\n⚡ Immediate signal dispatch enabled.`
+                    );
+                    continue;
+                  }
+
                   // Super Admin /competition or /compare -> Open AI Competition View
                   if (textLower.startsWith("/competition") || textLower.startsWith("/compare") || ["competition", "compare"].includes(textLower)) {
                     const csmState = centralSignalManager.getState(liveGold);
@@ -4778,6 +4792,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     } else {
       signalEngine = "GMC_SYSTEM";
       botLabel = "GMC Institutional AI";
+    }
+
+    // STRICT: Precision Hunter is completely disabled from Telegram dispatch (Admin & Users)
+    if (signalEngine === "PRECISION_HUNTER" || text.includes("PRECISION HUNTER") || text.includes("PRECISION-HUNTER") || (customAlertId && customAlertId.startsWith("PH-"))) {
+      console.log(`[PRECISION HUNTER DISABLED]: Dropped Telegram message. Precision Hunter AI is completely disabled from Telegram dispatch.`);
+      serverTelegramDeliveryStatus = "Idle";
+      return false;
     }
 
     // STRICT SOURCE GATEKEEPING (Admin Orchestrator Enforcement)
@@ -6749,42 +6770,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             }
           }
 
-          // 🎯 PRECISION HUNTER AI MULTI-LEVEL ENGINE REALTIME DISPATCHER (Source-gated)
-          if (centralSignalManager.isAiSourceEnabled("PRECISION_HUNTER") && !serverActiveTrade && !warRoomServerService.getActiveSetup() && !serverActiveKhatarnakSetup) {
-            const rawCandles5m = fcsMarketService.getCandles("XAUUSD", "5m") || [];
-            const rawCandles15m = fcsMarketService.getCandles("XAUUSD", "15m") || [];
-            const candles = rawCandles5m.length >= 10 ? rawCandles5m : rawCandles15m;
-
-            if (candles && candles.length >= 10) {
-              const formattedCandles = candles.map((c) => ({
-                time: typeof c.timestamp === "number" ? c.timestamp : Math.floor(new Date(c.datetime || Date.now()).getTime() / 1000),
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close,
-                volume: c.volume || 100,
-              }));
-
-              const phSetup = calculatePrecisionHunterSetup(formattedCandles as any, goldTick.price, "15M • 5M • 1M");
-              if (phSetup && phSetup.precisionScore >= 84 && phSetup.ninePointVerification?.allPassed) {
-                const isDupe = checkSignalDuplicate("HARAMI_AI", phSetup.direction, phSetup.bestEntry);
-                if (!isDupe) {
-                  const promotion = centralSignalManager.promotePrecisionHunterSetup(phSetup);
-                  if (promotion.allowed && promotion.activeSetup) {
-                    const phMsg = formatPrecisionHunterTelegramMessage(promotion.activeSetup);
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await sendServerTelegramMessage(phMsg, undefined, undefined, `${phSetup.id}_NEW_SETUP`);
-                      superAdminService.logAction(
-                        "PRECISION_HUNTER_AUTO_DISPATCH",
-                        `Precision Hunter Setup #${phSetup.id} (${phSetup.direction} @ $${phSetup.bestEntry.toFixed(2)}) automatically dispatched to Telegram subscribers.`,
-                        "SYSTEM"
-                      );
-                    }
-                  }
-                }
-              }
-            }
-          }
+          // 🎯 PRECISION HUNTER AI (TELEGRAM DISPATCH DISABLED AS PER REQUIREMENT)
+          // Precision Hunter trades will NOT be dispatched to Telegram
         }
 
         // War Room Upgrade Verification:

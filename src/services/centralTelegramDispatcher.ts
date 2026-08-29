@@ -289,6 +289,11 @@ export function formatPrecisionHunterTelegramMessage(setup: ActiveCentralSetup):
 export async function dispatchCentralWinningSetupToTelegram(
   setup: ActiveCentralSetup
 ): Promise<{ success: boolean; message?: string }> {
+  // Precision Hunter is disabled from Telegram broadcast per user requirements
+  if (setup.brainSource === "PRECISION_HUNTER") {
+    return { success: false, message: "Precision Hunter Telegram dispatch is permanently disabled." };
+  }
+
   const eventKey = `${setup.setupId}_NEW_SETUP`;
   const sent = getSentEvents();
   if (sent.has(eventKey)) {
@@ -296,9 +301,7 @@ export async function dispatchCentralWinningSetupToTelegram(
   }
 
   let message = "";
-  if (setup.brainSource === "PRECISION_HUNTER") {
-    message = formatPrecisionHunterTelegramMessage(setup);
-  } else if (setup.brainSource === "KHATARNAK_JUGAAD") {
+  if (setup.brainSource === "KHATARNAK_JUGAAD") {
     message = formatKhatarnakJugaadTelegramMessage(setup);
   } else if (setup.brainSource === "HARAMI_AI") {
     message = formatHaramiAiTelegramMessage(setup);

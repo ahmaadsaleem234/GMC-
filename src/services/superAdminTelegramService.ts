@@ -95,7 +95,7 @@ const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   warRoomEnabled: true,
   warRoomMinScore: 90.0,
   khatarnakEnabled: true,
-  precisionHunterEnabled: true,
+  precisionHunterEnabled: false,
   autoApproveSignals: true,
   allowedMarkets: {
     XAUUSD: true,

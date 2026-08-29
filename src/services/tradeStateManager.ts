@@ -325,6 +325,18 @@ export class MasterTradeStateManager {
     };
   }
 
+  public resetCooldown() {
+    this.cooldownState = {
+      inCooldown: false,
+      cooldownUntil: 0,
+      remainingMinutes: 0,
+      reason: null,
+      lastSlHitTimestamp: null,
+      lastFailedSetupZone: null,
+    };
+    this.persistState();
+  }
+
   public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
     const now = Date.now();
     const COOLDOWN_DURATION_MS = 15 * 60 * 1000; // Strict 15-minute minimum
