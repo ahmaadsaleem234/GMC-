@@ -51,6 +51,7 @@ import {
 } from "./warRoomEngine.js";
 import { fcsMarketService, FCSCandle } from "./fcsMarketService.js";
 import { setupLifecycleStorage } from "./setupLifecycleStorage.js";
+import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper.js";
 import { generateWarRoomLifecycleSnapshotBuffer } from "./signalChartService.js";
 import {
   AuthoritativeSetup,
@@ -1873,6 +1874,7 @@ class WarRoomServerService {
         setup.status = "TP1_HIT";
         setup.stopLoss = setup.bestEntry; // Move SL to BE
         setupLifecycleStorage.saveSetup(setup as any);
+        moduleSignalGatekeeper.startCooldown("WAR_ROOM", "TP", setup.setupId);
         this.addAuditLog("LIFECYCLE", "TP1_HIT", `Setup ${setup.setupId} reached TP1 ${setup.tp1}. SL moved to Break-Even.`, px, 98, "OK");
 
         await this.emitLifecycleAlert(
@@ -1944,6 +1946,7 @@ class WarRoomServerService {
         setupLifecycleStorage.saveSetup(setup as any);
         this.database.unshift({ ...setup });
         this.lastTradeClosedAt = nowMs;
+        moduleSignalGatekeeper.startCooldown("WAR_ROOM", "TP", setup.setupId);
         this.addAuditLog("LIFECYCLE", "TP4_FULL_TARGET_COMPLETED", `Setup ${setup.setupId} FULL TARGET TP4 hit at ${setup.tp4}. Trade closed with maximum profit.`, px, 98, "OK");
 
         await this.emitLifecycleAlert(
@@ -1981,6 +1984,7 @@ class WarRoomServerService {
         setupLifecycleStorage.saveSetup(setup as any);
         this.database.unshift({ ...setup });
         this.lastTradeClosedAt = nowMs;
+        moduleSignalGatekeeper.startCooldown("WAR_ROOM", isBE ? "TP" : "SL", setup.setupId);
         this.addAuditLog("LIFECYCLE", isBE ? "BREAKEVEN_EXIT" : "STOP_LOSS_HIT", `Setup ${setup.setupId} hit stop at ${px}.`, px, 98, "WARNING");
 
         await this.emitLifecycleAlert(

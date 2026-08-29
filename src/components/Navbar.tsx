@@ -26,6 +26,7 @@ import {
   LayoutGrid,
   ChevronRight,
   Filter,
+  Sparkles,
 } from "lucide-react";
 import { SUPPORTED_ASSETS } from "../useLiveData";
 import { LivePrice } from "../types";
@@ -120,6 +121,66 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Home className="w-4 h-4 text-[#F1CC6B]" />
             <span className="hidden sm:inline">Home</span>
+          </button>
+
+          {/* ⚡ RETEST X 15M ENGINE APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-retest-x-btn"
+            onClick={() => setActiveTab("retest_x")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "retest_x"
+                ? "bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 text-slate-950 border border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.85)] animate-pulse"
+                : "bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 hover:bg-cyan-500/30"
+            }`}
+            title="Launch ⚡ RETEST X — 15M Red Doji Reference & Breakout Retest Engine"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span className="tracking-wide font-black">RETEST X</span>
+          </button>
+
+          {/* 🇬🇧 GBPUSD 3D AI SNIPER APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-gbpusd-sniper-btn"
+            onClick={() => setActiveTab("gbpusd_sniper")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "gbpusd_sniper" || activeTab === "gbpusd" || activeTab === "gbpusd_3d_ai_sniper"
+                ? "bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 text-slate-950 border border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.85)] animate-pulse"
+                : "bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 hover:bg-cyan-500/30"
+            }`}
+            title="Launch 🇬🇧 GBPUSD 3D AI SNIPER — Live 3D Market Universe"
+          >
+            <span className="text-sm">🇬🇧</span>
+            <span className="tracking-wide font-black">GBPUSD 3D SNIPER</span>
+          </button>
+
+          {/* 🇺🇸 S&P 500 AI HUNTER APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-sp500-ai-hunter-btn"
+            onClick={() => setActiveTab("sp500_ai_hunter")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "sp500_ai_hunter" || activeTab === "sp500"
+                ? "bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 text-slate-950 border border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.85)] animate-pulse"
+                : "bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 hover:bg-cyan-500/30"
+            }`}
+            title="Launch 🇺🇸 S&P 500 AI HUNTER — Real-Time AI Market Intelligence"
+          >
+            <span className="text-sm">🇺🇸</span>
+            <span className="tracking-wide font-black">S&P 500 HUNTER</span>
+          </button>
+
+          {/* 🪐 GMC WYCKOFF 3D LIVE MARKET ENGINE APEX SHORTCUT BUTTON */}
+          <button
+            id="header-nav-gmc-wyckoff-btn"
+            onClick={() => setActiveTab("gmc_wyckoff")}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs transition-all active:scale-95 cursor-pointer ${
+              activeTab === "gmc_wyckoff"
+                ? "bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-500 text-slate-950 border border-cyan-300 shadow-[0_0_18px_rgba(6,182,212,0.85)] animate-pulse"
+                : "bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 hover:bg-cyan-500/30"
+            }`}
+            title="Launch 🪐 GMC WYCKOFF 3D Live AI Market Engine"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-200 fill-current animate-spin" />
+            <span className="tracking-wide">GMC WYCKOFF</span>
           </button>
 
           {/* ⚡ GMC SENTINEL MASTER AI TERMINAL APEX SHORTCUT BUTTON */}

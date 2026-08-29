@@ -10,6 +10,8 @@ import {
 } from "./services/goldApiService";
 
 export const SUPPORTED_ASSETS: Asset[] = [
+  { key: "SPX", label: "S&P 500 Index (SPX • SPCFD)", short: "SPX", basePrice: 7711.76, seed: 98, decimals: 2, color: "#06b6d4", category: "forex" },
+  { key: "SPY", label: "SPDR S&P 500 ETF (SPY)", short: "SPY", basePrice: 588.65, seed: 97, decimals: 2, color: "#38bdf8", category: "forex" },
   { key: "US30", label: "US30 Dow Jones Index", short: "US30", basePrice: 54025.0, seed: 99, decimals: 1, color: "#38bdf8", category: "forex" },
   { key: "NAS100", label: "NASDAQ 100 Index", short: "NAS100", basePrice: 29413.0, seed: 100, decimals: 1, color: "#00e08a", category: "forex" },
   { key: "XAUUSD", label: "Gold / USD Spot", short: "XAUUSD", basePrice: 4498.10, seed: 101, decimals: 2, color: "#f6b000", category: "metal" },

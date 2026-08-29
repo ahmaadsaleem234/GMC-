@@ -37,6 +37,9 @@ import { CentralSignalManagerView } from "./components/CentralSignalManagerView"
 import { PrecisionHunterView } from "./components/PrecisionHunterView";
 import { ModuleRegistryView } from "./components/ModuleRegistryView";
 import { SentinelView } from "./components/SentinelView";
+import { GmcWyckoffView } from "./components/GmcWyckoffView";
+import { Sp500HunterView } from "./components/sp500/Sp500HunterView";
+import { GbpusdSniperView } from "./components/gbpusd/GbpusdSniperView";
 import { useCentralSignalManagerWatcher } from "./services/useCentralSignalManagerWatcher";
 import { InstitutionalLiquidityHeatmapD3 } from "./components/InstitutionalLiquidityHeatmapD3";
 import { OrderFlowVolumeProfile } from "./components/OrderFlowVolumeProfile";
@@ -83,6 +86,7 @@ import { useLiveData, useCandleData } from "./useLiveData";
 import { useAutoTelegramBroadcaster } from "./useAutoTelegramBroadcaster";
 import { getModuleTitle } from "./utils/moduleRegistry";
 import { InstitutionalTelegramBroadcaster } from "./components/InstitutionalTelegramBroadcaster";
+import { RetestXDashboardView } from "./components/RetestXDashboardView";
 import { getValidSession, createSession, clearSession } from "./utils/sessionManager";
 
 const INITIAL_TRADES: TradeLogEntry[] = [
@@ -543,6 +547,101 @@ export function App() {
               assetKey={activeAssetKey}
             />
           </>
+        )}
+
+        {activeTab === "retest_x" && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["retest_x"] || accounts["sentinel"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("retest_x", {
+                  assetKey: activeAssetKey,
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice - 3.5,
+                  takeProfit: currentPrice + 7.0,
+                  lotSize: 0.1,
+                  signalSource: "⚡ RETEST X — 15M Red Doji Breakout/Retest Engine",
+                })
+              }
+            />
+            <RetestXDashboardView
+              currentPrice={currentPrice}
+              assetKey={activeAssetKey}
+              prices={prices}
+              latencyMs={latencyMs}
+              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+            />
+          </div>
+        )}
+
+        {(activeTab === "gbpusd_sniper" || activeTab === "gbpusd" || activeTab === "gbpusd_3d_ai_sniper") && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["gbpusd_sniper"] || accounts["sp500_ai_hunter"] || accounts["sentinel"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("gbpusd_sniper", {
+                  assetKey: "GBPUSD",
+                  type: "BUY",
+                  entryPrice: 1.34685,
+                  stopLoss: 1.34350,
+                  takeProfit: 1.35450,
+                  lotSize: 1.0,
+                  signalSource: "🇬🇧 GBPUSD 3D AI SNIPER — High-Conviction Market Universe",
+                })
+              }
+            />
+            <GbpusdSniperView />
+          </div>
+        )}
+
+        {(activeTab === "sp500_ai_hunter" || activeTab === "sp500") && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["sp500_ai_hunter"] || accounts["sentinel"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("sp500_ai_hunter", {
+                  assetKey: "SPY",
+                  type: "BUY",
+                  entryPrice: 588.45,
+                  stopLoss: 585.10,
+                  takeProfit: 595.50,
+                  lotSize: 1.0,
+                  signalSource: "🇺🇸 S&P 500 AI HUNTER — Real-Time AI Market Intelligence",
+                })
+              }
+            />
+            <Sp500HunterView
+              prices={prices}
+              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+              onExecuteDemoTrade={(tradeData) => executeTabTrade("sp500_ai_hunter", tradeData)}
+            />
+          </div>
+        )}
+
+        {(activeTab === "gmc_wyckoff" || activeTab === "wyckoff") && (
+          <div className="space-y-4">
+            <TabDemoBanner
+              account={accounts["gmc_wyckoff"] || accounts["sentinel"] || accounts["gmcgold"]}
+              onExecuteDemoTrade={() =>
+                executeTabTrade("gmc_wyckoff", {
+                  assetKey: "XAUUSD",
+                  type: "BUY",
+                  entryPrice: currentPrice,
+                  stopLoss: currentPrice - 3.2,
+                  takeProfit: currentPrice + 14.5,
+                  lotSize: 0.1,
+                  signalSource: "🪐 GMC WYCKOFF — 3D Live AI Market Engine",
+                })
+              }
+            />
+            <GmcWyckoffView
+              currentPrice={currentPrice}
+              prices={prices}
+              latencyMs={latencyMs}
+              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+            />
+          </div>
         )}
 
         {(activeTab === "sentinel" || activeTab === "gmc_sentinel") && (

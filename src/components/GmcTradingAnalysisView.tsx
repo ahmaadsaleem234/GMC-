@@ -36,6 +36,7 @@ import {
 import { sendTelegramMessage } from "../utils/telegram";
 import { useLockedTradeSetup } from "../utils/useLockedTradeSetup";
 import { LockedSetupBanner } from "./LockedSetupBanner";
+import { GmcWyckoffView } from "./GmcWyckoffView";
 
 interface GmcTradingAnalysisViewProps {
   currentPrice: number;
@@ -72,7 +73,7 @@ export const GmcTradingAnalysisView: React.FC<GmcTradingAnalysisViewProps> = ({
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [accountBalance, setAccountBalance] = useState<number>(10000);
   const [riskPercent, setRiskPercent] = useState<number>(1.0);
-  const [activeTab, setActiveTab] = useState<"SETUP" | "ZONES" | "LADDER" | "DISCIPLINE" | "CHART">("SETUP");
+  const [activeTab, setActiveTab] = useState<"SETUP" | "ZONES" | "LADDER" | "DISCIPLINE" | "CHART" | "WYCKOFF">("SETUP");
 
   // Sync selectedAsset if prop changes
   useEffect(() => {
@@ -561,6 +562,7 @@ _Powered by GMC Rejection & Confirmation Engine_`;
       {/* ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[#1F242C] no-scrollbar">
         {[
+          { id: "WYCKOFF", label: "🪐 3D Wyckoff Engine", icon: Sparkles },
           { id: "SETUP", label: "⚡ Live Setup Card", icon: Target },
           { id: "ZONES", label: "🏛️ Key Zones (SMC)", icon: Layers },
           { id: "LADDER", label: "🪜 Confirmation Ladder", icon: ShieldCheck },
@@ -572,7 +574,9 @@ _Powered by GMC Rejection & Confirmation Engine_`;
             onClick={() => setActiveTab(tab.id as any)}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === tab.id
-                ? "bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_10px_rgba(212,175,55,0.2)]"
+                ? tab.id === "WYCKOFF"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/80 shadow-[0_0_12px_rgba(6,182,212,0.4)] animate-pulse font-black"
+                  : "bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_10px_rgba(212,175,55,0.2)]"
                 : "bg-[#0E1117] hover:bg-[#141822] text-slate-400 border border-[#20252E]"
             }`}
           >
@@ -581,9 +585,19 @@ _Powered by GMC Rejection & Confirmation Engine_`;
         ))}
       </div>
 
+      {activeTab === "WYCKOFF" && (
+        <div className="space-y-4">
+          <GmcWyckoffView
+            currentPrice={liveMarketPrice}
+            prices={prices}
+          />
+        </div>
+      )}
+
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 4. MAIN INTERACTIVE CONTENT AREA */}
       {/* ─────────────────────────────────────────────────────────── */}
+      {activeTab !== "WYCKOFF" && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* LEFT COLUMN: PRIMARY LIVE SETUP & ZONES (8 COLS) */}
         <div className="lg:col-span-8 space-y-4">
@@ -1257,6 +1271,7 @@ _Powered by GMC Rejection & Confirmation Engine_`;
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

@@ -55,6 +55,34 @@ export const BrainVaultGrid: React.FC<BrainVaultGridProps> = ({
   ];
 
   const topTools = [
+    // 🇬🇧 GBPUSD 3D AI SNIPER — LIVE 3D MARKET UNIVERSE & HIGH-CONVICTION ENGINE
+    {
+      id: "gbpusd_sniper",
+      title: "🇬🇧 GBPUSD 3D AI SNIPER — Live 3D Market Universe & High-Conviction Engine",
+      emoji: "🇬🇧",
+      tag: "GBPUSD 3D AI SNIPER",
+      statusLabel: "3D SNIPER",
+      desc: "Futuristic 3D WebGL GBPUSD Market Observatory: 3D Holographic Candlesticks, Price Terrain, Derived Liquidity Map, Volatility Cloud, Session Planes, 100-Point A+ Scoring Matrix, 1 GBPUSD Trade/Day Governor Lock, and Real Live Spot FX Feed.",
+      useCase: "Zero-noise, maximum 1 trade/day high-conviction spot Forex sniper system.",
+      btnText: "Launch GBPUSD 3D Sniper",
+      tabTarget: "gbpusd_sniper",
+      highlight: true,
+      category: "SIGNALS",
+    },
+    // 🇺🇸 S&P 500 AI HUNTER — REAL-TIME AI MARKET INTELLIGENCE
+    {
+      id: "sp500_ai_hunter",
+      title: "🇺🇸 S&P 500 AI HUNTER — Real-Time AI Market Intelligence (SPY / SPX)",
+      emoji: "🇺🇸",
+      tag: "S&P 500 AI HUNTER",
+      statusLabel: "AI HUNTER",
+      desc: "Institutional High-Conviction S&P 500 Intelligence: 1–2 Setups/Day Governor, Multi-Timeframe Alignment (4H → 1M), 30-Minute Macro News Volatility Shield, Fibonacci Golden Zone (0.62–0.81), Liquidity Sweeps, and Transparent AI Mathematical Rationale.",
+      useCase: "Ultra-selective 1–2 high-conviction S&P 500 setups/day with mathematical institutional validation.",
+      btnText: "Open S&P 500 AI Hunter",
+      tabTarget: "sp500_ai_hunter",
+      highlight: true,
+      category: "SIGNALS",
+    },
     // 📋 GMC MODULE REGISTRY — COMPLETE AI ENGINE & DESK DIRECTORY
     {
       id: "module_registry",
