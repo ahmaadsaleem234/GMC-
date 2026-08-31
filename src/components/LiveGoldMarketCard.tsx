@@ -57,9 +57,15 @@ export const LiveGoldMarketCard: React.FC<LiveGoldMarketCardProps> = ({
   const priceDiff = (goldPrice * (changePct / 100)).toFixed(2);
 
   const providerName = xauObj.source || "Gold-API Realtime Spot (XAU/USD)";
-  const lastTickTime = xauObj.updatedAt
-    ? new Date(xauObj.updatedAt).toISOString().substring(11, 23)
-    : new Date().toISOString().substring(11, 23);
+  let lastTickTime = new Date().toISOString().substring(11, 23);
+  if (xauObj.updatedAt) {
+    const d = new Date(xauObj.updatedAt);
+    if (!isNaN(d.getTime())) {
+      lastTickTime = d.toISOString().substring(11, 23);
+    } else if (typeof xauObj.updatedAt === "string") {
+      lastTickTime = xauObj.updatedAt;
+    }
+  }
 
   // High-Precision Tick Freshness calculation
   const tickAgeMs = Math.max(0, now - (xauObj.receivedAt || xauObj.updatedAt || now));

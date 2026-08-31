@@ -55,6 +55,7 @@ import {
   MonthlyAiReview,
   ClosedTradeJournalRecord,
 } from "../types";
+import { NeuralConstellationCore } from "./NeuralConstellationCore";
 
 interface AiBrainControlCenterViewProps {
   onOpenKeystoneView?: () => void;
@@ -282,6 +283,9 @@ export const AiBrainControlCenterView: React.FC<AiBrainControlCenterViewProps> =
       {/* TAB 1: CONTROL OVERVIEW (Req #16) */}
       {activeTab === "overview" && (
         <div className="space-y-6">
+          {/* 🌌 Neural Constellation Core Synapse */}
+          <NeuralConstellationCore height={320} />
+
           {/* Top 4 Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card 1: Drawdown Protection Mode */}

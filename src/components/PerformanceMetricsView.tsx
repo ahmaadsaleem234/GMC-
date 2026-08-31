@@ -32,23 +32,23 @@ import {
 } from "recharts";
 import { SUPPORTED_ASSETS } from "../useLiveData";
 
-// Sample historical win rate timeline data
+// Sample historical win rate timeline data with today & yesterday session ghost trail
 const HISTORICAL_TIMELINE = [
-  { date: "May 01", winRate: 81.2, signals: 42, pnl: 14.2 },
-  { date: "May 08", winRate: 83.5, signals: 48, pnl: 18.5 },
-  { date: "May 15", winRate: 82.0, signals: 50, pnl: 16.8 },
-  { date: "May 22", winRate: 85.4, signals: 54, pnl: 22.1 },
-  { date: "May 29", winRate: 84.8, signals: 46, pnl: 19.4 },
-  { date: "Jun 05", winRate: 86.1, signals: 58, pnl: 25.3 },
-  { date: "Jun 12", winRate: 87.8, signals: 62, pnl: 28.7 },
-  { date: "Jun 19", winRate: 86.5, signals: 55, pnl: 24.2 },
-  { date: "Jun 26", winRate: 88.2, signals: 60, pnl: 31.0 },
-  { date: "Jul 03", winRate: 89.4, signals: 65, pnl: 34.6 },
-  { date: "Jul 10", winRate: 87.9, signals: 59, pnl: 30.2 },
-  { date: "Jul 17", winRate: 90.1, signals: 70, pnl: 38.4 },
-  { date: "Jul 24", winRate: 89.5, signals: 68, pnl: 36.9 },
-  { date: "Jul 31", winRate: 91.2, signals: 74, pnl: 42.1 },
-  { date: "Aug 03", winRate: 92.4, signals: 32, pnl: 18.2 },
+  { date: "May 01", winRate: 81.2, signals: 42, pnl: 14.2, ghostPnl: 10.5 },
+  { date: "May 08", winRate: 83.5, signals: 48, pnl: 18.5, ghostPnl: 13.8 },
+  { date: "May 15", winRate: 82.0, signals: 50, pnl: 16.8, ghostPnl: 12.4 },
+  { date: "May 22", winRate: 85.4, signals: 54, pnl: 22.1, ghostPnl: 17.0 },
+  { date: "May 29", winRate: 84.8, signals: 46, pnl: 19.4, ghostPnl: 15.2 },
+  { date: "Jun 05", winRate: 86.1, signals: 58, pnl: 25.3, ghostPnl: 20.1 },
+  { date: "Jun 12", winRate: 87.8, signals: 62, pnl: 28.7, ghostPnl: 23.4 },
+  { date: "Jun 19", winRate: 86.5, signals: 55, pnl: 24.2, ghostPnl: 19.8 },
+  { date: "Jun 26", winRate: 88.2, signals: 60, pnl: 31.0, ghostPnl: 25.6 },
+  { date: "Jul 03", winRate: 89.4, signals: 65, pnl: 34.6, ghostPnl: 28.9 },
+  { date: "Jul 10", winRate: 87.9, signals: 59, pnl: 30.2, ghostPnl: 24.5 },
+  { date: "Jul 17", winRate: 90.1, signals: 70, pnl: 38.4, ghostPnl: 31.2 },
+  { date: "Jul 24", winRate: 89.5, signals: 68, pnl: 36.9, ghostPnl: 29.8 },
+  { date: "Jul 31", winRate: 91.2, signals: 74, pnl: 42.1, ghostPnl: 34.7 },
+  { date: "Aug 03", winRate: 92.4, signals: 32, pnl: 18.2, ghostPnl: 14.5 },
 ];
 
 // Accuracy breakdown by Asset
@@ -209,14 +209,18 @@ export const PerformanceMetricsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-4 text-[10px] font-mono">
+          <div className="flex flex-wrap items-center gap-4 text-[10px] font-mono">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-blue-500/80 inline-block" />
               <span className="text-slate-300">Win Rate (%)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-emerald-500/80 inline-block" />
-              <span className="text-slate-300">Cumulative Return (%)</span>
+              <span className="w-3 h-0.5 rounded bg-emerald-400 inline-block" />
+              <span className="text-emerald-300 font-semibold">Today PnL (Solid)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 border-t border-dashed border-slate-400 opacity-60 inline-block" />
+              <span className="text-slate-400">Yesterday Ghost Trail</span>
             </div>
           </div>
         </div>
@@ -230,13 +234,13 @@ export const PerformanceMetricsView: React.FC = () => {
                   <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0} />
                 </linearGradient>
                 <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
                   <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
               <XAxis dataKey="date" stroke="#64748B" fontSize={10} tickLine={false} />
-              <YAxis stroke="#64748B" fontSize={10} domain={[70, 100]} tickLine={false} />
+              <YAxis stroke="#64748B" fontSize={10} domain={[10, 100]} tickLine={false} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: "#050505",
@@ -249,7 +253,11 @@ export const PerformanceMetricsView: React.FC = () => {
                 }}
                 formatter={(val: any, name: any) => [
                   `${val}${name === "winRate" ? "%" : "% Return"}`,
-                  name === "winRate" ? "AI Win Rate" : "PnL Return",
+                  name === "winRate"
+                    ? "AI Win Rate"
+                    : name === "pnl"
+                    ? "Today PnL (Solid)"
+                    : "Yesterday Ghost PnL",
                 ]}
               />
               <Area
@@ -260,12 +268,22 @@ export const PerformanceMetricsView: React.FC = () => {
                 fillOpacity={1}
                 fill="url(#colorWinRate)"
               />
+              {/* Ghost Line: Yesterday PnL at ~28% opacity, dashed stroke */}
+              <Area
+                type="monotone"
+                dataKey="ghostPnl"
+                stroke="#94A3B8"
+                strokeWidth={1.8}
+                strokeDasharray="4 4"
+                strokeOpacity={0.3}
+                fillOpacity={0}
+              />
+              {/* Main Line: Today Live PnL (solid stroke, full opacity) */}
               <Area
                 type="monotone"
                 dataKey="pnl"
                 stroke="#10B981"
-                strokeWidth={2}
-                strokeDasharray="4 4"
+                strokeWidth={2.5}
                 fillOpacity={1}
                 fill="url(#colorPnl)"
               />

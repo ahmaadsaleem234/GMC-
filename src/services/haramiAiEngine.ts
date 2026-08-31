@@ -26,6 +26,11 @@
  */
 
 import { Candle } from "../types";
+import {
+  detectSharedBosChoch,
+  calculateSharedLiquidityAndPOI,
+  evaluateSharedPreTradeFilter,
+} from "./warRoomEngine";
 
 export type HaramiSignalDirection = "BUY" | "SELL" | "NO_TRADE" | "WAIT";
 
@@ -407,29 +412,34 @@ export function calculateHaramiAiSetup(
   const spec = getInstrumentSpec(assetKey);
   const px = currentPx > 0 ? currentPx : 2885.0;
 
-  // 1. Calculate Real Multi-Timeframe ATR & Volatility
-  const atr15m = Math.max(spec.tickSize * 10, calculateAtr(candles15m, 14));
+  // 1. Centralized Shared BOS/CHOCH & 15M Structure Source
+  const sharedStructure = detectSharedBosChoch(candles15m as any, "15M", px);
+  
+  // 2. Centralized Shared Liquidity Map & Key POI (BSL/SSL/EQH/EQL/PDH/PDL, OrderBlocks, FVGs, Demand/Supply)
+  const sharedLiquidity = calculateSharedLiquidityAndPOI(candles15m as any, px, "15M");
+
+  // 3. Centralized Unified Pre-Trade Filter (News, Spread, Data Quality)
+  const sharedPreTrade = evaluateSharedPreTradeFilter({
+    spread: spreadPips,
+    dataQualityScore: 90,
+  });
+
+  // 4. Calculate Real Multi-Timeframe ATR & Volatility
+  const atr15m = Math.max(spec.tickSize * 10, sharedLiquidity.atr || calculateAtr(candles15m, 14));
   const atr5m = Math.max(spec.tickSize * 5, calculateAtr(candles5m, 14));
   const { regime, label: regimeLabel, volatilityMultiplier } = detectHaramiMarketRegime(candles15m, px, atr15m);
 
-  // 2. Identify 15M / 5M Swings & Liquidity Sweeps
-  const swings15 = findRecentSwings(candles15m, 20);
-  const swings5 = findRecentSwings(candles5m, 12);
-
-  // 3. Determine Direction with 15M Trend & 5M Momentum
+  // 5. Determine Direction with Shared Structure & Momentum
   let direction: "BUY" | "SELL" = "BUY";
-  if (candles15m.length > 0) {
-    const c15 = candles15m[candles15m.length - 1];
-    if (c15.close < c15.open && regime === "STRONG_BEARISH_TREND") {
-      direction = "SELL";
-    } else if (c15.close >= c15.open) {
-      direction = "BUY";
-    } else {
-      direction = px % 2 === 0 ? "BUY" : "SELL";
-    }
+  if (sharedStructure.trend === "BEARISH" || (candles15m.length > 0 && candles15m[candles15m.length - 1].close < candles15m[candles15m.length - 1].open && regime === "STRONG_BEARISH_TREND")) {
+    direction = "SELL";
+  } else if (sharedStructure.trend === "BULLISH" || (candles15m.length > 0 && candles15m[candles15m.length - 1].close >= candles15m[candles15m.length - 1].open)) {
+    direction = "BUY";
+  } else {
+    direction = px % 2 === 0 ? "BUY" : "SELL";
   }
 
-  // 4. Repeated SL-Hit / Failed Zone Filter Check
+  // 6. Repeated SL-Hit / Failed Zone Filter Check
   const now = Date.now();
   const recentFailedZone = failedZonesMemory.find(
     (f) =>
@@ -439,7 +449,7 @@ export function calculateHaramiAiSetup(
       now - f.timestamp < 20 * 60 * 1000 // 20 min cool-off on repeatedly failed zone
   );
 
-  // 5. Calculate Smart Entry Zone using Order Block / FVG / Golden Fib Confluence
+  // 7. Calculate Smart Entry Zone using Shared POI (Order Block / Demand / Supply / FVG Confluence)
   // Entry quality check: Entry must sit in institutional discount/premium pocket, not chasing extended price
   const entrySpan = Math.max(spec.tickSize * 10, Number((atr5m * 0.45).toFixed(2)));
   let entryZoneLow: number;
@@ -447,80 +457,78 @@ export function calculateHaramiAiSetup(
   let bestEntry: number;
 
   if (direction === "BUY") {
-    // Buy Entry: Pullback into 5M Demand / FVG / 0.618 Fib zone
-    entryZoneLow = Number((px - entrySpan * 1.2).toFixed(2));
-    entryZoneHigh = Number((px + entrySpan * 0.3).toFixed(2));
+    // Buy Entry: Pullback into Shared 15M Demand Zone / Bullish OB / FVG
+    const baseLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < px ? sharedLiquidity.demandZone.low : px - entrySpan * 1.2;
+    const baseHigh = sharedLiquidity.demandZone.high > 0 && sharedLiquidity.demandZone.high < px + entrySpan ? sharedLiquidity.demandZone.high : px + entrySpan * 0.3;
+    entryZoneLow = Number(Math.min(baseLow, px - 0.2).toFixed(2));
+    entryZoneHigh = Number(Math.max(baseHigh, entryZoneLow + entrySpan).toFixed(2));
     bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
   } else {
-    // Sell Entry: Pullback into 5M Supply / FVG / 0.618 Fib zone
-    entryZoneLow = Number((px - entrySpan * 0.3).toFixed(2));
-    entryZoneHigh = Number((px + entrySpan * 1.2).toFixed(2));
+    // Sell Entry: Pullback into Shared 15M Supply Zone / Bearish OB / FVG
+    const baseHigh = sharedLiquidity.supplyZone.high > 0 && sharedLiquidity.supplyZone.high > px ? sharedLiquidity.supplyZone.high : px + entrySpan * 1.2;
+    const baseLow = sharedLiquidity.supplyZone.low > 0 && sharedLiquidity.supplyZone.low > px - entrySpan ? sharedLiquidity.supplyZone.low : px - entrySpan * 0.3;
+    entryZoneHigh = Number(Math.max(baseHigh, px + 0.2).toFixed(2));
+    entryZoneLow = Number(Math.min(baseLow, entryZoneHigh - entrySpan).toFixed(2));
     bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
   }
 
   // Entry Quality Check: Price must not be overextended (> 1.4x ATR away from best entry)
   const isOverextended = Math.abs(px - bestEntry) > atr15m * 1.4;
 
-  // 6. MAXIMUM SL CAP (Instrument & Volatility-Adjusted)
-  // Dynamic SL must NEVER be unlimited. Cap is adjusted dynamically with ATR volatility
+  // 8. MAXIMUM SL CAP (Instrument & Volatility-Adjusted)
   const maxSlCap = Number(Math.min(spec.baseMaxSlCap * 1.35, Math.max(spec.baseMaxSlCap * 0.75, atr15m * 2.3)).toFixed(2));
   const minSlFloor = Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
 
-  // 7. DYNAMIC STOP LOSS CALCULATION (Smart Structural SL > Wide SL)
-  // Place SL safely beyond 15M/5M structural boundary + ATR Volatility Buffer
-  const volatilityBuffer = Number((atr15m * volatilityMultiplier * 0.65).toFixed(2));
+  // 9. DYNAMIC STOP LOSS CALCULATION (Using Shared POI Structure + Dynamic ATR Buffer)
+  const volatilityBuffer = Number((atr15m * volatilityMultiplier * 0.50).toFixed(2)); // Dynamic 0.5 ATR buffer
 
   let stopLoss: number;
   let slRationale: string;
   let slExceedsCap = false;
 
   if (direction === "BUY") {
-    const structuralLow =
-      swings5.swingLow > 0 && swings5.swingLow < bestEntry
-        ? swings5.swingLow
-        : swings15.swingLow > 0 && swings15.swingLow < bestEntry
-        ? swings15.swingLow
-        : entryZoneLow - (minSlFloor * 0.7);
+    const structuralLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < bestEntry
+      ? sharedLiquidity.demandZone.low
+      : sharedLiquidity.ssl > 0 && sharedLiquidity.ssl < bestEntry
+      ? sharedLiquidity.ssl
+      : entryZoneLow - (minSlFloor * 0.7);
 
-    // Initial Structural SL
+    // Initial Structural SL with dynamic ATR buffer
     const proposedSl = Number((structuralLow - volatilityBuffer).toFixed(2));
     const rawDist = bestEntry - proposedSl;
 
     if (rawDist > maxSlCap) {
-      // Required SL exceeds max cap -> DO NOT widen SL. Cap it and flag for rejection/better entry!
       stopLoss = Number((bestEntry - maxSlCap).toFixed(2));
       slExceedsCap = true;
       slRationale = `Structural SL ($${rawDist.toFixed(2)}) exceeds Max Volatility Cap ($${maxSlCap.toFixed(2)}). Awaiting deeper pullback.`;
     } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry - minSlFloor).toFixed(2));
-      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below 15M/5M Demand Structure + ${volatilityBuffer.toFixed(2)} ATR Volatility Buffer`;
+      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
     } else {
       stopLoss = proposedSl;
-      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below 15M/5M Demand Structure + ${volatilityBuffer.toFixed(2)} ATR Volatility Buffer`;
+      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
     }
   } else {
-    const structuralHigh =
-      swings5.swingHigh > 0 && swings5.swingHigh > bestEntry
-        ? swings5.swingHigh
-        : swings15.swingHigh > 0 && swings15.swingHigh > bestEntry
-        ? swings15.swingHigh
-        : entryZoneHigh + (minSlFloor * 0.7);
+    const structuralHigh = sharedLiquidity.supplyZone.high > 0 && sharedLiquidity.supplyZone.high > bestEntry
+      ? sharedLiquidity.supplyZone.high
+      : sharedLiquidity.bsl > 0 && sharedLiquidity.bsl > bestEntry
+      ? sharedLiquidity.bsl
+      : entryZoneHigh + (minSlFloor * 0.7);
 
-    // Initial Structural SL
+    // Initial Structural SL with dynamic ATR buffer
     const proposedSl = Number((structuralHigh + volatilityBuffer).toFixed(2));
     const rawDist = proposedSl - bestEntry;
 
     if (rawDist > maxSlCap) {
-      // Required SL exceeds max cap -> DO NOT widen SL. Cap it and flag for rejection/better entry!
       stopLoss = Number((bestEntry + maxSlCap).toFixed(2));
       slExceedsCap = true;
       slRationale = `Structural SL ($${rawDist.toFixed(2)}) exceeds Max Volatility Cap ($${maxSlCap.toFixed(2)}). Awaiting deeper pullback.`;
     } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry + minSlFloor).toFixed(2));
-      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above 15M/5M Supply Structure + ${volatilityBuffer.toFixed(2)} ATR Volatility Buffer`;
+      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
     } else {
       stopLoss = proposedSl;
-      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above 15M/5M Supply Structure + ${volatilityBuffer.toFixed(2)} ATR Volatility Buffer`;
+      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
     }
   }
 
@@ -594,7 +602,7 @@ export function calculateHaramiAiSetup(
 
   // 12. 14-POINT HARAMI VERIFICATION ENGINE (Actual Real Verification)
   const verificationAudit: Harami14PointVerification = {
-    marketStructureValid: regime !== "UNCLEAR_CONSOLIDATION",
+    marketStructureValid: regime !== "UNCLEAR_CONSOLIDATION" && (sharedStructure.trend !== "RANGING" || sharedStructure.bos.detected || sharedStructure.choch.detected),
     entryQualityValid: entryZoneLow < entryZoneHigh && !isOverextended,
     bestEntryAvailable: Math.abs(px - bestEntry) <= slDistance * 0.9,
     slBeyondStructure: slDistance >= minSlFloor * 0.95,
@@ -603,7 +611,7 @@ export function calculateHaramiAiSetup(
     riskRewardValid: rrRatio >= 2.0,
     tpLevelsRealistic: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,
     volatilityAcceptable: atr15m >= spec.tickSize * 5 && atr15m <= spec.baseAtr * 5.0,
-    spreadAcceptable: spreadPips <= spec.defaultSpreadPips * 3.5,
+    spreadAcceptable: sharedPreTrade.passed && spreadPips <= spec.defaultSpreadPips * 3.5,
     confirmationStrong: setupScore >= 70,
     setupFresh: true,
     noRecentFailedZone: !recentFailedZone,

@@ -142,6 +142,11 @@ export interface LiquidityDetail {
   sweepPrice: number | null;
   sweepTimeUtc: string | null;
   sweepSession: string | null;
+  sweepLevel?: "BSL" | "SSL" | "PDH" | "PDL" | "EQH" | "EQL" | null;
+  sweepConfirmed?: boolean;
+  sweepRecencyOk?: boolean;
+  sweepCandleIndex?: number | null;
+  sweepCandleTimestamp?: number | null;
   dataClass: "CALCULATED_INFERRED";
 }
 
@@ -153,7 +158,7 @@ export interface TimeframeAnalysis {
   swingLows: number[];
   bos: { detected: boolean; level: number; time: string; type: "BULLISH" | "BEARISH" | "NONE" };
   choch: { detected: boolean; level: number; time: string; type: "BULLISH" | "BEARISH" | "NONE" };
-  mss: { detected: boolean; level: number; confirmed: boolean; time: string };
+  mss: { detected: boolean; level: number; confirmed: boolean; time: string; mssCandleIndex?: number | null; mssCandleTimestamp?: number | null };
   displacement: { detected: boolean; ratio: number; direction: "BULLISH" | "BEARISH" | "NONE" };
   demandZone: {
     id: string;
@@ -193,6 +198,7 @@ export interface TimeframeAnalysis {
   retestZone: { low: number; high: number; status: "PENDING" | "IN_ZONE" | "COMPLETED" | "NONE" };
   bias: "BULLISH" | "BEARISH" | "NEUTRAL";
   confidence: number;
+  atr: number;
   keyLevels: number[];
   candleDebug: CandleConstructionDebug;
   dataClass: "CALCULATED_INFERRED";
@@ -252,11 +258,21 @@ export interface RuleEvidenceItem {
   dataClass: "CALCULATED_INFERRED" | "OBSERVED";
 }
 
+export interface ConsensusLog {
+  bull: { score: number; verdict: string; conviction: string; reason: string };
+  bear: { score: number; verdict: string; conviction: string; reason: string };
+  risk: { executionAllowed: boolean; riskLevel: string; blockReason: string | null };
+  finalDecision: string;
+  rejectReason: string | null;
+  timestampUtc: string;
+}
+
 export interface AgentPerspective {
   score: number; // 0 - 100
   verdict: string;
   conviction: "HIGH" | "MODERATE" | "LOW" | "CONFLICT";
   evidence: RuleEvidenceItem[];
+  reason?: string;
   dataClass: "MODEL_SCORE";
 }
 
@@ -588,6 +604,7 @@ export interface CandidateSetup {
   directionEvidence: DirectionEvidence;
   activeSupportingZones: CandidateSupportingZones;
   confluenceMap: ConfluenceMapItem[];
+  consensusLog?: ConsensusLog;
   dataClass: "CALCULATED_INFERRED";
 }
 
@@ -621,6 +638,7 @@ export interface LockedWarRoomSetup {
   formattedTime?: string;
   reasoning?: string;
   aiConsensusSnapshot?: any;
+  consensusLog?: ConsensusLog;
 
   // MTF Context & Provenance
   h4Bias: "Bullish" | "Bearish" | "Neutral";
@@ -748,6 +766,54 @@ export const DEFAULT_WAR_ROOM_CONFIG: WarRoomAdminConfig = {
 // =========================================================================
 
 /**
+ * Safe utility to extract millisecond timestamp from any candle format (.timestamp, .time in s/ms, .datetime, .date)
+ */
+export function getCandleTimestamp(c: any): number {
+  if (!c) return Date.now();
+  if (typeof c.timestamp === "number" && !isNaN(c.timestamp) && c.timestamp > 0) {
+    return c.timestamp < 1e11 ? c.timestamp * 1000 : c.timestamp;
+  }
+  if (typeof c.time === "number" && !isNaN(c.time) && c.time > 0) {
+    return c.time < 1e11 ? c.time * 1000 : c.time;
+  }
+  if (typeof c.datetime === "string" && c.datetime) {
+    const parsed = new Date(c.datetime).getTime();
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  if (typeof c.date === "string" && c.date) {
+    const parsed = new Date(c.date).getTime();
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return Date.now();
+}
+
+/**
+ * Safe utility to format UTC HH:MM time from candle or timestamp without throwing Invalid Date
+ */
+export function formatUtcTime(input: any, length = 5): string {
+  try {
+    let ms: number;
+    if (typeof input === "number") {
+      ms = !isNaN(input) && input > 0 ? (input < 1e11 ? input * 1000 : input) : Date.now();
+    } else if (typeof input === "object" && input !== null) {
+      ms = getCandleTimestamp(input);
+    } else if (typeof input === "string") {
+      const parsed = new Date(input).getTime();
+      ms = !isNaN(parsed) ? parsed : Date.now();
+    } else {
+      ms = Date.now();
+    }
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) {
+      return new Date().toISOString().substring(11, 11 + length) + " UTC";
+    }
+    return d.toISOString().substring(11, 11 + length) + " UTC";
+  } catch {
+    return new Date().toISOString().substring(11, 11 + length) + " UTC";
+  }
+}
+
+/**
  * Find local swing highs and swing lows using an independent rolling pivot window
  */
 export function findSwingPoints(candles: WarRoomCandle[], window = 3): { swingHighs: SwingPoint[]; swingLows: SwingPoint[] } {
@@ -769,22 +835,24 @@ export function findSwingPoints(candles: WarRoomCandle[], window = 3): { swingHi
     }
 
     if (isHigh) {
+      const ts = getCandleTimestamp(candles[i]);
       swingHighs.push({
         index: i,
         price: currentHigh,
-        timestamp: candles[i].timestamp,
-        timeStr: candles[i].datetime,
+        timestamp: ts,
+        timeStr: candles[i].datetime || formatUtcTime(candles[i]),
         type: "SWING_HIGH",
         dataClass: "CALCULATED_INFERRED",
       });
     }
 
     if (isLow) {
+      const ts = getCandleTimestamp(candles[i]);
       swingLows.push({
         index: i,
         price: currentLow,
-        timestamp: candles[i].timestamp,
-        timeStr: candles[i].datetime,
+        timestamp: ts,
+        timeStr: candles[i].datetime || formatUtcTime(candles[i]),
         type: "SWING_LOW",
         dataClass: "CALCULATED_INFERRED",
       });
@@ -835,14 +903,15 @@ export function detectOrderBlocks(
         } else if (candles[k].low <= high) {
           testCount++;
           isMitigated = true;
-          const touchTime = new Date(candles[k].timestamp).toISOString().substring(11, 16) + " UTC";
+          const touchTime = formatUtcTime(candles[k]);
           if (!firstTouch) firstTouch = touchTime;
           lastTouch = touchTime;
         }
       }
 
       if (!isInvalidated) {
-        const timeUtc = new Date(c0.timestamp).toISOString().substring(11, 16) + " UTC";
+        const timeUtc = formatUtcTime(c0);
+        const c0Ts = getCandleTimestamp(c0);
         obs.push({
           id: `GMC-XAU-${tf}-BULL-OB-${String(i).padStart(3, "0")}`,
           timeframe: tf,
@@ -853,7 +922,7 @@ export function detectOrderBlocks(
           low: Number(low.toFixed(2)),
           mid,
           formationTimeUtc: timeUtc,
-          formationTimestamp: c0.timestamp,
+          formationTimestamp: c0Ts,
           formationCandleIndex: i,
           freshness: testCount === 0 ? "VIRGIN" : testCount === 1 ? "TESTED_1X" : testCount === 2 ? "TESTED_2X" : "EXHAUSTED",
           testCount,
@@ -886,14 +955,15 @@ export function detectOrderBlocks(
         } else if (candles[k].high >= low) {
           testCount++;
           isMitigated = true;
-          const touchTime = new Date(candles[k].timestamp).toISOString().substring(11, 16) + " UTC";
+          const touchTime = formatUtcTime(candles[k]);
           if (!firstTouch) firstTouch = touchTime;
           lastTouch = touchTime;
         }
       }
 
       if (!isInvalidated) {
-        const timeUtc = new Date(c0.timestamp).toISOString().substring(11, 16) + " UTC";
+        const timeUtc = formatUtcTime(c0);
+        const c0Ts = getCandleTimestamp(c0);
         obs.push({
           id: `GMC-XAU-${tf}-BEAR-OB-${String(i).padStart(3, "0")}`,
           timeframe: tf,
@@ -904,7 +974,7 @@ export function detectOrderBlocks(
           low: Number(low.toFixed(2)),
           mid,
           formationTimeUtc: timeUtc,
-          formationTimestamp: c0.timestamp,
+          formationTimestamp: c0Ts,
           formationCandleIndex: i,
           freshness: testCount === 0 ? "VIRGIN" : testCount === 1 ? "TESTED_1X" : testCount === 2 ? "TESTED_2X" : "EXHAUSTED",
           testCount,
@@ -973,6 +1043,7 @@ export function detectFvgs(
           : "FRESH";
 
         if (status !== "FULLY_FILLED") {
+          const c2Ts = getCandleTimestamp(c2);
           fvgs.push({
             id: `GMC-XAU-${tf}-BULL-FVG-${String(i).padStart(3, "0")}`,
             timeframe: tf,
@@ -982,8 +1053,8 @@ export function detectFvgs(
             upperBoundary,
             lowerBoundary,
             mid,
-            formationTimeUtc: new Date(c2.timestamp).toISOString().substring(11, 16) + " UTC",
-            formationTimestamp: c2.timestamp,
+            formationTimeUtc: formatUtcTime(c2),
+            formationTimestamp: c2Ts,
             filledPct,
             status,
             algorithmVersion: WAR_ROOM_ENGINE_VERSION,
@@ -1025,6 +1096,7 @@ export function detectFvgs(
           : "FRESH";
 
         if (status !== "FULLY_FILLED") {
+          const c2Ts = getCandleTimestamp(c2);
           fvgs.push({
             id: `GMC-XAU-${tf}-BEAR-FVG-${String(i).padStart(3, "0")}`,
             timeframe: tf,
@@ -1034,8 +1106,8 @@ export function detectFvgs(
             upperBoundary,
             lowerBoundary,
             mid,
-            formationTimeUtc: new Date(c2.timestamp).toISOString().substring(11, 16) + " UTC",
-            formationTimestamp: c2.timestamp,
+            formationTimeUtc: formatUtcTime(c2),
+            formationTimestamp: c2Ts,
             filledPct,
             status,
             algorithmVersion: WAR_ROOM_ENGINE_VERSION,
@@ -1050,6 +1122,621 @@ export function detectFvgs(
 }
 
 /**
+ * CALCULATE AVERAGE TRUE RANGE (ATR)
+ * Standard 14-period true range volatility calculation
+ */
+export function calculateATR(
+  candles: { high: number; low: number; close: number }[],
+  period = 14,
+  fallback = 3.5
+): number {
+  if (!candles || candles.length < 2) return fallback;
+  const trs: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trs.push(tr);
+  }
+  const slice = trs.slice(-period);
+  if (slice.length === 0) return fallback;
+  const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+  return Number(Math.max(0.4, avg).toFixed(2));
+}
+
+// =========================================================================
+// SHARED 15M / MTF BOS & CHOCH DETECTION (CENTRALIZED SMC STRUCTURE ENGINE)
+// =========================================================================
+
+export interface SharedBosChochResult {
+  bos: { detected: boolean; level: number; time: string; type: "BULLISH" | "BEARISH" | "NONE" };
+  choch: { detected: boolean; level: number; time: string; type: "BULLISH" | "BEARISH" | "NONE" };
+  mss: {
+    detected: boolean;
+    level: number;
+    confirmed: boolean;
+    time: string;
+    mssCandleIndex: number | null;
+    mssCandleTimestamp: number | null;
+  };
+  displacement: {
+    detected: boolean;
+    ratio: number;
+    direction: "BULLISH" | "BEARISH" | "NONE";
+  };
+  trend: "BULLISH" | "BEARISH" | "RANGING" | "TRANSITIONING";
+  structure: "STRONG_BULLISH" | "WEAK_BULLISH" | "STRONG_BEARISH" | "WEAK_BEARISH" | "SIDEWAYS";
+  swingHighs: SwingPoint[];
+  swingLows: SwingPoint[];
+  recentHighs: number[];
+  recentLows: number[];
+  lastClose: number;
+  firstClose: number;
+}
+
+/**
+ * Shared BOS / CHOCH / MSS / Structure detector for War Room, Harami AI & Retest X
+ */
+export function detectSharedBosChoch(
+  candles: WarRoomCandle[],
+  tf: "4H" | "1H" | "15M" | "5M" | "1M" = "15M",
+  currentPrice?: number
+): SharedBosChochResult {
+  const lastTimeUtc = candles && candles.length > 0
+    ? formatUtcTime(candles[candles.length - 1])
+    : formatUtcTime(Date.now());
+  const defaultPrice = currentPrice || (candles && candles.length > 0 ? candles[candles.length - 1].close : 4377.80);
+
+  if (!candles || candles.length === 0) {
+    return {
+      bos: { detected: false, level: Number((defaultPrice + 2.0).toFixed(2)), time: lastTimeUtc, type: "NONE" },
+      choch: { detected: false, level: Number((defaultPrice - 2.0).toFixed(2)), time: lastTimeUtc, type: "NONE" },
+      mss: { detected: false, level: defaultPrice, confirmed: false, time: lastTimeUtc, mssCandleIndex: null, mssCandleTimestamp: null },
+      displacement: { detected: false, ratio: 1.0, direction: "NONE" },
+      trend: "RANGING",
+      structure: "SIDEWAYS",
+      swingHighs: [],
+      swingLows: [],
+      recentHighs: [defaultPrice + 2.0],
+      recentLows: [defaultPrice - 2.0],
+      lastClose: defaultPrice,
+      firstClose: defaultPrice,
+    };
+  }
+
+  const lastCandle = candles[candles.length - 1];
+  const closes = candles.map((c) => c.close);
+  const firstClose = closes[0] || defaultPrice;
+  const lastClose = lastCandle.close || defaultPrice;
+
+  // 1. Swing Points with Timeframe-Tuned Pivot Windows
+  const pivotWindow = tf === "1M" ? 2 : tf === "5M" ? 2 : 3;
+  const { swingHighs, swingLows } = findSwingPoints(candles, pivotWindow);
+  const recentHighs = swingHighs.slice(-4).map((s) => s.price);
+  const recentLows = swingLows.slice(-4).map((s) => s.price);
+
+  const isHigherHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1] > recentHighs[recentHighs.length - 2];
+  const isHigherLows = recentLows.length >= 2 && recentLows[recentLows.length - 1] > recentLows[recentLows.length - 2];
+  const isLowerHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1] < recentHighs[recentHighs.length - 2];
+  const isLowerLows = recentLows.length >= 2 && recentLows[recentLows.length - 1] < recentLows[recentLows.length - 2];
+
+  let trend: "BULLISH" | "BEARISH" | "RANGING" | "TRANSITIONING" = "RANGING";
+  let structure: "STRONG_BULLISH" | "WEAK_BULLISH" | "STRONG_BEARISH" | "WEAK_BEARISH" | "SIDEWAYS" = "SIDEWAYS";
+
+  if (isHigherHighs && isHigherLows) {
+    trend = "BULLISH";
+    structure = "STRONG_BULLISH";
+  } else if (isLowerHighs && isLowerLows) {
+    trend = "BEARISH";
+    structure = "STRONG_BEARISH";
+  } else if (lastClose > firstClose) {
+    trend = "BULLISH";
+    structure = "WEAK_BULLISH";
+  } else if (lastClose < firstClose) {
+    trend = "BEARISH";
+    structure = "WEAK_BEARISH";
+  }
+
+  // 2. BOS & CHOCH Detection
+  const defaultBosHigh = recentHighs.length > 0 ? recentHighs[recentHighs.length - 1] : (lastClose + (tf === "4H" ? 8 : tf === "1H" ? 4 : tf === "15M" ? 2 : 0.8));
+  const defaultChochLow = recentLows.length > 0 ? recentLows[recentLows.length - 1] : (lastClose - (tf === "4H" ? 8 : tf === "1H" ? 4 : tf === "15M" ? 2 : 0.8));
+
+  let bos = { detected: false, level: Number(defaultBosHigh.toFixed(2)), time: lastTimeUtc, type: "NONE" as "BULLISH" | "BEARISH" | "NONE" };
+  let choch = { detected: false, level: Number(defaultChochLow.toFixed(2)), time: lastTimeUtc, type: "NONE" as "BULLISH" | "BEARISH" | "NONE" };
+
+  if (recentHighs.length >= 2 && lastClose > recentHighs[recentHighs.length - 2]) {
+    bos = {
+      detected: true,
+      level: Number(recentHighs[recentHighs.length - 2].toFixed(2)),
+      time: lastTimeUtc,
+      type: "BULLISH",
+    };
+  } else if (recentLows.length >= 2 && lastClose < recentLows[recentLows.length - 2]) {
+    bos = {
+      detected: true,
+      level: Number(recentLows[recentLows.length - 2].toFixed(2)),
+      time: lastTimeUtc,
+      type: "BEARISH",
+    };
+  }
+
+  if (trend === "BEARISH" && recentHighs.length >= 1 && lastClose > recentHighs[recentHighs.length - 1]) {
+    choch = {
+      detected: true,
+      level: Number(recentHighs[recentHighs.length - 1].toFixed(2)),
+      time: lastTimeUtc,
+      type: "BULLISH",
+    };
+  } else if (trend === "BULLISH" && recentLows.length >= 1 && lastClose < recentLows[recentLows.length - 1]) {
+    choch = {
+      detected: true,
+      level: Number(recentLows[recentLows.length - 1].toFixed(2)),
+      time: lastTimeUtc,
+      type: "BEARISH",
+    };
+  }
+
+  // 3. MSS & Displacement
+  const lastBody = Math.abs(lastCandle.close - lastCandle.open);
+  const avgBody = closes.slice(-10).reduce((acc, c, i, arr) => (i === 0 ? 0 : acc + Math.abs(c - arr[i - 1])), 0) / 9 || 0.5;
+  const displacementRatio = Number((lastBody / (avgBody || 0.5)).toFixed(2));
+  const hasDisplacement = displacementRatio >= 1.35;
+
+  const mssConfirmed = (bos.detected && hasDisplacement) || (choch.detected && hasDisplacement);
+  const mss = {
+    detected: bos.detected || choch.detected || hasDisplacement,
+    level: bos.level,
+    confirmed: mssConfirmed,
+    time: lastTimeUtc,
+    mssCandleIndex: mssConfirmed ? candles.length - 1 : null,
+    mssCandleTimestamp: mssConfirmed ? getCandleTimestamp(lastCandle) : null,
+  };
+
+  const displacement = {
+    detected: hasDisplacement,
+    ratio: displacementRatio,
+    direction: (lastCandle.close > lastCandle.open ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH" | "NONE",
+  };
+
+  return {
+    bos,
+    choch,
+    mss,
+    displacement,
+    trend,
+    structure,
+    swingHighs,
+    swingLows,
+    recentHighs,
+    recentLows,
+    lastClose,
+    firstClose,
+  };
+}
+
+// =========================================================================
+// SHARED LIQUIDITY MAP & POI SOURCE (CENTRALIZED POI CALCULATION)
+// =========================================================================
+
+export interface SharedLiquidityAndPoiResult {
+  timeframe: "4H" | "1H" | "15M" | "5M" | "1M";
+  bsl: number;
+  ssl: number;
+  eqh: number | null;
+  eql: number | null;
+  pdh: number;
+  pdl: number;
+  asianHigh: number | null;
+  asianLow: number | null;
+  londonHigh: number | null;
+  londonLow: number | null;
+  nyHigh: number | null;
+  nyLow: number | null;
+  recentSweep: "BSL_SWEPT" | "SSL_SWEPT" | "NONE";
+  sweepPrice: number | null;
+  sweepTimeUtc: string | null;
+  sweepSession: string | null;
+  sweepLevel: "BSL" | "SSL" | "PDH" | "PDL" | "EQH" | "EQL" | null;
+  sweepConfirmed: boolean;
+  sweepRecencyOk: boolean;
+  sweepCandleIndex: number | null;
+  sweepCandleTimestamp: number | null;
+  demandZone: {
+    id: string;
+    originalLow: number;
+    originalHigh: number;
+    low: number;
+    high: number;
+    strength: number;
+    fresh: boolean;
+    testedCount: number;
+    formationTime: string;
+    status: "ACTIVE" | "MITIGATED" | "INVALIDATED";
+    dataClass: "CALCULATED_INFERRED";
+  };
+  supplyZone: {
+    id: string;
+    originalLow: number;
+    originalHigh: number;
+    low: number;
+    high: number;
+    strength: number;
+    fresh: boolean;
+    testedCount: number;
+    formationTime: string;
+    status: "ACTIVE" | "MITIGATED" | "INVALIDATED";
+    dataClass: "CALCULATED_INFERRED";
+  };
+  orderBlocks: OrderBlockDetail[];
+  bullishOB: OrderBlockDetail | null;
+  bearishOB: OrderBlockDetail | null;
+  fvgs: FvgDetail[];
+  activeFvg: FvgDetail | null;
+  retestZone: {
+    low: number;
+    high: number;
+    status: "IN_ZONE" | "PENDING" | "NONE";
+  };
+  support: number;
+  resistance: number;
+  atr: number;
+  keyLevels: number[];
+}
+
+/**
+ * Shared central Liquidity Map and Key POI extractor used across War Room, Harami AI & Retest X
+ */
+export function calculateSharedLiquidityAndPOI(
+  candles: WarRoomCandle[],
+  currentPrice: number,
+  tf: "4H" | "1H" | "15M" | "5M" | "1M" = "15M"
+): SharedLiquidityAndPoiResult {
+  const lastTimeUtc = candles && candles.length > 0
+    ? formatUtcTime(candles[candles.length - 1])
+    : formatUtcTime(Date.now());
+  const defaultPrice = currentPrice || (candles && candles.length > 0 ? candles[candles.length - 1].close : 4377.80);
+  const calculatedAtr = calculateATR(candles, 14, tf === "4H" ? 12.0 : tf === "1H" ? 6.0 : tf === "15M" ? 3.5 : tf === "5M" ? 1.8 : 0.8);
+
+  if (!candles || candles.length === 0) {
+    const base = defaultPrice;
+    return {
+      timeframe: tf,
+      bsl: Number((base + 5.0).toFixed(2)),
+      ssl: Number((base - 5.0).toFixed(2)),
+      eqh: null,
+      eql: null,
+      pdh: Number((base + 15.0).toFixed(2)),
+      pdl: Number((base - 15.0).toFixed(2)),
+      asianHigh: null,
+      asianLow: null,
+      londonHigh: null,
+      londonLow: null,
+      nyHigh: null,
+      nyLow: null,
+      recentSweep: "NONE",
+      sweepPrice: null,
+      sweepTimeUtc: null,
+      sweepSession: null,
+      sweepLevel: null,
+      sweepConfirmed: false,
+      sweepRecencyOk: false,
+      sweepCandleIndex: null,
+      sweepCandleTimestamp: null,
+      demandZone: {
+        id: `GMC-XAU-${tf}-DZ-001`,
+        originalLow: base - 4.0,
+        originalHigh: base - 1.5,
+        low: base - 4.0,
+        high: base - 1.5,
+        strength: 70,
+        fresh: true,
+        testedCount: 0,
+        formationTime: lastTimeUtc,
+        status: "ACTIVE",
+        dataClass: "CALCULATED_INFERRED",
+      },
+      supplyZone: {
+        id: `GMC-XAU-${tf}-SZ-001`,
+        originalLow: base + 1.5,
+        originalHigh: base + 4.0,
+        low: base + 1.5,
+        high: base + 4.0,
+        strength: 70,
+        fresh: true,
+        testedCount: 0,
+        formationTime: lastTimeUtc,
+        status: "ACTIVE",
+        dataClass: "CALCULATED_INFERRED",
+      },
+      orderBlocks: [],
+      bullishOB: null,
+      bearishOB: null,
+      fvgs: [],
+      activeFvg: null,
+      retestZone: { low: base - 2.0, high: base - 0.5, status: "NONE" },
+      support: base - 4.0,
+      resistance: base + 4.0,
+      atr: calculatedAtr,
+      keyLevels: [base - 4.0, base, base + 4.0],
+    };
+  }
+
+  const lastCandle = candles[candles.length - 1];
+  const highs = candles.map((c) => c.high);
+  const lows = candles.map((c) => c.low);
+  const highestHigh = Math.max(...highs);
+  const lowestLow = Math.min(...lows);
+
+  // 1. Order Blocks & FVGs
+  const orderBlocks = detectOrderBlocks(candles, tf, defaultPrice);
+  const bullishOB = orderBlocks.find((ob) => ob.direction === "BULLISH" && ob.status === "ACTIVE") || null;
+  const bearishOB = orderBlocks.find((ob) => ob.direction === "BEARISH" && ob.status === "ACTIVE") || null;
+
+  const fvgs = detectFvgs(candles, tf, defaultPrice);
+  const activeFvg = fvgs.find((f) => f.status === "FRESH" || f.status === "PARTIALLY_FILLED") || null;
+
+  // 2. Swings
+  const pivotWindow = tf === "1M" ? 2 : tf === "5M" ? 2 : 3;
+  const { swingHighs, swingLows } = findSwingPoints(candles, pivotWindow);
+  const recentSwingLows = swingLows.map((s) => s.price);
+  const recentSwingHighs = swingHighs.map((s) => s.price);
+  const recentHighs = swingHighs.slice(-4).map((s) => s.price);
+  const recentLows = swingLows.slice(-4).map((s) => s.price);
+
+  // 3. Demand & Supply Zones derived from structure
+  const demandLow = bullishOB ? bullishOB.low : (recentSwingLows.length > 0 ? Math.min(...recentSwingLows.slice(-2)) : lowestLow);
+  const demandHigh = bullishOB ? bullishOB.high : demandLow + (tf === "4H" ? 6 : tf === "1H" ? 3 : tf === "15M" ? 1.5 : 0.8);
+
+  const supplyHigh = bearishOB ? bearishOB.high : (recentSwingHighs.length > 0 ? Math.max(...recentSwingHighs.slice(-2)) : highestHigh);
+  const supplyLow = bearishOB ? bearishOB.low : supplyHigh - (tf === "4H" ? 6 : tf === "1H" ? 3 : tf === "15M" ? 1.5 : 0.8);
+
+  // 4. Liquidity Levels & Sweeps (EQH / EQL Cross-Verification + Recency < 15M + PDH/PDL Priority)
+  const bsl = recentSwingHighs.length > 0 ? Math.max(...recentSwingHighs.slice(-3)) : highestHigh;
+  const ssl = recentSwingLows.length > 0 ? Math.min(...recentSwingLows.slice(-3)) : lowestLow;
+  const eqh = recentHighs.length >= 2 && Math.abs(recentHighs[recentHighs.length - 1] - recentHighs[recentHighs.length - 2]) <= 0.4 ? recentHighs[recentHighs.length - 1] : null;
+  const eql = recentLows.length >= 2 && Math.abs(recentLows[recentLows.length - 1] - recentLows[recentLows.length - 2]) <= 0.4 ? recentLows[recentLows.length - 1] : null;
+  const pdh = Number((highestHigh + (tf === "4H" ? 4 : 1)).toFixed(2));
+  const pdl = Number((lowestLow - (tf === "4H" ? 4 : 1)).toFixed(2));
+
+  let recentSweep: "BSL_SWEPT" | "SSL_SWEPT" | "NONE" = "NONE";
+  let sweepPrice: number | null = null;
+  let sweepTimeUtc: string | null = null;
+  let sweepSession: string | null = null;
+  let sweepLevel: "BSL" | "SSL" | "PDH" | "PDL" | "EQH" | "EQL" | null = null;
+  let sweepConfirmed = false;
+  let sweepRecencyOk = false;
+  let sweepCandleIndex: number | null = null;
+  let sweepCandleTimestamp: number | null = null;
+
+  const currentTimeMs = getCandleTimestamp(lastCandle);
+
+  for (let k = Math.max(0, candles.length - 6); k < candles.length; k++) {
+    const c = candles[k];
+    const cTs = getCandleTimestamp(c);
+    const isWithin15M = (currentTimeMs - cTs) <= 15 * 60 * 1000;
+
+    if (recentLows.length >= 1 && c.low < recentLows[recentLows.length - 1] && c.close > recentLows[recentLows.length - 1]) {
+      const crossesEql = eql !== null ? c.low < eql : true;
+      const isConfirmed = c.low < ssl && crossesEql;
+
+      if (isConfirmed && isWithin15M) {
+        recentSweep = "SSL_SWEPT";
+        sweepPrice = c.low;
+        sweepTimeUtc = formatUtcTime(c);
+        sweepCandleIndex = k;
+        sweepCandleTimestamp = cTs;
+        sweepConfirmed = true;
+        sweepRecencyOk = true;
+
+        if (c.low <= pdl) {
+          sweepLevel = "PDL";
+        } else if (eql !== null && c.low <= eql) {
+          sweepLevel = "EQL";
+        } else {
+          sweepLevel = "SSL";
+        }
+
+        const h = new Date(cTs).getUTCHours();
+        sweepSession = h >= 0 && h < 7 ? "ASIA" : h >= 7 && h < 13 ? "LONDON" : "NEW_YORK";
+        break;
+      }
+    } else if (recentHighs.length >= 1 && c.high > recentHighs[recentHighs.length - 1] && c.close < recentHighs[recentHighs.length - 1]) {
+      const crossesEqh = eqh !== null ? c.high > eqh : true;
+      const isConfirmed = c.high > bsl && crossesEqh;
+
+      if (isConfirmed && isWithin15M) {
+        recentSweep = "BSL_SWEPT";
+        sweepPrice = c.high;
+        sweepTimeUtc = formatUtcTime(c);
+        sweepCandleIndex = k;
+        sweepCandleTimestamp = cTs;
+        sweepConfirmed = true;
+        sweepRecencyOk = true;
+
+        if (c.high >= pdh) {
+          sweepLevel = "PDH";
+        } else if (eqh !== null && c.high >= eqh) {
+          sweepLevel = "EQH";
+        } else {
+          sweepLevel = "BSL";
+        }
+
+        const h = new Date(cTs).getUTCHours();
+        sweepSession = h >= 0 && h < 7 ? "ASIA" : h >= 7 && h < 13 ? "LONDON" : "NEW_YORK";
+        break;
+      }
+    }
+  }
+
+  return {
+    timeframe: tf,
+    bsl: Number(bsl.toFixed(2)),
+    ssl: Number(ssl.toFixed(2)),
+    eqh,
+    eql,
+    pdh,
+    pdl,
+    asianHigh: null,
+    asianLow: null,
+    londonHigh: null,
+    londonLow: null,
+    nyHigh: null,
+    nyLow: null,
+    recentSweep,
+    sweepPrice: sweepPrice ? Number(sweepPrice.toFixed(2)) : null,
+    sweepTimeUtc,
+    sweepSession,
+    sweepLevel,
+    sweepConfirmed,
+    sweepRecencyOk,
+    sweepCandleIndex,
+    sweepCandleTimestamp,
+    demandZone: {
+      id: bullishOB ? bullishOB.id : `GMC-XAU-${tf}-DZ-001`,
+      originalLow: demandLow,
+      originalHigh: demandHigh,
+      low: Number(demandLow.toFixed(2)),
+      high: Number(demandHigh.toFixed(2)),
+      strength: bullishOB ? bullishOB.qualityScore : 78,
+      fresh: bullishOB ? bullishOB.freshness === "VIRGIN" : true,
+      testedCount: bullishOB ? bullishOB.testCount : 0,
+      formationTime: bullishOB ? bullishOB.formationTimeUtc : lastTimeUtc,
+      status: "ACTIVE",
+      dataClass: "CALCULATED_INFERRED",
+    },
+    supplyZone: {
+      id: bearishOB ? bearishOB.id : `GMC-XAU-${tf}-SZ-001`,
+      originalLow: supplyLow,
+      originalHigh: supplyHigh,
+      low: Number(supplyLow.toFixed(2)),
+      high: Number(supplyHigh.toFixed(2)),
+      strength: bearishOB ? bearishOB.qualityScore : 78,
+      fresh: bearishOB ? bearishOB.freshness === "VIRGIN" : true,
+      testedCount: bearishOB ? bearishOB.testCount : 0,
+      formationTime: bearishOB ? bearishOB.formationTimeUtc : lastTimeUtc,
+      status: "ACTIVE",
+      dataClass: "CALCULATED_INFERRED",
+    },
+    orderBlocks,
+    bullishOB,
+    bearishOB,
+    fvgs,
+    activeFvg,
+    retestZone: {
+      low: Number(demandLow.toFixed(2)),
+      high: Number(demandHigh.toFixed(2)),
+      status: defaultPrice >= demandLow && defaultPrice <= demandHigh ? "IN_ZONE" : "PENDING",
+    },
+    support: Number(demandHigh.toFixed(2)),
+    resistance: Number(supplyLow.toFixed(2)),
+    atr: calculatedAtr,
+    keyLevels: [Number(demandLow.toFixed(2)), Number(defaultPrice.toFixed(2)), Number(supplyHigh.toFixed(2))],
+  };
+}
+
+// =========================================================================
+// UNIFIED PRE-TRADE FILTER (CENTRALIZED RISK / SPREAD / NEWS / DATA GATE)
+// =========================================================================
+
+export interface SharedPreTradeFilterResult {
+  passed: boolean;
+  blockReason: string | null;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | "EXTREME";
+  score: number;
+  checks: {
+    spreadOk: boolean;
+    dataQualityOk: boolean;
+    newsOk: boolean;
+    killSwitchOk: boolean;
+  };
+  details: {
+    spread: number;
+    maxSpread: number;
+    dataQualityScore: number;
+    minDataQuality: number;
+    isNewsBlackout: boolean;
+    newsName?: string;
+    killSwitchActive: boolean;
+    killSwitchReason?: string | null;
+  };
+}
+
+/**
+ * Unified preTradeFilter function shared across War Room, Harami AI & Retest X
+ */
+export function evaluateSharedPreTradeFilter(options: {
+  spread: number;
+  dataQualityScore: number;
+  maxSpread?: number;
+  minDataQuality?: number;
+  isNewsBlackout?: boolean;
+  newsName?: string;
+  killSwitchActive?: boolean;
+  killSwitchReason?: string | null;
+}): SharedPreTradeFilterResult {
+  const maxSpread = options.maxSpread ?? 0.85;
+  const minDataQuality = options.minDataQuality ?? 70;
+  const spread = options.spread;
+  const dq = options.dataQualityScore;
+  const isBlackout = !options.isNewsBlackout ? false : true;
+  const isKillSwitch = !options.killSwitchActive ? false : true;
+
+  const spreadOk = spread <= maxSpread;
+  const dataQualityOk = dq >= minDataQuality;
+  const newsOk = !isBlackout;
+  const killSwitchOk = !isKillSwitch;
+
+  let passed = true;
+  let blockReason: string | null = null;
+
+  if (isKillSwitch) {
+    passed = false;
+    blockReason = options.killSwitchReason || "Emergency Kill Switch Activated by Administrator";
+  } else if (!dataQualityOk) {
+    passed = false;
+    blockReason = `Low data quality score (${dq}/100 < ${minDataQuality})`;
+  } else if (!spreadOk) {
+    passed = false;
+    blockReason = `Spread (${spread.toFixed(2)} pts) exceeds maximum permissible threshold (${maxSpread.toFixed(2)} pts)`;
+  } else if (!newsOk) {
+    passed = false;
+    blockReason = `Macro News Blackout Active: ${options.newsName || "Tier-1 Event"} window (30m boundary)`;
+  }
+
+  const riskLevel: "LOW" | "MEDIUM" | "HIGH" | "EXTREME" = isBlackout
+    ? "EXTREME"
+    : !dataQualityOk || !spreadOk
+    ? "HIGH"
+    : "LOW";
+
+  const score = isBlackout ? 90 : !dataQualityOk ? 65 : !spreadOk ? 50 : 15;
+
+  return {
+    passed,
+    blockReason,
+    riskLevel,
+    score,
+    checks: {
+      spreadOk,
+      dataQualityOk,
+      newsOk,
+      killSwitchOk,
+    },
+    details: {
+      spread,
+      maxSpread,
+      dataQualityScore: dq,
+      minDataQuality,
+      isNewsBlackout: isBlackout,
+      newsName: options.newsName,
+      killSwitchActive: isKillSwitch,
+      killSwitchReason: options.killSwitchReason,
+    },
+  };
+}
+
+/**
  * CALCULATE MULTI-TIMEFRAME CANDLE AGGREGATION & INDEPENDENT SMC METRICS
  * Strict adherence to independent calculations per timeframe
  */
@@ -1060,6 +1747,7 @@ export function calculateTimeframeMetrics(
   source = "FCS_REALTIME"
 ): TimeframeAnalysis {
   const tfMinutes = tf === "4H" ? 240 : tf === "1H" ? 60 : tf === "15M" ? 15 : tf === "5M" ? 5 : 1;
+  const fallbackAtr = tf === "4H" ? 12.0 : tf === "1H" ? 6.0 : tf === "15M" ? 3.5 : tf === "5M" ? 1.8 : 0.8;
 
   if (!candles || candles.length === 0) {
     const base = currentPrice || 4377.80;
@@ -1132,6 +1820,7 @@ export function calculateTimeframeMetrics(
       retestZone: { low: base - 2.0, high: base - 0.5, status: "NONE" },
       bias: "NEUTRAL",
       confidence: 50,
+      atr: fallbackAtr,
       keyLevels: [base - 4.0, base, base + 4.0],
       candleDebug: {
         timeframe: tf,
@@ -1151,151 +1840,46 @@ export function calculateTimeframeMetrics(
     };
   }
 
-  // 1. Extract Candle Data
+  // 1. Extract Candle Debug Info & Core Bos/Choch Metrics from Shared Structure Detector
   const lastCandle = candles[candles.length - 1];
-  const lastTimeUtc = new Date(lastCandle.timestamp).toISOString().substring(11, 16) + " UTC";
-  const closes = candles.map((c) => c.close);
-  const highs = candles.map((c) => c.high);
-  const lows = candles.map((c) => c.low);
+  const lastTimeUtc = formatUtcTime(lastCandle);
+  
+  const structureResult = detectSharedBosChoch(candles, tf, currentPrice);
+  const { trend, structure, bos, choch, mss, displacement, recentHighs, recentLows, lastClose, firstClose } = structureResult;
 
-  const highestHigh = Math.max(...highs);
-  const lowestLow = Math.min(...lows);
-  const firstClose = closes[0] || currentPrice;
-  const lastClose = lastCandle.close || currentPrice;
+  // 2. Extract Shared POI & Liquidity Map
+  const liquidityResult = calculateSharedLiquidityAndPOI(candles, currentPrice, tf);
+  const {
+    demandZone,
+    supplyZone,
+    orderBlocks,
+    bullishOB,
+    bearishOB,
+    fvgs,
+    activeFvg,
+    bsl,
+    ssl,
+    eqh,
+    eql,
+    pdh,
+    pdl,
+    recentSweep,
+    sweepPrice,
+    sweepTimeUtc,
+    sweepSession,
+    sweepLevel,
+    sweepConfirmed,
+    sweepRecencyOk,
+    sweepCandleIndex,
+    sweepCandleTimestamp,
+    retestZone,
+    support,
+    resistance,
+    atr: calculatedAtr,
+    keyLevels,
+  } = liquidityResult;
 
-  // 2. Swing Points with Timeframe-Tuned Pivot Windows
-  const pivotWindow = tf === "1M" ? 2 : tf === "5M" ? 2 : 3;
-  const { swingHighs, swingLows } = findSwingPoints(candles, pivotWindow);
-  const recentHighs = swingHighs.slice(-4).map((s) => s.price);
-  const recentLows = swingLows.slice(-4).map((s) => s.price);
-
-  let isHigherHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1] > recentHighs[recentHighs.length - 2];
-  let isHigherLows = recentLows.length >= 2 && recentLows[recentLows.length - 1] > recentLows[recentLows.length - 2];
-  let isLowerHighs = recentHighs.length >= 2 && recentHighs[recentHighs.length - 1] < recentHighs[recentHighs.length - 2];
-  let isLowerLows = recentLows.length >= 2 && recentLows[recentLows.length - 1] < recentLows[recentLows.length - 2];
-
-  let trend: "BULLISH" | "BEARISH" | "RANGING" | "TRANSITIONING" = "RANGING";
-  let structure: "STRONG_BULLISH" | "WEAK_BULLISH" | "STRONG_BEARISH" | "WEAK_BEARISH" | "SIDEWAYS" = "SIDEWAYS";
-
-  if (isHigherHighs && isHigherLows) {
-    trend = "BULLISH";
-    structure = "STRONG_BULLISH";
-  } else if (isLowerHighs && isLowerLows) {
-    trend = "BEARISH";
-    structure = "STRONG_BEARISH";
-  } else if (lastClose > firstClose) {
-    trend = "BULLISH";
-    structure = "WEAK_BULLISH";
-  } else if (lastClose < firstClose) {
-    trend = "BEARISH";
-    structure = "WEAK_BEARISH";
-  }
-
-  // 3. BOS & CHOCH Detection
-  const defaultBosHigh = recentHighs.length > 0 ? recentHighs[recentHighs.length - 1] : (lastClose + (tf === "4H" ? 8 : tf === "1H" ? 4 : tf === "15M" ? 2 : 0.8));
-  const defaultChochLow = recentLows.length > 0 ? recentLows[recentLows.length - 1] : (lastClose - (tf === "4H" ? 8 : tf === "1H" ? 4 : tf === "15M" ? 2 : 0.8));
-
-  let bos = { detected: false, level: Number(defaultBosHigh.toFixed(2)), time: lastTimeUtc, type: "NONE" as "BULLISH" | "BEARISH" | "NONE" };
-  let choch = { detected: false, level: Number(defaultChochLow.toFixed(2)), time: lastTimeUtc, type: "NONE" as "BULLISH" | "BEARISH" | "NONE" };
-
-  if (recentHighs.length >= 2 && lastClose > recentHighs[recentHighs.length - 2]) {
-    bos = {
-      detected: true,
-      level: Number(recentHighs[recentHighs.length - 2].toFixed(2)),
-      time: lastTimeUtc,
-      type: "BULLISH",
-    };
-  } else if (recentLows.length >= 2 && lastClose < recentLows[recentLows.length - 2]) {
-    bos = {
-      detected: true,
-      level: Number(recentLows[recentLows.length - 2].toFixed(2)),
-      time: lastTimeUtc,
-      type: "BEARISH",
-    };
-  }
-
-  if (trend === "BEARISH" && recentHighs.length >= 1 && lastClose > recentHighs[recentHighs.length - 1]) {
-    choch = {
-      detected: true,
-      level: Number(recentHighs[recentHighs.length - 1].toFixed(2)),
-      time: lastTimeUtc,
-      type: "BULLISH",
-    };
-  } else if (trend === "BULLISH" && recentLows.length >= 1 && lastClose < recentLows[recentLows.length - 1]) {
-    choch = {
-      detected: true,
-      level: Number(recentLows[recentLows.length - 1].toFixed(2)),
-      time: lastTimeUtc,
-      type: "BEARISH",
-    };
-  }
-
-  // 4. MSS & Displacement
-  const lastBody = Math.abs(lastCandle.close - lastCandle.open);
-  const avgBody = closes.slice(-10).reduce((acc, c, i, arr) => i === 0 ? 0 : acc + Math.abs(c - arr[i - 1]), 0) / 9 || 0.5;
-  const displacementRatio = Number((lastBody / (avgBody || 0.5)).toFixed(2));
-  const hasDisplacement = displacementRatio >= 1.35;
-
-  const mss = {
-    detected: bos.detected || choch.detected || hasDisplacement,
-    level: bos.level,
-    confirmed: (bos.detected && hasDisplacement) || (choch.detected && hasDisplacement),
-    time: lastTimeUtc,
-  };
-
-  const displacement = {
-    detected: hasDisplacement,
-    ratio: displacementRatio,
-    direction: (lastCandle.close > lastCandle.open ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH" | "NONE",
-  };
-
-  // 5. Order Blocks and FVGs (Calculated independently with own candles)
-  const orderBlocks = detectOrderBlocks(candles, tf, currentPrice);
-  const bullishOB = orderBlocks.find((ob) => ob.direction === "BULLISH" && ob.status === "ACTIVE") || null;
-  const bearishOB = orderBlocks.find((ob) => ob.direction === "BEARISH" && ob.status === "ACTIVE") || null;
-
-  const fvgs = detectFvgs(candles, tf, currentPrice);
-  const activeFvg = fvgs.find((f) => f.status === "FRESH" || f.status === "PARTIALLY_FILLED") || null;
-
-  // 6. Demand & Supply Zones derived from structure
-  const recentSwingLows = swingLows.map((s) => s.price);
-  const recentSwingHighs = swingHighs.map((s) => s.price);
-
-  const demandLow = bullishOB ? bullishOB.low : (recentSwingLows.length > 0 ? Math.min(...recentSwingLows.slice(-2)) : lowestLow);
-  const demandHigh = bullishOB ? bullishOB.high : demandLow + (tf === "4H" ? 6 : tf === "1H" ? 3 : tf === "15M" ? 1.5 : 0.8);
-
-  const supplyHigh = bearishOB ? bearishOB.high : (recentSwingHighs.length > 0 ? Math.max(...recentSwingHighs.slice(-2)) : highestHigh);
-  const supplyLow = bearishOB ? bearishOB.low : supplyHigh - (tf === "4H" ? 6 : tf === "1H" ? 3 : tf === "15M" ? 1.5 : 0.8);
-
-  // 7. Liquidity (BSL, SSL, Sweeps)
-  const bsl = recentSwingHighs.length > 0 ? Math.max(...recentSwingHighs.slice(-3)) : highestHigh;
-  const ssl = recentSwingLows.length > 0 ? Math.min(...recentSwingLows.slice(-3)) : lowestLow;
-
-  let recentSweep: "BSL_SWEPT" | "SSL_SWEPT" | "NONE" = "NONE";
-  let sweepPrice: number | null = null;
-  let sweepTimeUtc: string | null = null;
-  let sweepSession: string | null = null;
-
-  for (let k = Math.max(0, candles.length - 6); k < candles.length; k++) {
-    const c = candles[k];
-    if (recentLows.length >= 1 && c.low < recentLows[recentLows.length - 1] && c.close > recentLows[recentLows.length - 1]) {
-      recentSweep = "SSL_SWEPT";
-      sweepPrice = c.low;
-      sweepTimeUtc = new Date(c.timestamp).toISOString().substring(11, 16) + " UTC";
-      const h = new Date(c.timestamp).getUTCHours();
-      sweepSession = h >= 0 && h < 7 ? "ASIA" : h >= 7 && h < 13 ? "LONDON" : "NEW_YORK";
-      break;
-    } else if (recentHighs.length >= 1 && c.high > recentHighs[recentHighs.length - 1] && c.close < recentHighs[recentHighs.length - 1]) {
-      recentSweep = "BSL_SWEPT";
-      sweepPrice = c.high;
-      sweepTimeUtc = new Date(c.timestamp).toISOString().substring(11, 16) + " UTC";
-      const h = new Date(c.timestamp).getUTCHours();
-      sweepSession = h >= 0 && h < 7 ? "ASIA" : h >= 7 && h < 13 ? "LONDON" : "NEW_YORK";
-      break;
-    }
-  }
-
-  // 8. Rejection Wick Analysis
+  // 3. Rejection Wick Analysis
   const range = lastCandle.high - lastCandle.low || 0.1;
   const lowerWick = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
   const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
@@ -1309,7 +1893,7 @@ export function calculateTimeframeMetrics(
     rejection = { detected: true, wickPct: upperWickPct, direction: "BEARISH" };
   }
 
-  // 9. Directional Bias & Calculated Confidence
+  // 4. Directional Bias & Calculated Confidence
   let bias: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
   if (trend === "BULLISH" && (bos.type === "BULLISH" || lastClose >= firstClose)) {
     bias = "BULLISH";
@@ -1324,7 +1908,13 @@ export function calculateTimeframeMetrics(
 
   if (bullishOB && bias === "BULLISH") confidence += 8;
   if (bearishOB && bias === "BEARISH") confidence += 8;
-  if (recentSweep !== "NONE") confidence += 8;
+  if (recentSweep !== "NONE" && sweepConfirmed && sweepRecencyOk) {
+    confidence += 8;
+    // PDH/PDL Priority weight: Higher confidence score (+2 points) if sweep occurred at PDH or PDL
+    if (sweepLevel === "PDH" || sweepLevel === "PDL") {
+      confidence += 2;
+    }
+  }
   if (rejection.detected) confidence += 4;
   confidence = Math.min(94, Math.max(35, confidence));
 
@@ -1340,27 +1930,27 @@ export function calculateTimeframeMetrics(
     displacement,
     demandZone: {
       id: `GMC-XAU-${tf}-DZ-${String(candles.length).padStart(3, "0")}`,
-      originalLow: Number(demandLow.toFixed(2)),
-      originalHigh: Number(demandHigh.toFixed(2)),
-      low: Number(demandLow.toFixed(2)),
-      high: Number(demandHigh.toFixed(2)),
-      strength: bullishOB ? bullishOB.qualityScore : 74,
-      fresh: bullishOB ? bullishOB.freshness === "VIRGIN" : true,
-      testedCount: bullishOB ? bullishOB.testCount : 0,
-      formationTime: bullishOB ? bullishOB.formationTimeUtc : lastTimeUtc,
+      originalLow: demandZone.low,
+      originalHigh: demandZone.high,
+      low: demandZone.low,
+      high: demandZone.high,
+      strength: demandZone.strength,
+      fresh: demandZone.fresh,
+      testedCount: demandZone.testedCount,
+      formationTime: demandZone.formationTime,
       status: "ACTIVE",
       dataClass: "CALCULATED_INFERRED",
     },
     supplyZone: {
       id: `GMC-XAU-${tf}-SZ-${String(candles.length).padStart(3, "0")}`,
-      originalLow: Number(supplyLow.toFixed(2)),
-      originalHigh: Number(supplyHigh.toFixed(2)),
-      low: Number(supplyLow.toFixed(2)),
-      high: Number(supplyHigh.toFixed(2)),
-      strength: bearishOB ? bearishOB.qualityScore : 72,
-      fresh: bearishOB ? bearishOB.freshness === "VIRGIN" : false,
-      testedCount: bearishOB ? bearishOB.testCount : 1,
-      formationTime: bearishOB ? bearishOB.formationTimeUtc : lastTimeUtc,
+      originalLow: supplyZone.low,
+      originalHigh: supplyZone.high,
+      low: supplyZone.low,
+      high: supplyZone.high,
+      strength: supplyZone.strength,
+      fresh: supplyZone.fresh,
+      testedCount: supplyZone.testedCount,
+      formationTime: supplyZone.formationTime,
       status: "ACTIVE",
       dataClass: "CALCULATED_INFERRED",
     },
@@ -1372,10 +1962,10 @@ export function calculateTimeframeMetrics(
     liquidity: {
       bsl: Number(bsl.toFixed(2)),
       ssl: Number(ssl.toFixed(2)),
-      eqh: recentHighs.length >= 2 && Math.abs(recentHighs[recentHighs.length - 1] - recentHighs[recentHighs.length - 2]) <= 0.4 ? recentHighs[recentHighs.length - 1] : null,
-      eql: recentLows.length >= 2 && Math.abs(recentLows[recentLows.length - 1] - recentLows[recentLows.length - 2]) <= 0.4 ? recentLows[recentLows.length - 1] : null,
-      pdh: Number((highestHigh + (tf === "4H" ? 4 : 1)).toFixed(2)),
-      pdl: Number((lowestLow - (tf === "4H" ? 4 : 1)).toFixed(2)),
+      eqh,
+      eql,
+      pdh,
+      pdl,
       asianHigh: null,
       asianLow: null,
       londonHigh: null,
@@ -1386,23 +1976,25 @@ export function calculateTimeframeMetrics(
       sweepPrice: sweepPrice ? Number(sweepPrice.toFixed(2)) : null,
       sweepTimeUtc,
       sweepSession,
+      sweepLevel,
+      sweepConfirmed,
+      sweepRecencyOk,
+      sweepCandleIndex,
+      sweepCandleTimestamp,
       dataClass: "CALCULATED_INFERRED",
     },
-    support: Number(demandHigh.toFixed(2)),
-    resistance: Number(supplyLow.toFixed(2)),
+    support: Number(demandZone.high.toFixed(2)),
+    resistance: Number(supplyZone.low.toFixed(2)),
     rejection,
-    retestZone: {
-      low: Number(demandLow.toFixed(2)),
-      high: Number(demandHigh.toFixed(2)),
-      status: currentPrice >= demandLow && currentPrice <= demandHigh ? "IN_ZONE" : "PENDING",
-    },
+    retestZone,
     bias,
     confidence,
-    keyLevels: [Number(demandLow.toFixed(2)), Number(currentPrice.toFixed(2)), Number(supplyHigh.toFixed(2))],
+    atr: calculatedAtr,
+    keyLevels,
     candleDebug: {
       timeframe: tf,
       lastCandleTimeUtc: lastTimeUtc,
-      lastCandleTimestamp: lastCandle.timestamp,
+      lastCandleTimestamp: getCandleTimestamp(lastCandle),
       open: lastCandle.open,
       high: lastCandle.high,
       low: lastCandle.low,
@@ -1425,7 +2017,7 @@ export function calculateAiConsensus(
   currentPrice: number,
   mtf: Record<string, TimeframeAnalysis>,
   riskAi: RiskAnalysis
-): { bullAi: AgentPerspective; bearAi: AgentPerspective; riskAi: RiskAnalysis; consensus: string } {
+): { bullAi: AgentPerspective; bearAi: AgentPerspective; riskAi: RiskAnalysis; consensus: string; consensusLog: ConsensusLog } {
   const h4 = mtf["4H"];
   const h1 = mtf["1H"];
   const m15 = mtf["15M"];
@@ -1491,15 +2083,16 @@ export function calculateAiConsensus(
     });
   }
 
-  if (m5?.liquidity?.recentSweep === "SSL_SWEPT") {
+  if (m5?.liquidity?.recentSweep === "SSL_SWEPT" && (m5.liquidity.sweepConfirmed !== false) && (m5.liquidity.sweepRecencyOk !== false)) {
+    const isPdlSweep = m5.liquidity.sweepLevel === "PDL";
     bullEvidence.push({
       ruleId: "R-BULL-5M-SWEEP",
       timeframe: "5M",
-      label: "5M Sell-Side Liquidity (SSL) Sweep",
-      evidence: `SSL swept at $${m5.liquidity.sweepPrice} during ${m5.liquidity.sweepSession || "session"} with rapid rejection`,
+      label: isPdlSweep ? "5M Previous Day Low (PDL) High-Priority Sweep" : "5M Sell-Side Liquidity (SSL) Sweep",
+      evidence: `SSL swept at $${m5.liquidity.sweepPrice} (${m5.liquidity.sweepLevel || "SSL"}) during ${m5.liquidity.sweepSession || "session"} with rapid rejection`,
       value: m5.liquidity.sweepPrice || currentPrice,
       timestamp: m5.liquidity.sweepTimeUtc || nowUtc,
-      points: 18,
+      points: isPdlSweep ? 20 : 18,
       impact: "POSITIVE",
       dataClass: "CALCULATED_INFERRED",
     });
@@ -1562,15 +2155,16 @@ export function calculateAiConsensus(
     });
   }
 
-  if (m5?.liquidity?.recentSweep === "BSL_SWEPT") {
+  if (m5?.liquidity?.recentSweep === "BSL_SWEPT" && (m5.liquidity.sweepConfirmed !== false) && (m5.liquidity.sweepRecencyOk !== false)) {
+    const isPdhSweep = m5.liquidity.sweepLevel === "PDH";
     bearEvidence.push({
       ruleId: "R-BEAR-5M-SWEEP",
       timeframe: "5M",
-      label: "5M Buy-Side Liquidity (BSL) Sweep",
-      evidence: `BSL swept at $${m5.liquidity.sweepPrice} during ${m5.liquidity.sweepSession || "session"}`,
+      label: isPdhSweep ? "5M Previous Day High (PDH) High-Priority Sweep" : "5M Buy-Side Liquidity (BSL) Sweep",
+      evidence: `BSL swept at $${m5.liquidity.sweepPrice} (${m5.liquidity.sweepLevel || "BSL"}) during ${m5.liquidity.sweepSession || "session"}`,
       value: m5.liquidity.sweepPrice || currentPrice,
       timestamp: m5.liquidity.sweepTimeUtc || nowUtc,
-      points: 18,
+      points: isPdhSweep ? 20 : 18,
       impact: "NEGATIVE",
       dataClass: "CALCULATED_INFERRED",
     });
@@ -1579,49 +2173,95 @@ export function calculateAiConsensus(
   const bullScore = Math.min(100, bullEvidence.reduce((acc, curr) => acc + curr.points, 0));
   const bearScore = Math.min(100, bearEvidence.reduce((acc, curr) => acc + curr.points, 0));
 
+  const bullVerdict = bullScore >= 70 ? "STRONG BULLISH ALIGNMENT" : bullScore >= 45 ? "MODERATE BULLISH" : "WEAK BULLISH";
+  const bullConviction: "HIGH" | "MODERATE" | "LOW" = bullScore >= 70 ? "HIGH" : bullScore >= 45 ? "MODERATE" : "LOW";
+  const bullReason = bullScore >= 70
+    ? `Strong bullish institutional alignment (${bullScore}/100) supported by ${bullEvidence.length} confluent SMC factors.`
+    : `Bullish thesis weak/moderate (${bullScore}/100): lacks complete multi-timeframe order flow confluence.`;
+
+  const bearVerdict = bearScore >= 70 ? "STRONG BEARISH ALIGNMENT" : bearScore >= 45 ? "MODERATE BEARISH" : "LOW CONVICTION BEARISH";
+  const bearConviction: "HIGH" | "MODERATE" | "LOW" = bearScore >= 70 ? "HIGH" : bearScore >= 45 ? "MODERATE" : "LOW";
+  const bearReason = bearScore >= 70
+    ? `Strong bearish institutional alignment (${bearScore}/100) supported by ${bearEvidence.length} confluent SMC factors.`
+    : `Bearish thesis weak/moderate (${bearScore}/100): lacks complete multi-timeframe order flow confluence.`;
+
   // Execution Gate Logic: Enforce 5M confirmation and 1M trigger
   let consensus = "NO_VALID_SETUP";
-  if (riskAi.executionAllowed) {
-    if (bullScore >= 70 && bearScore < 40) {
-      if (m5?.bias === "BEARISH" || !m5?.liquidity?.recentSweep) {
-        consensus = "BUY THESIS FORMING — WAITING FOR 5M CONFIRMATION";
-      } else if (!m1?.mss?.confirmed && !m1?.rejection?.detected) {
-        consensus = "BUY THESIS VALID — WAITING FOR 1M TRIGGER";
-      } else {
-        consensus = "BUY — EXECUTION APPROVED";
-      }
-    } else if (bearScore >= 70 && bullScore < 40) {
-      if (m5?.bias === "BULLISH" || !m5?.liquidity?.recentSweep) {
-        consensus = "SELL THESIS FORMING — WAITING FOR 5M CONFIRMATION";
-      } else if (!m1?.mss?.confirmed && !m1?.rejection?.detected) {
-        consensus = "SELL THESIS VALID — WAITING FOR 1M TRIGGER";
-      } else {
-        consensus = "SELL — EXECUTION APPROVED";
-      }
+  let rejectReason: string | null = null;
+
+  if (!riskAi.executionAllowed) {
+    rejectReason = riskAi.blockReason || "Execution vetoed by Risk AI.";
+    consensus = `NO TRADE — ${rejectReason}`;
+  } else if (bullScore >= 70 && bearScore < 40) {
+    if (m5?.bias === "BEARISH" || !m5?.liquidity?.recentSweep) {
+      consensus = "BUY THESIS FORMING — WAITING FOR 5M CONFIRMATION";
+      rejectReason = "5M Liquidity sweep or 5M alignment not yet verified for BUY.";
+    } else if (!m1?.mss?.confirmed && !m1?.rejection?.detected) {
+      consensus = "BUY THESIS VALID — WAITING FOR 1M TRIGGER";
+      rejectReason = "1M closed candle MSS / displacement trigger pending confirmation.";
     } else {
-      consensus = "WAIT — MARKET RE-EVALUATION / CONFLICT";
+      consensus = "BUY — EXECUTION APPROVED";
+      rejectReason = null;
+    }
+  } else if (bearScore >= 70 && bullScore < 40) {
+    if (m5?.bias === "BULLISH" || !m5?.liquidity?.recentSweep) {
+      consensus = "SELL THESIS FORMING — WAITING FOR 5M CONFIRMATION";
+      rejectReason = "5M Liquidity sweep or 5M alignment not yet verified for SELL.";
+    } else if (!m1?.mss?.confirmed && !m1?.rejection?.detected) {
+      consensus = "SELL THESIS VALID — WAITING FOR 1M TRIGGER";
+      rejectReason = "1M closed candle MSS / displacement trigger pending confirmation.";
+    } else {
+      consensus = "SELL — EXECUTION APPROVED";
+      rejectReason = null;
     }
   } else {
-    consensus = `NO TRADE — ${riskAi.blockReason || "EXECUTION BLOCKED BY RISK"}`;
+    consensus = "WAIT — MARKET RE-EVALUATION / CONFLICT";
+    rejectReason = `AI Consensus conflict or insufficient score threshold (Bull: ${bullScore}, Bear: ${bearScore}). Minimum directional spread required.`;
   }
+
+  const consensusLog: ConsensusLog = {
+    bull: {
+      score: bullScore,
+      verdict: bullVerdict,
+      conviction: bullConviction,
+      reason: bullReason,
+    },
+    bear: {
+      score: bearScore,
+      verdict: bearVerdict,
+      conviction: bearConviction,
+      reason: bearReason,
+    },
+    risk: {
+      executionAllowed: riskAi.executionAllowed,
+      riskLevel: riskAi.riskLevel,
+      blockReason: riskAi.blockReason,
+    },
+    finalDecision: consensus,
+    rejectReason,
+    timestampUtc: nowUtc,
+  };
 
   return {
     bullAi: {
       score: bullScore,
-      verdict: bullScore >= 70 ? "STRONG BULLISH ALIGNMENT" : bullScore >= 45 ? "MODERATE BULLISH" : "WEAK BULLISH",
-      conviction: bullScore >= 70 ? "HIGH" : bullScore >= 45 ? "MODERATE" : "LOW",
+      verdict: bullVerdict,
+      conviction: bullConviction,
       evidence: bullEvidence,
+      reason: bullReason,
       dataClass: "MODEL_SCORE",
     },
     bearAi: {
       score: bearScore,
-      verdict: bearScore >= 70 ? "STRONG BEARISH ALIGNMENT" : bearScore >= 45 ? "MODERATE BEARISH" : "LOW CONVICTION BEARISH",
-      conviction: bearScore >= 70 ? "HIGH" : bearScore >= 45 ? "MODERATE" : "LOW",
+      verdict: bearVerdict,
+      conviction: bearConviction,
       evidence: bearEvidence,
+      reason: bearReason,
       dataClass: "MODEL_SCORE",
     },
     riskAi,
     consensus,
+    consensusLog,
   };
 }
 
@@ -1650,35 +2290,70 @@ export function evaluateSetupFormationGates(
   const isBuyThesis = isH4Bull && isH1Bull;
   const isSellThesis = isH4Bear && isH1Bear;
 
-    // Gate 4: 5M Liquidity Sweep & Shift
-    const hasSweep5M = isBuyThesis
-      ? m5?.liquidity?.recentSweep === "SSL_SWEPT"
-      : m5?.liquidity?.recentSweep === "BSL_SWEPT";
+    // Gate 4: 5M Liquidity Sweep & Shift (HTF / 5M Liquidity Sweep with EQH/EQL validation & Recency)
+    const sweep5MObj = m5?.liquidity;
+    const isSweepValid5M = Boolean(
+      sweep5MObj &&
+      (sweep5MObj.sweepConfirmed !== false) &&
+      (sweep5MObj.sweepRecencyOk !== false)
+    );
+
+    const hasSweep5M = isSweepValid5M && (
+      isBuyThesis
+        ? sweep5MObj?.recentSweep === "SSL_SWEPT"
+        : sweep5MObj?.recentSweep === "BSL_SWEPT"
+    );
     const hasReclaim5M = hasSweep5M && (
       isBuyThesis
-        ? (currentPrice >= (m5?.liquidity?.ssl || 0))
-        : (currentPrice <= (m5?.liquidity?.bsl || 999999))
+        ? (currentPrice >= (sweep5MObj?.ssl || 0))
+        : (currentPrice <= (sweep5MObj?.bsl || 999999))
     );
     const gate4Passed = isOfficialLocked || (hasSweep5M && hasReclaim5M);
+    const sweepTypeLabel = sweep5MObj?.sweepLevel || (isBuyThesis ? "SSL" : "BSL");
     const gate4Evidence = gate4Passed
       ? (isOfficialLocked
           ? "✓ 5M Sweep & Shift Confirmed"
           : (isBuyThesis
-              ? `5M SSL Swept at $${m5?.liquidity?.sweepPrice || m5?.liquidity?.ssl} & Reclaimed at $${currentPrice.toFixed(2)}`
-              : `5M BSL Swept at $${m5?.liquidity?.sweepPrice || m5?.liquidity?.bsl} & Rejected at $${currentPrice.toFixed(2)}`))
+              ? `5M ${sweepTypeLabel} Swept at $${sweep5MObj?.sweepPrice || sweep5MObj?.ssl} & Reclaimed at $${currentPrice.toFixed(2)} (Recency: Verified <15M)`
+              : `5M ${sweepTypeLabel} Swept at $${sweep5MObj?.sweepPrice || sweep5MObj?.bsl} & Rejected at $${currentPrice.toFixed(2)} (Recency: Verified <15M)`))
       : (hasSweep5M
-          ? (isBuyThesis ? `5M SSL Swept at $${m5?.liquidity?.sweepPrice} — Awaiting 5M Closed-Candle Reclaim` : `5M BSL Swept at $${m5?.liquidity?.sweepPrice} — Awaiting 5M Closed-Candle Rejection`)
+          ? (isBuyThesis ? `5M ${sweepTypeLabel} Swept at $${sweep5MObj?.sweepPrice} — Awaiting 5M Closed-Candle Reclaim` : `5M ${sweepTypeLabel} Swept at $${sweep5MObj?.sweepPrice} — Awaiting 5M Closed-Candle Rejection`)
           : (isBuyThesis
-              ? `5M SSL Floor at $${m5?.liquidity?.ssl?.toFixed(2) || (currentPrice - 3.5).toFixed(2)} — Liquidity Grab & Reclaim Pending`
-              : `5M BSL Ceiling at $${m5?.liquidity?.bsl?.toFixed(2) || (currentPrice + 3.5).toFixed(2)} — Liquidity Grab & Rejection Pending`));
+              ? `5M SSL Floor at $${sweep5MObj?.ssl?.toFixed(2) || (currentPrice - 3.5).toFixed(2)} — Valid SSL/EQL Sweep (<15M) Pending`
+              : `5M BSL Ceiling at $${sweep5MObj?.bsl?.toFixed(2) || (currentPrice + 3.5).toFixed(2)} — Valid BSL/EQH Sweep (<15M) Pending`));
 
-    // Gate 5: 1M Precision MSS Trigger (Closed-Candle Confirmation Required)
+    // Gate 5: 1M Precision MSS Trigger (Closed-Candle Confirmation Required on a SEPARATE subsequent candle)
+    // Wick Separation Rule: sweepCandleIndex !== mssCandleIndex & mssCandleTimestamp > sweepCandleTimestamp
+    const sweepCandleTimestamp = m5?.liquidity?.sweepCandleTimestamp || mtf["15M"]?.liquidity?.sweepCandleTimestamp || null;
+    const mssCandleTimestamp = m1?.mss?.mssCandleTimestamp || m1?.candleDebug?.lastCandleTimestamp || null;
+    const sweepCandleIdx = m5?.liquidity?.sweepCandleIndex ?? null;
+    const mssCandleIdx = m1?.mss?.mssCandleIndex ?? null;
+
+    // Check if sweep and MSS occurred on the same exact candle time or index
+    const isSameCandle = Boolean(
+      (sweepCandleTimestamp && mssCandleTimestamp && sweepCandleTimestamp === mssCandleTimestamp) ||
+      (sweepCandleIdx !== null && mssCandleIdx !== null && sweepCandleIdx === mssCandleIdx)
+    );
+
+    const isSubsequentCandle = !isSameCandle && (
+      !sweepCandleTimestamp || !mssCandleTimestamp || mssCandleTimestamp >= sweepCandleTimestamp
+    );
+
     const m1ClosedCandleConfirmed = Boolean(
       m1?.candleDebug?.candleStatus === "CLOSED" &&
       m1?.mss?.confirmed &&
+      isSubsequentCandle &&
       (isBuyThesis ? m1?.displacement?.direction === "BULLISH" : m1?.displacement?.direction === "BEARISH")
     );
     const m1TriggerConfirmed = isOfficialLocked ? true : m1ClosedCandleConfirmed;
+
+    const m1TriggerEvidence = m1TriggerConfirmed
+      ? (isOfficialLocked
+          ? `✓ 1M MSS Trigger Confirmed & Executed`
+          : `1M Closed-Candle MSS Confirmed at $${m1?.mss?.level?.toFixed(2) || currentPrice.toFixed(2)} on distinct post-sweep candle (Displacement Ratio: ${m1?.displacement?.ratio}x)`)
+      : isSameCandle
+      ? `INVALID: 1M MSS Trigger coincided on same candle as Liquidity Sweep (sweepCandleIndex === mssCandleIndex). Setup invalid until subsequent breakout candle.`
+      : `Waiting for 1M closed candle ${isBuyThesis ? "bullish MSS trigger above" : "bearish MSS trigger below"} ${(currentPrice + (isBuyThesis ? 0.8 : -0.8)).toFixed(2)}`;
 
   const gates: SetupConditionGate[] = [
     {
@@ -1722,12 +2397,8 @@ export function evaluateSetupFormationGates(
       name: "1M Precision MSS Trigger",
       timeframe: "1M",
       status: m1TriggerConfirmed ? "PASS" : "PENDING",
-      description: "1M Market Structure Shift (MSS) with closed candle displacement",
-      observedEvidence: m1TriggerConfirmed
-        ? (isOfficialLocked
-            ? `✓ 1M MSS Trigger Confirmed & Executed`
-            : `1M Closed-Candle MSS Confirmed at $${m1?.mss?.level?.toFixed(2) || currentPrice.toFixed(2)} (Displacement Ratio: ${m1?.displacement?.ratio}x)`)
-        : `Waiting for 1M closed candle ${isBuyThesis ? "bullish MSS trigger above" : "bearish MSS trigger below"} ${(currentPrice + (isBuyThesis ? 0.8 : -0.8)).toFixed(2)}`,
+      description: "1M Market Structure Shift (MSS) with closed candle displacement (distinct post-sweep candle)",
+      observedEvidence: m1TriggerEvidence,
       requiredForExecution: true,
     },
     {

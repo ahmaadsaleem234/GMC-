@@ -32,6 +32,21 @@
  */
 
 import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper.js";
+import {
+  detectSharedBosChoch,
+  calculateSharedLiquidityAndPOI,
+  evaluateSharedPreTradeFilter,
+} from "./warRoomEngine.js";
+
+function safeIsoString(input: any): string {
+  if (!input) return new Date().toISOString();
+  if (typeof input === "number") {
+    const d = new Date(input > 1e11 ? input : input * 1000);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }
+  const d = new Date(input);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
 
 export interface RetestXCandle {
   timestamp: number;
@@ -508,7 +523,7 @@ export class RetestXEngine {
 
       this.logStateTransition(prevState, "DOJI_DETECTED", {
         referenceTimestamp: newRef.referenceTimestamp,
-        formattedTime: new Date(newRef.referenceTimestamp).toISOString(),
+        formattedTime: safeIsoString(newRef.referenceTimestamp),
         symbol: newRef.symbol,
         dojiHigh: newRef.dojiHigh,
         dojiLow: newRef.dojiLow,
@@ -543,7 +558,7 @@ export class RetestXEngine {
 
           this.logStateTransition(prevState, "BREAKOUT_CONFIRMED", {
             direction: "SELL",
-            breakoutCandleTime: new Date(candle.timestamp).toISOString(),
+            breakoutCandleTime: safeIsoString(candle.timestamp),
             breakoutClose: candle.close,
             dojiLow: ref.dojiLow,
             difference: Number((ref.dojiLow - candle.close).toFixed(5)),
@@ -561,7 +576,7 @@ export class RetestXEngine {
 
           this.logStateTransition(prevState, "BREAKOUT_CONFIRMED", {
             direction: "BUY",
-            breakoutCandleTime: new Date(candle.timestamp).toISOString(),
+            breakoutCandleTime: safeIsoString(candle.timestamp),
             breakoutClose: candle.close,
             dojiHigh: ref.dojiHigh,
             difference: Number((candle.close - ref.dojiHigh).toFixed(5)),
@@ -657,7 +672,7 @@ export class RetestXEngine {
           if (isBearishReaction) {
             // Confirmed SELL Rejection!
             const entryPrice = livePrice && livePrice > 0 ? livePrice : candle.close;
-            this.evaluateAndGenerateSetup("SELL", entryPrice, ref, candle, dataAgeSec);
+            this.evaluateAndGenerateSetup("SELL", entryPrice, ref, candle, dataAgeSec, confirmedCandles);
             break;
           } else {
             // First retest attempt failed/weak reaction -> mark setup CLOSED, no second chance, no re-entry
@@ -698,7 +713,7 @@ export class RetestXEngine {
           if (isBullishReaction) {
             // Confirmed BUY Rejection!
             const entryPrice = livePrice && livePrice > 0 ? livePrice : candle.close;
-            this.evaluateAndGenerateSetup("BUY", entryPrice, ref, candle, dataAgeSec);
+            this.evaluateAndGenerateSetup("BUY", entryPrice, ref, candle, dataAgeSec, confirmedCandles);
             break;
           } else {
             // First retest attempt failed/weak reaction -> mark setup CLOSED, no second chance, no re-entry
@@ -733,7 +748,8 @@ export class RetestXEngine {
     entryPrice: number,
     ref: RetestXDojiReference,
     retestCandle: RetestXCandle,
-    dataAgeSec: number
+    dataAgeSec: number,
+    candles15m: RetestXCandle[] = []
   ): RetestXSetup | null {
     const symbol = ref.symbol || "XAUUSD";
     const setupId = `${symbol}_${ref.referenceTimestamp}_${direction}`;
@@ -744,13 +760,27 @@ export class RetestXEngine {
       return null;
     }
 
-    // 2. Guardrail: Single active trade / setup check (one active setup at a time)
+    // 2. Guardrail: Unified Pre-Trade Quality Filter (News, Spread, Data Quality)
+    const preTradeFilter = evaluateSharedPreTradeFilter({
+      spread: 0.20,
+      dataQualityScore: 90,
+    });
+    if (!preTradeFilter.passed) {
+      console.warn(`[RETEST X REJECTED] Setup ${setupId} blocked by Unified Pre-Trade Filter: ${preTradeFilter.blockReason || "Pre-trade filter failed"}`);
+      return null;
+    }
+
+    // 3. Guardrail: Single active trade / setup check (one active setup at a time)
     if (this.activeSetup && this.activeSetup.state !== "SETUP_CLOSED" && this.activeSetup.setupId !== setupId) {
       console.warn(`[RETEST X REJECTED] Setup ${setupId} rejected: Another RETEST X trade is already active (${this.activeSetup.setupId}).`);
       return null;
     }
 
-    // 3. Mathematical Risk & Targets calculation
+    // 4. Shared Structure (BOS/CHOCH) and Shared Liquidity & POI Cross-Verification
+    const sharedStructure = detectSharedBosChoch(candles15m as any, "15M", entryPrice);
+    const sharedLiquidity = calculateSharedLiquidityAndPOI(candles15m as any, entryPrice, "15M");
+
+    // 5. Mathematical Risk & Targets calculation
     let stopLoss = 0;
     let riskAmount = 0;
     let tp1 = 0;
@@ -787,14 +817,14 @@ export class RetestXEngine {
       tp3 = Number((entryPrice + riskAmount * 4.0).toFixed(5));
     }
 
-    // 4. Guardrail: Verify minimum 1:2 R:R ratio
+    // 6. Guardrail: Verify minimum 1:2 R:R ratio
     const riskRewardRatio = Number(((Math.abs(tp1 - entryPrice)) / riskAmount).toFixed(2));
     if (riskRewardRatio < 2.0) {
       console.warn(`[RETEST X REJECTED] Setup ${setupId} rejected: R:R ratio (${riskRewardRatio}) is below required minimum 1:2.0.`);
       return null;
     }
 
-    // Confidence evaluation
+    // Confidence evaluation with Shared POI / Structure alignment
     let confScore = 75;
     if (ref.bodySize <= ref.referenceRange * 0.10) confScore += 12;
     else if (ref.bodySize <= ref.referenceRange * 0.15) confScore += 8;
@@ -803,6 +833,15 @@ export class RetestXEngine {
     const wickDiff = Math.abs(ref.upperWick - ref.lowerWick);
     if (wickDiff <= ref.referenceRange * 0.08) confScore += 8;
     else if (wickDiff <= ref.referenceRange * 0.12) confScore += 5;
+
+    // Alignment with Shared BOS/CHOCH
+    if ((direction === "BUY" && sharedStructure.trend === "BULLISH") || (direction === "SELL" && sharedStructure.trend === "BEARISH")) {
+      confScore += 4;
+    }
+    // Alignment with Shared POI (Key PDH/PDL or Liquidity sweep)
+    if (sharedLiquidity.recentSweep !== "NONE" && sharedLiquidity.sweepConfirmed) {
+      confScore += 3;
+    }
 
     const confidence = Math.min(confScore, 98);
     const confidenceGrade = confidence >= 90 ? "A+ CONVICTION" : confidence >= 80 ? "A INSTITUTIONAL" : "STANDARD";
@@ -869,7 +908,7 @@ export class RetestXEngine {
       tp3: setup.tp3,
       riskRewardRatio: `1:${setup.riskRewardRatio}`,
       confidence: `${setup.confidence}% (${setup.confidenceGrade})`,
-      referenceDojiTime: new Date(ref.referenceTimestamp).toISOString(),
+      referenceDojiTime: safeIsoString(ref.referenceTimestamp),
       signalSent: setup.signalSent,
     });
 
@@ -1022,7 +1061,7 @@ export class RetestXEngine {
     if (this.latestReferenceCandle) {
       console.log("[RETEST X] 🔍 Current Active 15M Red Doji Reference Candle:", {
         referenceTimestamp: this.latestReferenceCandle.referenceTimestamp,
-        formattedTime: new Date(this.latestReferenceCandle.referenceTimestamp).toISOString(),
+        formattedTime: safeIsoString(this.latestReferenceCandle.referenceTimestamp),
         symbol: this.latestReferenceCandle.symbol,
         timeframe: this.latestReferenceCandle.timeframe,
         referenceOpen: this.latestReferenceCandle.referenceOpen,

@@ -2,6 +2,7 @@ import React from "react";
 import { getModuleTitle } from "../utils/moduleRegistry";
 import { TrendingUp, BarChart3, ShieldAlert, Award, PieChart, Activity, DollarSign, ArrowUpRight } from "lucide-react";
 import { TradeLogEntry } from "../types";
+import { SessionGhostTrailPnLChart } from "./SessionGhostTrailPnLChart";
 
 interface LiveEquityTrackerViewProps {
   trades?: TradeLogEntry[];
@@ -18,6 +19,27 @@ export function LiveEquityTrackerView({ trades = [] }: LiveEquityTrackerViewProp
     { time: "11:00 AM", balance: 10540, drawdown: 0.0 },
     { time: "11:30 AM", balance: 10720, drawdown: 0.0 },
     { time: "12:00 PM", balance: 10880, drawdown: 0.0 },
+  ];
+
+  // Today vs Yesterday session PnL curve points
+  const todaySessionPnL = [
+    { time: "09:00 AM", pnl: 0 },
+    { time: "09:30 AM", pnl: 180 },
+    { time: "10:00 AM", pnl: 320 },
+    { time: "10:30 AM", pnl: 290 },
+    { time: "11:00 AM", pnl: 540 },
+    { time: "11:30 AM", pnl: 720 },
+    { time: "12:00 PM", pnl: 880 },
+  ];
+
+  const yesterdaySessionPnL = [
+    { time: "09:00 AM", pnl: 0 },
+    { time: "09:30 AM", pnl: 95 },
+    { time: "10:00 AM", pnl: 210 },
+    { time: "10:30 AM", pnl: 175 },
+    { time: "11:00 AM", pnl: 380 },
+    { time: "11:30 AM", pnl: 490 },
+    { time: "12:00 PM", pnl: 610 },
   ];
 
   const currentEquity = equityPoints[equityPoints.length - 1].balance;
@@ -76,6 +98,16 @@ export function LiveEquityTrackerView({ trades = [] }: LiveEquityTrackerViewProp
             <span className="text-base font-black text-emerald-400">{maxDrawdownPct}</span>
           </div>
         </div>
+      </div>
+
+      {/* Session Ghost Trail Live PnL Comparison Chart */}
+      <div className="bg-[#080B14] border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+        <SessionGhostTrailPnLChart
+          todayData={todaySessionPnL}
+          yesterdayData={yesterdaySessionPnL}
+          height={180}
+          currencyPrefix="$"
+        />
       </div>
 
       {/* Equity Growth Visual Chart */}

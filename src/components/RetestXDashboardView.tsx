@@ -963,6 +963,11 @@ export const RetestXDashboardView: React.FC<RetestXDashboardViewProps> = ({
                   const dojiHighVal = row.dojiHigh || row.referenceDoji?.dojiHigh || 0;
                   const dojiLowVal = row.dojiLow || row.referenceDoji?.dojiLow || 0;
                   const confVal = row.confidence || 88;
+                  const rowTs = row.createdAt || row.referenceTimestamp || Date.now();
+                  const dObj = new Date(rowTs);
+                  const validDate = isNaN(dObj.getTime()) ? new Date() : dObj;
+                  const displayDate = row.date || validDate.toISOString().split("T")[0];
+                  const displayTime = row.time || validDate.toTimeString().split(" ")[0];
 
                   return (
                     <tr
@@ -971,12 +976,12 @@ export const RetestXDashboardView: React.FC<RetestXDashboardViewProps> = ({
                     >
                       {/* 1. Date */}
                       <td className="py-3 px-3 text-slate-300 whitespace-nowrap">
-                        {row.date || new Date(row.createdAt || row.referenceTimestamp).toISOString().split("T")[0]}
+                        {displayDate}
                       </td>
 
                       {/* 2. Time */}
                       <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
-                        {row.time || new Date(row.createdAt || row.referenceTimestamp).toTimeString().split(" ")[0]}
+                        {displayTime}
                       </td>
 
                       {/* 3. Instrument */}

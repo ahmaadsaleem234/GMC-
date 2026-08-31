@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Shield,
   Zap,
@@ -50,6 +50,14 @@ import {
   dispatchCentralLifecycleEventToTelegram,
 } from "../services/centralTelegramDispatcher";
 import { TelegramBotModal } from "./TelegramBotModal";
+import { NeuralConstellationCore } from "./NeuralConstellationCore";
+import { GlassTiltCard } from "./GlassTiltCard";
+import { CooldownRadialRing } from "./CooldownRadialRing";
+import { ConfidenceHeatmapStrip } from "./ConfidenceHeatmapStrip";
+import { SessionGhostTrailPnLChart } from "./SessionGhostTrailPnLChart";
+import { VerifiedBadgeShimmer } from "./VerifiedBadgeShimmer";
+import { TactileToggleSwitch } from "./TactileToggleSwitch";
+import { SignalRipplePulse } from "./SignalRipplePulse";
 
 interface CentralSignalManagerViewProps {
   managerState: CentralSignalManagerState;
@@ -164,13 +172,29 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
   const px = currentPrice || managerState.currentPrice;
 
+  // Track if candidates section is in viewport to trigger depth-blur focus for active trade
+  const candidatesContainerRef = useRef<HTMLDivElement>(null);
+  const [isCandidatesInView, setIsCandidatesInView] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!candidatesContainerRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsCandidatesInView(entry.isIntersecting);
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(candidatesContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div id="central-signal-manager-view" className="space-y-6 text-[#E2E8F0] font-sans pb-16">
       {/* 1. TOP SUPREME BANNER & SYSTEM STATUS */}
-      <div className="bg-gradient-to-r from-[#0B0F17] via-[#111827] to-[#0A0D14] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#0B0F17]/90 via-[#111827]/90 to-[#0A0D14]/90 backdrop-blur-xl border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/40 rounded-2xl flex items-center justify-center text-3xl shadow-inner">
               🏛️
@@ -198,7 +222,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             <button
               id="csm-telegram-config-btn"
               onClick={() => setIsTelegramModalOpen(true)}
-              className="px-3.5 py-2 bg-[#1E293B] hover:bg-slate-700 border border-cyan-500/40 text-cyan-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              className="px-3.5 py-2 bg-[#1E293B]/70 hover:bg-slate-700/80 backdrop-blur-md border border-cyan-500/40 text-cyan-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm btn-micro-cyan"
               title="Configure Telegram Bot"
             >
               <Send className="w-3.5 h-3.5 text-cyan-400" />
@@ -208,7 +232,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             <button
               id="csm-settings-modal-btn"
               onClick={() => setIsSettingsOpen(true)}
-              className="px-3.5 py-2 bg-[#1E293B] hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-3.5 py-2 bg-[#1E293B]/70 hover:bg-slate-700/80 backdrop-blur-md border border-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer btn-micro-amber"
               title="Central Signal Manager Settings"
             >
               <Settings className="w-3.5 h-3.5 text-amber-400" />
@@ -218,7 +242,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             <button
               id="csm-manual-refresh-btn"
               onClick={onRefresh}
-              className="p-2 bg-[#1E293B] hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
+              className="p-2 bg-[#1E293B]/70 hover:bg-slate-700/80 backdrop-blur-md border border-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer btn-micro-emerald"
               title="Refresh State Evaluation"
             >
               <RefreshCw className="w-4 h-4 text-emerald-400" />
@@ -229,7 +253,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
         {/* Real-time Status Widgets Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 text-xs font-mono">
           {/* Active Setup Rule Indicator */}
-          <div className="bg-[#0D131F] border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+          <GlassTiltCard
+            maxTilt={6}
+            className="bg-[#0D131F]/55 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between shadow-lg"
+          >
             <div>
               <div className="text-[10px] text-slate-400 uppercase font-sans">Active Setup Rule</div>
               <div className="font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
@@ -237,13 +264,18 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 <span>1 Active Setup Max</span>
               </div>
             </div>
-            <div className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded text-[10px] text-emerald-300 font-bold">
-              STRICT ENFORCED
-            </div>
-          </div>
+            <VerifiedBadgeShimmer isVerified={true} triggerKey="STRICT_ENFORCED" shimmerColor="gold-white">
+              <div className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded text-[10px] text-emerald-300 font-bold">
+                STRICT ENFORCED
+              </div>
+            </VerifiedBadgeShimmer>
+          </GlassTiltCard>
 
           {/* AI Consensus */}
-          <div className="bg-[#0D131F] border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+          <GlassTiltCard
+            maxTilt={6}
+            className="bg-[#0D131F]/55 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between shadow-lg"
+          >
             <div>
               <div className="text-[10px] text-slate-400 uppercase font-sans">AI Brain Consensus</div>
               <div className="font-bold text-white flex items-center gap-1 mt-0.5">
@@ -262,41 +294,44 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             >
               {consensus.consensusRatio}
             </div>
-          </div>
+          </GlassTiltCard>
 
           {/* Cooldown Status */}
-          <div className="bg-[#0D131F] border border-slate-800 p-3 rounded-xl flex items-center justify-between">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-sans">
-                Cooldown Protection ({cooldown.durationMinutes}m)
-              </div>
-              <div className="font-bold mt-0.5 flex items-center gap-1">
-                {cooldown.isActive ? (
-                  <>
-                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                    <span className="text-amber-300">{cooldown.remainingFormatted} REMAINING</span>
-                  </>
-                ) : (
-                  <>
-                    <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">READY FOR SIGNALS</span>
-                  </>
-                )}
+          <GlassTiltCard
+            maxTilt={6}
+            className="bg-[#0D131F]/55 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between shadow-lg gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <CooldownRadialRing cooldown={cooldown} size={44} strokeWidth={3.5} />
+              <div>
+                <div className="text-[10px] text-slate-400 uppercase font-sans">
+                  Cooldown Protection ({cooldown.durationMinutes}m)
+                </div>
+                <div className="font-bold mt-0.5 flex items-center gap-1">
+                  {cooldown.isActive ? (
+                    <span className="text-amber-300 text-xs">{cooldown.remainingFormatted} REMAINING</span>
+                  ) : (
+                    <span className="text-emerald-400 text-xs">READY FOR SIGNALS</span>
+                  )}
+                </div>
               </div>
             </div>
             {cooldown.isActive && (
               <button
                 onClick={onResetCooldownManually}
-                className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[9px] cursor-pointer"
+                className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[9px] cursor-pointer btn-micro-amber"
                 title="Reset Cooldown"
               >
                 Reset
               </button>
             )}
-          </div>
+          </GlassTiltCard>
 
           {/* Live Data Integrity */}
-          <div className="bg-[#0D131F] border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+          <GlassTiltCard
+            maxTilt={6}
+            className="bg-[#0D131F]/55 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between shadow-lg"
+          >
             <div>
               <div className="text-[10px] text-slate-400 uppercase font-sans">Data & Spread Integrity</div>
               <div className="font-bold text-white mt-0.5 flex items-center gap-1">
@@ -305,16 +340,18 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 <span className="text-[10px] text-slate-400">(${managerState.spread.toFixed(2)})</span>
               </div>
             </div>
-            <div
-              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                marketStatus === "HEALTHY"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-              }`}
-            >
-              {marketStatus === "HEALTHY" ? "LIVE VERIFIED" : "WARNING"}
-            </div>
-          </div>
+            <VerifiedBadgeShimmer isVerified={marketStatus === "HEALTHY"} triggerKey={marketStatus} shimmerColor="gold-white">
+              <div
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  marketStatus === "HEALTHY"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                }`}
+              >
+                {marketStatus === "HEALTHY" ? "LIVE VERIFIED" : "WARNING"}
+              </div>
+            </VerifiedBadgeShimmer>
+          </GlassTiltCard>
         </div>
 
         {/* 🎛️ INDEPENDENT 4-AI SOURCE ON/OFF CONTROLS BAR */}
@@ -333,11 +370,13 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
             {/* 1. Precision Hunter AI Toggle */}
-            <div
-              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            <GlassTiltCard
+              maxTilt={6}
+              glowColor={precisionHunterEnabled ? "rgba(16, 185, 129, 0.25)" : undefined}
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all backdrop-blur-md shadow-lg ${
                 precisionHunterEnabled
-                  ? "bg-emerald-950/20 border-emerald-500/40 shadow-sm"
-                  : "bg-slate-900/40 border-slate-800 opacity-60"
+                  ? "bg-emerald-950/25 border-emerald-500/40"
+                  : "bg-slate-900/40 border-slate-800/80 opacity-60"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -349,25 +388,25 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   </div>
                 </div>
               </div>
-              <button
+              <TactileToggleSwitch
                 id="csm-toggle-precision-hunter-btn"
-                onClick={() => handleToggleAiSource("PRECISION_HUNTER", precisionHunterEnabled)}
-                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                  precisionHunterEnabled
-                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
-                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
-                }`}
-              >
-                {precisionHunterEnabled ? "ON" : "OFF"}
-              </button>
-            </div>
+                checked={precisionHunterEnabled}
+                onChange={() => handleToggleAiSource("PRECISION_HUNTER", precisionHunterEnabled)}
+                accentColor="emerald"
+                onLabel="ON"
+                offLabel="OFF"
+                title="Toggle Precision Hunter AI"
+              />
+            </GlassTiltCard>
 
             {/* 2. Harami AI Toggle */}
-            <div
-              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            <GlassTiltCard
+              maxTilt={6}
+              glowColor={haramiEnabled ? "rgba(168, 85, 247, 0.25)" : undefined}
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all backdrop-blur-md shadow-lg ${
                 haramiEnabled
-                  ? "bg-purple-950/20 border-purple-500/40 shadow-sm"
-                  : "bg-slate-900/40 border-slate-800 opacity-60"
+                  ? "bg-purple-950/25 border-purple-500/40"
+                  : "bg-slate-900/40 border-slate-800/80 opacity-60"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -379,25 +418,25 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   </div>
                 </div>
               </div>
-              <button
+              <TactileToggleSwitch
                 id="csm-toggle-harami-btn"
-                onClick={() => handleToggleAiSource("HARAMI_AI", haramiEnabled)}
-                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                  haramiEnabled
-                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
-                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
-                }`}
-              >
-                {haramiEnabled ? "ON" : "OFF"}
-              </button>
-            </div>
+                checked={haramiEnabled}
+                onChange={() => handleToggleAiSource("HARAMI_AI", haramiEnabled)}
+                accentColor="purple"
+                onLabel="ON"
+                offLabel="OFF"
+                title="Toggle Harami AI"
+              />
+            </GlassTiltCard>
 
             {/* 3. Khatarnak Jugaad Toggle */}
-            <div
-              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            <GlassTiltCard
+              maxTilt={6}
+              glowColor={khatarnakEnabled ? "rgba(249, 115, 22, 0.25)" : undefined}
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all backdrop-blur-md shadow-lg ${
                 khatarnakEnabled
-                  ? "bg-orange-950/20 border-orange-500/40 shadow-sm"
-                  : "bg-slate-900/40 border-slate-800 opacity-60"
+                  ? "bg-orange-950/25 border-orange-500/40"
+                  : "bg-slate-900/40 border-slate-800/80 opacity-60"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -409,25 +448,25 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   </div>
                 </div>
               </div>
-              <button
+              <TactileToggleSwitch
                 id="csm-toggle-khatarnak-btn"
-                onClick={() => handleToggleAiSource("KHATARNAK_JUGAAD", khatarnakEnabled)}
-                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                  khatarnakEnabled
-                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
-                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
-                }`}
-              >
-                {khatarnakEnabled ? "ON" : "OFF"}
-              </button>
-            </div>
+                checked={khatarnakEnabled}
+                onChange={() => handleToggleAiSource("KHATARNAK_JUGAAD", khatarnakEnabled)}
+                accentColor="orange"
+                onLabel="ON"
+                offLabel="OFF"
+                title="Toggle Khatarnak Jugaad"
+              />
+            </GlassTiltCard>
 
             {/* 4. War Room Supreme Toggle */}
-            <div
-              className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            <GlassTiltCard
+              maxTilt={6}
+              glowColor={warRoomEnabled ? "rgba(245, 158, 11, 0.25)" : undefined}
+              className={`p-3 rounded-xl border flex items-center justify-between transition-all backdrop-blur-md shadow-lg ${
                 warRoomEnabled
-                  ? "bg-amber-950/20 border-amber-500/40 shadow-sm"
-                  : "bg-slate-900/40 border-slate-800 opacity-60"
+                  ? "bg-amber-950/25 border-amber-500/40"
+                  : "bg-slate-900/40 border-slate-800/80 opacity-60"
               }`}
             >
               <div className="flex items-center gap-2.5">
@@ -439,18 +478,16 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   </div>
                 </div>
               </div>
-              <button
+              <TactileToggleSwitch
                 id="csm-toggle-warroom-btn"
-                onClick={() => handleToggleAiSource("WAR_ROOM", warRoomEnabled)}
-                className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                  warRoomEnabled
-                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
-                    : "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40"
-                }`}
-              >
-                {warRoomEnabled ? "ON" : "OFF"}
-              </button>
-            </div>
+                checked={warRoomEnabled}
+                onChange={() => handleToggleAiSource("WAR_ROOM", warRoomEnabled)}
+                accentColor="amber"
+                onLabel="ON"
+                offLabel="OFF"
+                title="Toggle War Room Supreme"
+              />
+            </GlassTiltCard>
           </div>
         </div>
 
@@ -463,9 +500,19 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
         )}
       </div>
 
+      {/* 🌌 NEURAL CONSTELLATION CORE: 3-BRAIN SYNAPSE & CONSENSUS NEXUS */}
+      <NeuralConstellationCore
+        managerState={managerState}
+        height={320}
+      />
+
       {/* 2. CENTRAL HERO: THE SINGLE ACTIVE TELEGRAM SIGNAL CARD */}
-      <div className="bg-[#0E1524] border-2 border-slate-700/80 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <GlassTiltCard
+        maxTilt={4}
+        glowColor={activeSetup ? "rgba(245, 158, 11, 0.3)" : undefined}
+        className="bg-[#0E1524]/60 border-2 border-slate-700/80 rounded-2xl p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-2.5">
             <span className="text-2xl">🏆</span>
             <div>
@@ -485,14 +532,15 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 <span>{activeSetup.lifecycleStatusLabel}</span>
               </span>
             ) : cooldown.isActive ? (
-              <span className="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <div className="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/50 rounded-xl text-xs font-mono font-bold flex items-center gap-2">
+                <CooldownRadialRing cooldown={cooldown} size={22} strokeWidth={2.5} showLabel={false} />
                 <span>COOLDOWN ACTIVE ({cooldown.remainingFormatted})</span>
-              </span>
+              </div>
             ) : (
-              <span className="px-3 py-1 bg-slate-800 text-slate-400 border border-slate-700 rounded-xl text-xs font-mono font-bold">
-                ⏳ WAITING / QUEUED
-              </span>
+              <div className="px-3 py-1 bg-slate-800 text-slate-400 border border-slate-700 rounded-xl text-xs font-mono font-bold flex items-center gap-2">
+                <CooldownRadialRing cooldown={cooldown} size={20} strokeWidth={2.5} showLabel={false} />
+                <span>WAITING / QUEUED</span>
+              </div>
             )}
           </div>
         </div>
@@ -500,7 +548,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
         {activeSetup ? (
           <div className="mt-5 space-y-5">
             {/* 3 AI Lockout Notification Strip */}
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs backdrop-blur-sm">
               <div className="flex items-center gap-2">
                 <span className="text-amber-400 font-bold">🔒 SINGLE ACTIVE TRADE LOCK:</span>
                 <span className="text-amber-200">
@@ -511,7 +559,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 {(["HARAMI_AI", "WAR_ROOM", "KHATARNAK_JUGAAD"] as AiBrainSource[])
                   .filter((b) => b !== activeSetup.brainSource)
                   .map((b) => (
-                    <span key={b} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-slate-400">
+                    <span key={b} className="px-1.5 py-0.5 bg-slate-900/80 border border-slate-800 rounded text-slate-400">
                       🚫 {b === "HARAMI_AI" ? "Harami AI" : b === "WAR_ROOM" ? "War Room" : "Khatarnak Jugaad"}: LOCKED
                     </span>
                   ))}
@@ -519,7 +567,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </div>
 
             {/* Top Detail Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#090D16] p-3.5 rounded-xl border border-slate-800 font-mono text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#090D16]/60 backdrop-blur-md p-3.5 rounded-xl border border-slate-800 font-mono text-xs shadow-md">
               <div>
                 <div className="text-[10px] text-slate-400 uppercase">Setup ID</div>
                 <div className="text-white font-bold text-sm mt-0.5">{activeSetup.setupId}</div>
@@ -553,26 +601,48 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
               </div>
             </div>
 
+            {/* Session Ghost Trail Live PnL Trajectory for Active Trade */}
+            <div className="p-3 bg-[#070B14]/70 rounded-xl border border-slate-800/80 backdrop-blur-md">
+              <SessionGhostTrailPnLChart
+                height={120}
+                todayData={[
+                  { time: "09:00", pnl: 0 },
+                  { time: "09:30", pnl: Math.max(0, activeSetup.pnlUSD * 0.25) },
+                  { time: "10:00", pnl: Math.max(0, activeSetup.pnlUSD * 0.55) },
+                  { time: "10:30", pnl: Math.max(0, activeSetup.pnlUSD * 0.8) },
+                  { time: "Live", pnl: Math.max(0, activeSetup.pnlUSD) },
+                ]}
+                yesterdayData={[
+                  { time: "09:00", pnl: 0 },
+                  { time: "09:30", pnl: 85 },
+                  { time: "10:00", pnl: 190 },
+                  { time: "10:30", pnl: 280 },
+                  { time: "Live", pnl: 350 },
+                ]}
+                currencyPrefix="$"
+              />
+            </div>
+
             {/* Price Geometry Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Entry Zone & Preferred Entry */}
-              <div className="bg-[#111827] border border-emerald-500/30 p-4 rounded-xl space-y-2">
+              <GlassTiltCard maxTilt={5} className="bg-[#111827]/60 backdrop-blur-md border border-emerald-500/30 p-4 rounded-xl space-y-2 shadow-lg">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <Target className="w-3.5 h-3.5" /> Entry Range
                   </span>
                   <span className="text-slate-400 font-mono">{activeSetup.entryRangeFormatted}</span>
                 </div>
-                <div className="p-2.5 bg-[#0B0F17] rounded-lg border border-slate-800">
+                <div className="p-2.5 bg-[#0B0F17]/80 rounded-lg border border-slate-800">
                   <div className="text-[10px] text-slate-400 uppercase">🎯 Preferred Precision Entry</div>
                   <div className="text-lg font-mono font-black text-white mt-0.5">
                     ${activeSetup.preferredEntry.toFixed(2)}
                   </div>
                 </div>
-              </div>
+              </GlassTiltCard>
 
               {/* Stop Loss & Protection Engine */}
-              <div className="bg-[#111827] border border-rose-500/30 p-4 rounded-xl space-y-2">
+              <GlassTiltCard maxTilt={5} className="bg-[#111827]/60 backdrop-blur-md border border-rose-500/30 p-4 rounded-xl space-y-2 shadow-lg">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-rose-400 font-bold flex items-center gap-1">
                     <Shield className="w-3.5 h-3.5" /> Stop Loss
@@ -583,7 +653,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   className={`p-2.5 rounded-lg border text-xs font-mono ${
                     activeSetup.protectionActive
                       ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-                      : "bg-[#0B0F17] border-slate-800 text-slate-400"
+                      : "bg-[#0B0F17]/80 border-slate-800 text-slate-400"
                   }`}
                 >
                   <div className="text-[10px] uppercase font-sans">
@@ -595,10 +665,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                       : "Standard Structural SL"}
                   </div>
                 </div>
-              </div>
+              </GlassTiltCard>
 
               {/* Profit Targets TP1, TP2, TP3, Final TP */}
-              <div className="bg-[#111827] border border-blue-500/30 p-4 rounded-xl space-y-1.5 text-xs font-mono">
+              <GlassTiltCard maxTilt={5} className="bg-[#111827]/60 backdrop-blur-md border border-blue-500/30 p-4 rounded-xl space-y-1.5 text-xs font-mono shadow-lg">
                 <div className="text-blue-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
                   <Award className="w-3.5 h-3.5" /> Take Profit Targets
                 </div>
@@ -626,11 +696,11 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                     {activeSetup.isFinalTpHit && <span className="text-[10px] text-amber-400 font-bold">✓ HIT</span>}
                   </div>
                 )}
-              </div>
+              </GlassTiltCard>
             </div>
 
             {/* Quality Scores & Selection Reasoning */}
-            <div className="bg-[#0B0F17] border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs font-mono">
+            <GlassTiltCard maxTilt={4} className="bg-[#0B0F17]/60 backdrop-blur-md border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs font-mono shadow-md">
               <div className="space-y-1">
                 <div className="text-slate-400 font-sans">Selection Reasoning:</div>
                 <div className="text-slate-200 italic font-sans">“{activeSetup.selectionReason}”</div>
@@ -649,10 +719,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   <div className="text-sm font-bold text-emerald-400">{activeSetup.rrRatioString}</div>
                 </div>
               </div>
-            </div>
+            </GlassTiltCard>
 
             {/* Telegram Formal Message Preview Box */}
-            <div className="bg-[#0A0E17] border border-cyan-500/30 rounded-xl p-4 space-y-2">
+            <GlassTiltCard maxTilt={4} className="bg-[#0A0E17]/60 backdrop-blur-md border border-cyan-500/30 rounded-xl p-4 space-y-2 shadow-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-wider">
                   <Send className="w-3.5 h-3.5" />
@@ -662,7 +732,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   HTML / Markdown Format
                 </span>
               </div>
-              <div className="bg-[#06080F] border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed select-all">
+              <div className="bg-[#06080F]/90 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed select-all">
                 {activeSetup.brainSource === "PRECISION_HUNTER" && (
                   <>
                     <span className="text-emerald-400 font-bold">🎯 PRECISION HUNTER AI V2</span>
@@ -736,10 +806,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   </>
                 )}
               </div>
-            </div>
+            </GlassTiltCard>
 
             {/* Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80 pt-3">
               <div className="flex items-center gap-2">
                 <button
                   id="csm-broadcast-telegram-btn"
@@ -764,11 +834,17 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </div>
           </div>
         ) : (
-          <div className="mt-6 py-8 text-center space-y-3 font-mono">
-            <div className="w-12 h-12 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-xl text-slate-400">
-              ⏳
-            </div>
-            <div className="text-slate-200 font-bold text-sm">
+          <div className="mt-6 py-8 text-center space-y-4 font-mono flex flex-col items-center justify-center">
+            {cooldown.isActive ? (
+              <div className="relative inline-flex items-center justify-center">
+                <CooldownRadialRing cooldown={cooldown} size={88} strokeWidth={6} />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-2xl text-slate-400">
+                <CooldownRadialRing cooldown={cooldown} size={64} strokeWidth={4} />
+              </div>
+            )}
+            <div className="text-slate-200 font-bold text-sm tracking-wide">
               {cooldown.isActive
                 ? `30-MINUTE COOLDOWN ACTIVE — NEXT SIGNAL IN ${cooldown.remainingFormatted}`
                 : "NO VALID SETUP — WAITING (QUALITY > QUANTITY)"}
@@ -780,10 +856,10 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </p>
           </div>
         )}
-      </div>
+      </GlassTiltCard>
 
       {/* 3. AI BRAIN COMPETITION MATRIX (PRECISION HUNTER vs KHATARNAK JUGAAD vs WAR ROOM vs HARAMI AI) */}
-      <div className="space-y-3">
+      <div className="space-y-3" ref={candidatesContainerRef}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-amber-400" />
@@ -808,14 +884,18 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                 : warRoomEnabled;
 
             return (
-              <div
+              <GlassTiltCard
                 key={source}
-                className={`bg-[#0F172A] rounded-2xl p-5 border-2 transition-all relative flex flex-col justify-between ${
+                maxTilt={7}
+                isActiveWinner={isWinner}
+                isSiblingDimmed={isCandidatesInView && Boolean(activeSetup) && !isWinner}
+                glowColor={isWinner ? "rgba(245, 158, 11, 0.4)" : undefined}
+                className={`rounded-2xl p-5 border-2 transition-all relative flex flex-col justify-between backdrop-blur-md ${
                   !isSourceEnabled
-                    ? "border-slate-800/60 opacity-65 bg-[#090D16]"
+                    ? "border-slate-800/60 opacity-65 bg-[#090D16]/50"
                     : isWinner
-                    ? "border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.25)] bg-gradient-to-b from-[#1E293B]/80 to-[#0F172A]"
-                    : "border-slate-800 hover:border-slate-700"
+                    ? "border-amber-500 bg-gradient-to-b from-[#1E293B]/80 to-[#0F172A]/80 z-10"
+                    : "border-slate-700/40 bg-[#0F172A]/60 hover:border-slate-600"
                 }`}
               >
                 <div>
@@ -868,7 +948,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
 
                   {/* Direction & Scores */}
                   <div className="grid grid-cols-3 gap-2 my-3 text-center font-mono">
-                    <div className="p-2 bg-[#0B0F17] rounded-lg border border-slate-800">
+                    <div className="p-2 bg-[#0B0F17]/80 rounded-lg border border-slate-800">
                       <div className="text-[9px] text-slate-400 uppercase font-sans">Direction</div>
                       <div
                         className={`font-black text-xs mt-0.5 ${
@@ -883,7 +963,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                       </div>
                     </div>
 
-                    <div className="p-2 bg-[#0B0F17] rounded-lg border border-slate-800">
+                    <div className="p-2 bg-[#0B0F17]/80 rounded-lg border border-slate-800">
                       <div className="text-[9px] text-slate-400 uppercase font-sans">Setup Score</div>
                       <div
                         className={`font-black text-xs mt-0.5 ${
@@ -898,7 +978,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                       </div>
                     </div>
 
-                    <div className="p-2 bg-[#0B0F17] rounded-lg border border-slate-800">
+                    <div className="p-2 bg-[#0B0F17]/80 rounded-lg border border-slate-800">
                       <div className="text-[9px] text-slate-400 uppercase font-sans">Confidence</div>
                       <div className="font-black text-xs text-cyan-400 mt-0.5">
                         {candidate.marketConfidence}/100
@@ -906,9 +986,17 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                     </div>
                   </div>
 
+                  {/* Confidence Heatmap Strip (Historical Win Rate Volatility & Precision Gauge) */}
+                  <div className="my-3 p-2 bg-[#090D18]/90 rounded-xl border border-slate-800/80">
+                    <ConfidenceHeatmapStrip
+                      winRatePct={managerState.aiPerformance[source]?.winRatePct ?? (candidate.marketConfidence || 88.5)}
+                      brainName={candidate.brainName}
+                    />
+                  </div>
+
                   {/* 9-Point Quality Verification Indicator */}
                   {candidate.qualityAudit && (
-                    <div className="mb-3 p-2 bg-[#0B0F17] rounded-xl border border-slate-800 text-[10px] font-mono">
+                    <div className="mb-3 p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800 text-[10px] font-mono">
                       <div className="flex items-center justify-between text-slate-400 mb-1">
                         <span className="font-sans font-semibold">9-Point Verification:</span>
                         <span className="text-emerald-400 font-bold">
@@ -939,7 +1027,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   )}
 
                   {/* Level Details */}
-                  <div className="space-y-1.5 text-xs font-mono bg-[#090D16] p-3 rounded-xl border border-slate-800/80">
+                  <div className="space-y-1.5 text-xs font-mono bg-[#090D16]/80 p-3 rounded-xl border border-slate-800/80">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Entry Range:</span>
                       <span className="text-white font-bold">{candidate.entryRangeFormatted}</span>
@@ -967,7 +1055,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                   {/* Confluence & Reasoning */}
                   <div className="mt-3 space-y-1 text-xs">
                     <div className="text-[11px] text-slate-400 font-semibold font-sans">Structure & Fib Alignment:</div>
-                    <div className="text-slate-300 text-[11px] font-mono leading-relaxed bg-[#0B0F17] p-2 rounded-lg border border-slate-800">
+                    <div className="text-slate-300 text-[11px] font-mono leading-relaxed bg-[#0B0F17]/80 p-2 rounded-lg border border-slate-800">
                       {candidate.marketStructureQuality} • {candidate.fibAlignment}
                     </div>
                   </div>
@@ -980,15 +1068,18 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
                     {candidate.verdictReason}
                   </span>
                 </div>
-              </div>
+              </GlassTiltCard>
             );
           })}
         </div>
       </div>
 
       {/* 4. AI HISTORICAL LEADERBOARD & PERFORMANCE ENGINE */}
-      <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+      <GlassTiltCard
+        maxTilt={3}
+        className="bg-[#0F172A]/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5 shadow-xl space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-400" />
             <div>
@@ -1047,11 +1138,14 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </tbody>
           </table>
         </div>
-      </div>
+      </GlassTiltCard>
 
       {/* 5. TRACEABLE DECISION AUDIT LOG */}
-      <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <GlassTiltCard
+        maxTilt={3}
+        className="bg-[#0F172A]/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5 shadow-xl space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-amber-400" />
             <div>
@@ -1064,7 +1158,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-[#0B0F17] p-1 rounded-xl border border-slate-800 text-xs font-mono">
+          <div className="flex items-center gap-1.5 bg-[#0B0F17]/80 p-1 rounded-xl border border-slate-800 text-xs font-mono">
             {["ALL", "SETUP_ACTIVATED", "TP_HIT", "SL_HIT", "COOLDOWN"].map((f) => (
               <button
                 key={f}
@@ -1086,7 +1180,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             filteredLogs.map((log) => (
               <div
                 key={log.auditId}
-                className="p-3 bg-[#0B0F17] border border-slate-800 rounded-xl text-xs font-mono space-y-1.5 hover:border-slate-700 transition-all"
+                className="p-3 bg-[#0B0F17]/80 border border-slate-800/80 rounded-xl text-xs font-mono space-y-1.5 hover:border-slate-700 transition-all"
               >
                 <div className="flex items-center justify-between text-slate-400">
                   <div className="flex items-center gap-2">
@@ -1141,7 +1235,7 @@ export const CentralSignalManagerView: React.FC<CentralSignalManagerViewProps> =
             </div>
           )}
         </div>
-      </div>
+      </GlassTiltCard>
 
       {/* 6. SETTINGS MODAL */}
       {isSettingsOpen && (

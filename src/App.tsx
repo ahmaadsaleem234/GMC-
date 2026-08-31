@@ -92,7 +92,7 @@ import { getValidSession, createSession, clearSession } from "./utils/sessionMan
 const INITIAL_TRADES: TradeLogEntry[] = [
   {
     id: "trd-101",
-    timestamp: "14:32:05",
+    timestamp: "2026-08-30T14:32:05Z",
     assetKey: "XAUUSD",
     type: "BUY",
     entryPrice: 4344.5,
@@ -107,7 +107,7 @@ const INITIAL_TRADES: TradeLogEntry[] = [
   },
   {
     id: "trd-102",
-    timestamp: "13:15:40",
+    timestamp: "2026-08-30T13:15:40Z",
     assetKey: "BTCUSD",
     type: "BUY",
     entryPrice: 94200.0,
@@ -122,7 +122,7 @@ const INITIAL_TRADES: TradeLogEntry[] = [
   },
   {
     id: "trd-103",
-    timestamp: "11:04:12",
+    timestamp: "2026-08-30T11:04:12Z",
     assetKey: "EURUSD",
     type: "SELL",
     entryPrice: 1.0845,
@@ -137,7 +137,7 @@ const INITIAL_TRADES: TradeLogEntry[] = [
   },
   {
     id: "trd-104",
-    timestamp: "09:45:00",
+    timestamp: "2026-08-30T09:45:00Z",
     assetKey: "GBPUSD",
     type: "BUY",
     entryPrice: 1.291,
@@ -152,7 +152,7 @@ const INITIAL_TRADES: TradeLogEntry[] = [
   },
   {
     id: "trd-105",
-    timestamp: "08:12:18",
+    timestamp: "2026-08-30T08:12:18Z",
     assetKey: "US30",
     type: "SELL",
     entryPrice: 43850.0,

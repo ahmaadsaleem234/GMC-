@@ -36,6 +36,18 @@ import { getLatestGoldQuote } from "./goldApiService";
 
 export type AiBrainSource = "HARAMI_AI" | "KHATARNAK_JUGAAD" | "WAR_ROOM" | "PRECISION_HUNTER";
 
+/**
+ * CENTRAL GATEKEEPER PRIORITY HIERARCHY
+ * Priority Order: War Room (1) > Harami AI (2) > Retest X / Khatarnak (3) > Precision Hunter (4)
+ * Prevents conflicting trades in the same liquidity zone.
+ */
+export const ENGINE_PRIORITY_ORDER: Record<AiBrainSource, number> = {
+  WAR_ROOM: 1,
+  HARAMI_AI: 2,
+  KHATARNAK_JUGAAD: 3,
+  PRECISION_HUNTER: 4,
+};
+
 export type SignalDirection = "BUY" | "SELL" | "WAIT" | "NO_TRADE";
 
 export type SetupLifecycleState =
@@ -2046,34 +2058,78 @@ export class CentralSignalManagerEngine {
       return;
     }
 
-    // Sort by Total Quality Rank:
-    // Setup Score (40%) + Market Confidence (25%) + RR (20%) + Consensus Match (15%)
+    // Sort by Total Quality Rank with Priority Hierarchy:
+    // Engine Priority: War Room (Rank 1) > Harami AI (Rank 2) > Retest X / Khatarnak (Rank 3) > Precision Hunter (Rank 4)
+    // Setup Score (40%) + Market Confidence (25%) + RR (20%) + Consensus Match (10%) + Priority Hierarchy Weight (5%)
     const ranked = [...list].sort((a, b) => {
       const aConsensusBonus = a.direction === consensus.dominantDirection ? 5 : 0;
       const bConsensusBonus = b.direction === consensus.dominantDirection ? 5 : 0;
 
-      const aTotal = a.setupScore * 0.45 + a.marketConfidence * 0.25 + a.rrRatio * 5 + aConsensusBonus;
-      const bTotal = b.setupScore * 0.45 + b.marketConfidence * 0.25 + b.rrRatio * 5 + bConsensusBonus;
+      // Priority bonus: War Room (+12), Harami AI (+8), Khatarnak/RetestX (+4), Precision (+0)
+      const aPriorityBonus = (4 - (ENGINE_PRIORITY_ORDER[a.brainSource] || 3)) * 4;
+      const bPriorityBonus = (4 - (ENGINE_PRIORITY_ORDER[b.brainSource] || 3)) * 4;
+
+      const aTotal = a.setupScore * 0.40 + a.marketConfidence * 0.20 + a.rrRatio * 5 + aConsensusBonus + aPriorityBonus;
+      const bTotal = b.setupScore * 0.40 + b.marketConfidence * 0.20 + b.rrRatio * 5 + bConsensusBonus + bPriorityBonus;
 
       return bTotal - aTotal;
     });
 
-    const winner = ranked[0];
+    // Central Gatekeeper Zone Conflict Resolution:
+    // If two engines target the same zone (within $3.50), the higher priority engine takes precedence!
+    for (let i = 0; i < ranked.length; i++) {
+      for (let j = i + 1; j < ranked.length; j++) {
+        const higher = ranked[i];
+        const lower = ranked[j];
+        const sameZone = Math.abs(higher.preferredEntry - lower.preferredEntry) <= 3.50 ||
+          (higher.entryZoneLow <= lower.entryZoneHigh && higher.entryZoneHigh >= lower.entryZoneLow);
 
-    // Conflict Protection Check:
-    // If the top 2 candidates have opposite directions with < 4 pts score difference, pause on conflict
-    if (ranked.length >= 2 && ranked[0].direction !== ranked[1].direction) {
-      const scoreDiff = Math.abs(ranked[0].setupScore - ranked[1].setupScore);
-      if (scoreDiff < 5) {
-        candidates[ranked[0].brainSource].competitionStatus = "REJECTED_CONFLICT";
-        candidates[ranked[1].brainSource].competitionStatus = "REJECTED_CONFLICT";
-        this.addAuditLog(
-          "COMPETITION_EVALUATED",
-          null,
-          null,
-          `⚠️ SIGNAL CONFLICT DETECTED: ${ranked[0].brainName} (${ranked[0].direction} - ${ranked[0].setupScore}) vs ${ranked[1].brainName} (${ranked[1].direction} - ${ranked[1].setupScore}). Tied within ${scoreDiff} pts — NO TRADE FORCED.`
-        );
-        return;
+        if (sameZone) {
+          const higherPriorityRank = ENGINE_PRIORITY_ORDER[higher.brainSource] || 3;
+          const lowerPriorityRank = ENGINE_PRIORITY_ORDER[lower.brainSource] || 3;
+
+          if (higher.direction !== lower.direction) {
+            // Conflicting directions in the same zone -> Central Gatekeeper suppresses lower priority engine!
+            if (higherPriorityRank < lowerPriorityRank) {
+              candidates[lower.brainSource].competitionStatus = "REJECTED_CONFLICT";
+              candidates[lower.brainSource].verdictReason = `[GATEKEEPER PRIORITY] Suppressed conflicting ${lower.direction} setup in favor of higher priority ${higher.brainName} (${higher.direction}) in zone $${higher.entryRangeFormatted}.`;
+              this.addAuditLog(
+                "COMPETITION_EVALUATED",
+                higher.setupId,
+                higher.brainSource,
+                `🛡️ GATEKEEPER ARBITRATION: ${higher.brainName} (Priority ${higherPriorityRank}) took precedence over ${lower.brainName} (Priority ${lowerPriorityRank}) in zone $${higher.entryRangeFormatted}.`
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // Filter out candidates that were rejected by Gatekeeper zone conflict
+    const eligibleWinners = ranked.filter((c) => candidates[c.brainSource].competitionStatus !== "REJECTED_CONFLICT");
+    if (eligibleWinners.length === 0) {
+      return;
+    }
+
+    const winner = eligibleWinners[0];
+
+    // Tied Conflict Protection Check (Only if same priority rank and opposite direction)
+    if (eligibleWinners.length >= 2 && eligibleWinners[0].direction !== eligibleWinners[1].direction) {
+      const p0 = ENGINE_PRIORITY_ORDER[eligibleWinners[0].brainSource] || 3;
+      const p1 = ENGINE_PRIORITY_ORDER[eligibleWinners[1].brainSource] || 3;
+      if (p0 === p1) {
+        const scoreDiff = Math.abs(eligibleWinners[0].setupScore - eligibleWinners[1].setupScore);
+        if (scoreDiff < 5) {
+          candidates[eligibleWinners[0].brainSource].competitionStatus = "REJECTED_CONFLICT";
+          candidates[eligibleWinners[1].brainSource].competitionStatus = "REJECTED_CONFLICT";
+          this.addAuditLog(
+            "COMPETITION_EVALUATED",
+            null,
+            null,
+            `⚠️ SIGNAL CONFLICT DETECTED: Equal priority engines ${eligibleWinners[0].brainName} (${eligibleWinners[0].direction}) vs ${eligibleWinners[1].brainName} (${eligibleWinners[1].direction}) tied within ${scoreDiff} pts — NO TRADE FORCED.`
+          );
+          return;
+        }
       }
     }
 

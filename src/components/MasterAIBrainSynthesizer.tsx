@@ -28,6 +28,7 @@ import { LockedSetupBanner } from "./LockedSetupBanner";
 import { GlobalPerformanceSummary } from "./GlobalPerformanceSummary";
 import { QuickSwitchAssetStrip } from "./QuickSwitchAssetStrip";
 import { TradeExecutionLog } from "./TradeExecutionLog";
+import { NeuralConstellationCore } from "./NeuralConstellationCore";
 import {
   runSystemSelfAudit,
   getSelfLearningStats,
@@ -294,6 +295,9 @@ export const MasterAIBrainSynthesizer: React.FC<MasterAIBrainSynthesizerProps> =
           </div>
         </div>
       )}
+
+      {/* 🌌 Neural Constellation Synapse Core */}
+      <NeuralConstellationCore height={320} />
 
       {/* Main Header Banner */}
       <div className="bg-[#0A0E1A] border border-amber-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
