@@ -90,7 +90,10 @@ class TelegramIdempotencyRegistry {
     const kjMatch = text.match(/(?:SETUP ID|ID):\s*<code>(KJ-[0-9A-Za-z-]+)<\/code>/i) || text.match(/\b(KJ-[0-9A-Za-z-]+)\b/i);
     if (kjMatch) return kjMatch[1].toUpperCase();
 
-    // Match Harami AI: HARAMI-XXXX, ID: #1740000000, trade-harami-XXXX
+    // Match Harami AI: HRM-XXXX, #HRM-XXXX, HARAMI-XXXX, ID: #1740000000, trade-harami-XXXX
+    const hrmMatch = text.match(/#?(HRM-[0-9A-Za-z_-]+)/i);
+    if (hrmMatch) return hrmMatch[1].replace(/^#/, "").toUpperCase();
+
     const haramiMatch = text.match(/(?:SIGNAL ID|ID):\s*(?:<b>)?<code>#?([A-Za-z0-9_-]+)<\/code>/i) || text.match(/ID:\s*#([0-9]+)/i);
     if (haramiMatch) return `HARAMI-${haramiMatch[1]}`.toUpperCase();
 
@@ -127,7 +130,7 @@ class TelegramIdempotencyRegistry {
     if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO")) return "ENTRY_HIT";
     if (t.includes("INVALIDATED") || t.includes("CANCELLED")) return "INVALIDATED";
     if (t.includes("EXPIRED")) return "EXPIRED";
-    if (t.includes("SIGNAL ALERT") || t.includes("NEW SETUP") || t.includes("KHATARNAK JUGAAD") || t.includes("HARAMI AI MASTER")) return "NEW_SETUP";
+    if (t.includes("SIGNAL ALERT") || t.includes("NEW SETUP") || t.includes("KHATARNAK JUGAAD") || t.includes("HARAMI AI") || t.includes("HARAMI AI MASTER")) return "NEW_SETUP";
 
     return "GENERAL_ALERT";
   }

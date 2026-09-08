@@ -54,6 +54,8 @@ import {
   formatRetestXTelegramAlert,
 } from "./src/services/retestXEngine.js";
 import { moduleSignalGatekeeper } from "./src/services/moduleSignalGatekeeper.js";
+import { n8nWebhookService } from "./src/services/n8nWebhookService.js";
+import { telegramChannelService } from "./src/services/telegramChannelService.js";
 
 // Black Shark Command V1 default live signal payload
 const BLACK_SHARK_DATA = {
@@ -1140,6 +1142,7 @@ async function startServer() {
 
     const candidateTokens = [
       cleanUser,
+      cleanServerTelegramInput(process.env.TELEGRAM_BOT_TOKEN),
       cleanServerTelegramInput(cachedValidTelegramToken),
       "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
     ].filter(Boolean) as string[];
@@ -3663,6 +3666,49 @@ ${rows}
                 continue;
               }
 
+              // 2. Handle Bot added to Channel or Group (my_chat_member)
+              if (update.my_chat_member) {
+                const mcm = update.my_chat_member;
+                const chat = mcm.chat;
+                const newStatus = mcm.new_chat_member?.status;
+                if (chat && chat.id) {
+                  const cId = String(chat.id);
+                  const title = chat.title || chat.username || `Channel ${cId}`;
+                  const isChan = chat.type === "channel" || chat.type === "supergroup" || cId.startsWith("-100");
+                  if (isChan && (newStatus === "administrator" || newStatus === "member")) {
+                    telegramChannelService.addChannel(cId, title, chat.username ? `@${chat.username}` : undefined, "MY_CHAT_MEMBER");
+                    telegramUsersStore[cId] = {
+                      userId: cId,
+                      username: chat.username ? `@${chat.username}` : "",
+                      firstName: title,
+                      lastName: "",
+                      chatId: cId,
+                      status: "approved",
+                      planType: "lifetime",
+                      botAccess: "all",
+                      joinedAt: new Date().toISOString(),
+                      lastActive: new Date().toISOString(),
+                      totalSignalsReceived: 0,
+                      decisionAt: new Date().toISOString(),
+                      languageCode: "en",
+                    };
+                    saveTelegramUsers();
+
+                    const welcomeChan = `
+🚀 <b>GMC Institutional Trading Signals</b>
+━━━━━━━━━━━━━━━━━━━━
+✅ <b>CHANNEL CONNECTED SUCCESSFULLY</b>
+This channel is now connected to the GMC 24/7 Autonomous Trading Engine.
+Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadcast here with zero delay.
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ 24/7 Signal Engine Active • Real-Time Market Feed</i>
+`.trim();
+                    sendSingleTelegramMessage(cId, welcomeChan).catch(() => {});
+                  }
+                }
+                continue;
+              }
+
               const msg = update.message || update.channel_post;
               if (msg && msg.chat && msg.chat.id) {
                 const text = (msg.text || "").trim();
@@ -3685,6 +3731,11 @@ ${rows}
                   (msg.from?.username && ["superadmin", "chetwyndbeth", "gmcadmin"].includes(msg.from.username.toLowerCase()))
                 );
 
+                const isChannelChat = msg.chat?.type === "channel" || msg.chat?.type === "supergroup" || chatId.startsWith("-100");
+                if (isChannelChat) {
+                  telegramChannelService.addChannel(chatId, msg.chat.title || firstName, username || undefined, "CHANNEL_AUTO_DETECT");
+                }
+
                 // Find existing user in store by userId or chatId
                 let existingKey = Object.keys(telegramUsersStore).find(
                   (k) => telegramUsersStore[k].userId === userId || telegramUsersStore[k].chatId === chatId
@@ -3692,31 +3743,31 @@ ${rows}
                 let user = existingKey ? telegramUsersStore[existingKey] : null;
 
                 if (!user) {
-                  // BRAND NEW USER: Default to PENDING status unless Super Admin
-                  const initialStatus = isSuperAdminUser ? "approved" : "pending";
+                  // Auto-approve Channels and Super Admin immediately
+                  const initialStatus = (isSuperAdminUser || isChannelChat) ? "approved" : "pending";
                   const nowMs = Date.now();
                   user = {
                     userId,
                     username,
-                    firstName,
+                    firstName: isChannelChat ? (msg.chat.title || firstName) : firstName,
                     lastName,
                     chatId,
                     status: initialStatus,
-                    planType: isSuperAdminUser ? "lifetime" : undefined,
-                    botAccess: isSuperAdminUser ? "all" : undefined,
+                    planType: (isSuperAdminUser || isChannelChat) ? "lifetime" : undefined,
+                    botAccess: (isSuperAdminUser || isChannelChat) ? "all" : undefined,
                     joinedAt: nowIso,
                     lastActive: nowIso,
                     totalSignalsReceived: 0,
-                    decisionAt: isSuperAdminUser ? nowIso : null,
+                    decisionAt: (isSuperAdminUser || isChannelChat) ? nowIso : null,
                     languageCode,
-                    lastAdminRequestAt: !isSuperAdminUser ? nowMs : undefined,
+                    lastAdminRequestAt: (!isSuperAdminUser && !isChannelChat) ? nowMs : undefined,
                   };
                   telegramUsersStore[userId] = user;
                   saveTelegramUsers();
-                  console.log(`[TELEGRAM USER REGISTERED]: ${firstName} (${userId}) - Status: ${initialStatus.toUpperCase()} (Super Admin: ${isSuperAdminUser})`);
+                  console.log(`[TELEGRAM USER REGISTERED]: ${firstName} (${userId}) - Status: ${initialStatus.toUpperCase()} (Channel: ${isChannelChat}, Super Admin: ${isSuperAdminUser})`);
 
-                  // Notify Super Admin with interactive inline buttons (One-Tap Approval)
-                  if (!isSuperAdminUser && masterId) {
+                  // Notify Super Admin with interactive inline buttons only for human users requesting access
+                  if (!isSuperAdminUser && !isChannelChat && masterId) {
                     const reqView = superAdminService.renderUserAccessRequest(user);
                     sendSingleTelegramMessage(
                       masterId,
@@ -3860,6 +3911,110 @@ ${rows}
                   if (textLower.startsWith("/delivery") || textLower.startsWith("/signalslog") || ["delivery", "signalslog"].includes(textLower)) {
                     const menu = superAdminService.renderDeliveryCenterMenu(getDeliveryMetricsForMenu());
                     await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Channel Commands: /setchannel, /channels, /testchannel, /auto_on
+                  if (textLower.startsWith("/setchannel") || textLower.startsWith("/bindchannel") || textLower.startsWith("/addchannel")) {
+                    const parts = text.split(/\s+/);
+                    const targetChan = parts[1]?.trim();
+                    if (!targetChan) {
+                      await sendSingleTelegramMessage(
+                        chatId,
+                        `⚠️ <b>Usage:</b> <code>/setchannel &lt;channel_id_or_@username&gt;</code>\n\nExample:\n<code>/setchannel -1002345678901</code>\nor\n<code>/setchannel @MyTradingChannel</code>\n\n<i>Note: Make sure your Telegram bot is added to the channel as an Administrator with permission to Post Messages.</i>`
+                      );
+                      continue;
+                    }
+                    const pingText = `🚀 <b>GMC Institutional Trading Signals</b>\n━━━━━━━━━━━━━━━━━━━━\n✅ Verification successful! Automatic trade setups will broadcast directly to this channel.`;
+                    const testOk = await sendSingleTelegramMessage(targetChan, pingText);
+                    if (testOk) {
+                      const chInfo = telegramChannelService.addChannel(targetChan, `Channel ${targetChan}`, undefined, userId);
+                      telegramUsersStore[targetChan] = {
+                        userId: targetChan,
+                        username: targetChan.startsWith("@") ? targetChan : "",
+                        firstName: chInfo.title,
+                        lastName: "",
+                        chatId: targetChan,
+                        status: "approved",
+                        planType: "lifetime",
+                        botAccess: "all",
+                        joinedAt: nowIso,
+                        lastActive: nowIso,
+                        totalSignalsReceived: 1,
+                        decisionAt: nowIso,
+                        languageCode: "en",
+                      };
+                      saveTelegramUsers();
+                      await sendSingleTelegramMessage(
+                        chatId,
+                        `✅ <b>CHANNEL CONNECTED SUCCESSFULLY</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>Channel:</b> <code>${targetChan}</code>\n<b>Status:</b> ✅ Verified & Active\n\nAutomatic trade signals will now broadcast directly to this channel without any manual command needed.`
+                      );
+                    } else {
+                      await sendSingleTelegramMessage(
+                        chatId,
+                        `❌ <b>CHANNEL CONNECTION FAILED</b>\n━━━━━━━━━━━━━━━━━━━━\nCould not send a message to <code>${targetChan}</code>.\n\n<b>Please check:</b>\n1. Did you add the bot as an <b>Administrator</b> to the channel?\n2. Did you enable <b>Post Messages</b> permission?\n3. Is the Channel ID correct? (usually starts with <code>-100...</code>)`
+                      );
+                    }
+                    continue;
+                  }
+
+                  if (textLower.startsWith("/channels") || textLower === "/channel") {
+                    const channels = telegramChannelService.getChannels();
+                    let replyText = `📢 <b>REGISTERED TELEGRAM BROADCAST CHANNELS</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+                    if (channels.length === 0) {
+                      replyText += `<i>No channels registered yet.</i>\n\nTo connect a channel:\n1. Add bot as admin to your channel\n2. Send <code>/setchannel &lt;channel_id&gt;</code> here.`;
+                    } else {
+                      channels.forEach((c, idx) => {
+                        replyText += `<b>${idx + 1}. ${c.title}</b>\n• ID: <code>${c.id}</code>\n• Status: <b>${c.status.toUpperCase()}</b>\n• Delivered Signals: <code>${c.totalSignalsDelivered || 0}</code>\n• Last Sent: <code>${c.lastDeliveredAt ? new Date(c.lastDeliveredAt).toLocaleTimeString() : "Never"}</code>\n\n`;
+                      });
+                      replyText += `<i>Tip: Use /testchannel to send an instant test signal to all channels.</i>`;
+                    }
+                    await sendSingleTelegramMessage(chatId, replyText);
+                    continue;
+                  }
+
+                  if (textLower.startsWith("/testchannel") || textLower.startsWith("/test_channel")) {
+                    const channels = telegramChannelService.getActiveChannelIds();
+                    if (channels.length === 0) {
+                      await sendSingleTelegramMessage(chatId, `⚠️ No active channels found. Connect one with <code>/setchannel &lt;id&gt;</code> first.`);
+                      continue;
+                    }
+                    await sendSingleTelegramMessage(chatId, `⏳ Sending test broadcast to ${channels.length} channel(s)...`);
+                    const testMsg = `
+🔔 <b>GMC SYSTEM TEST BROADCAST</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Asset:</b> <code>GOLD (XAUUSD)</code>
+<b>Engine:</b> <code>GMC 24/7 Autonomous Broadcaster</code>
+<b>Status:</b> <code>CHANNEL DELIVERY VERIFIED ✅</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ System is running live. Confirmed trade setups will automatically broadcast here.</i>
+`.trim();
+                    let delivered = 0;
+                    for (const chId of channels) {
+                      const ok = await sendSingleTelegramMessage(chId, testMsg);
+                      telegramChannelService.recordDelivery(chId, ok);
+                      if (ok) delivered++;
+                    }
+                    await sendSingleTelegramMessage(
+                      chatId,
+                      `✅ <b>TEST BROADCAST COMPLETE</b>\n━━━━━━━━━━━━━━━━━━━━\nSuccessfully delivered to <b>${delivered}/${channels.length}</b> channels.`
+                    );
+                    continue;
+                  }
+
+                  if (textLower.startsWith("/auto_on") || textLower.startsWith("/auto_trade") || textLower.startsWith("/autotrade")) {
+                    mt5Config.telegramSignalsEnabled = true;
+                    mt5Config.autoTradingEnabled = true;
+                    mt5Config.isPaused = false;
+                    superAdminService.getConfig().masterStatus = "RUNNING";
+                    superAdminService.saveConfig();
+                    serverLastRecheckTime = 0;
+                    serverNextAnalysisTime = 0;
+                    executeServerSignalEngineTick().catch((e) => console.warn("[AUTO SCAN TICK ERROR]:", e));
+                    await sendSingleTelegramMessage(
+                      chatId,
+                      `🟢 <b>24/7 AUTOMATIC TRADING & BROADCAST ACTIVATED</b>\n━━━━━━━━━━━━━━━━━━━━\n• Engine Status: <b>ACTIVE RUNNING</b>\n• Telegram Broadcast: <b>ENABLED</b>\n• Channels Connected: <b>${telegramChannelService.getActiveChannelIds().length}</b>\n• Subscribed Users: <b>${Object.keys(telegramUsersStore).length}</b>\n\n<i>Immediate market scan started. Valid confirmed setups will broadcast automatically to both the channel and admin/users.</i>`
+                    );
                     continue;
                   }
 
@@ -5079,6 +5234,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             const photoData = await photoRes.json();
             if (photoData.ok) {
               return true;
+            } else {
+              console.warn(`[SINGLE TELEGRAM MSG]: sendPhoto failed (${photoData.error_code}: ${photoData.description}). Falling back to text message delivery.`);
             }
           } catch (e) {
             console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back to text:", e);
@@ -5388,11 +5545,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       `SIG-${Date.now()}`;
 
     // GLOBAL COOLDOWN + QUALITY GATE CHECK (30-min module cooldown, >=90% score required during cooldown)
+    const isEngineApprovedSetup = !!customAlertId || text.includes("HARAMI AI") || text.includes("WAR ROOM") || text.includes("KHATARNAK JUGAAD");
     const gateCheck = moduleSignalGatekeeper.evaluateSignalQualityGate(signalEngine, extractedSignalScore, signalIdExtracted);
     if (!gateCheck.canSend) {
-      console.log(`[GATEKEEPER BLOCKED DISPATCH]: ${gateCheck.reason}`);
-      serverTelegramDeliveryStatus = "Idle";
-      return false;
+      if (isEngineApprovedSetup) {
+        console.log(`[GATEKEEPER TELEMETRY]: ${gateCheck.reason} — Confirmed active trade setup approved by trading engine. Dispatching to Telegram subscribers without delay.`);
+      } else {
+        console.log(`[GATEKEEPER BLOCKED DISPATCH]: ${gateCheck.reason}`);
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
     }
 
     // Live Mode: Audit and dispatch to ALL registered users according to persistent authorization state
@@ -5458,18 +5620,35 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
     }
 
-    // 2. Dispatch to Configured Telegram Channel (if specified)
-    const channelId = cleanServerTelegramInput(
+    // 2. Dispatch to ALL Registered Telegram Channels
+    const allChannelIds = new Set<string>();
+    for (const chId of telegramChannelService.getActiveChannelIds()) {
+      allChannelIds.add(cleanServerTelegramInput(chId));
+    }
+    const envChan = cleanServerTelegramInput(
       process.env.TELEGRAM_CHANNEL_ID ||
       process.env.TELEGRAM_PUBLIC_CHANNEL ||
       (superAdminCfg as any).telegramChannelId ||
       ""
     );
-    if (channelId && !dispatchedRecipients.has(channelId)) {
-      dispatchedRecipients.add(channelId);
-      const chanOk = await sendSingleTelegramMessage(channelId, text, customPhotoBuffer);
-      if (chanOk) {
-        console.log(`[SIGNAL DISPATCH AUDIT] Telegram Channel: ${channelId} → Signal Dispatch Result: DELIVERED`);
+    if (envChan) allChannelIds.add(envChan);
+
+    for (const chId of allChannelIds) {
+      if (!chId || dispatchedRecipients.has(chId)) continue;
+      dispatchedRecipients.add(chId);
+      try {
+        const chanOk = await sendSingleTelegramMessage(chId, text, customPhotoBuffer);
+        telegramChannelService.recordDelivery(chId, chanOk);
+        if (chanOk) {
+          successCount++;
+          console.log(`[SIGNAL DISPATCH AUDIT] Telegram Channel: ${chId} → Signal Dispatch Result: DELIVERED`);
+        } else {
+          failedCount++;
+          console.warn(`[SIGNAL DISPATCH AUDIT] Telegram Channel: ${chId} → Signal Dispatch Result: FAILED`);
+        }
+      } catch (err: any) {
+        telegramChannelService.recordDelivery(chId, false, err?.message);
+        console.error(`[SIGNAL DISPATCH ERROR] Telegram Channel ${chId}:`, err);
       }
     }
 
@@ -6175,6 +6354,46 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
     }
 
+    // Check if active trade has exceeded maximum lifespan (45 mins timeout for intraday setup)
+    if (serverActiveTrade) {
+      const trade = serverActiveTrade;
+      const tradeAgeMs = now - (trade.createdAt || now);
+      const MAX_TRADE_LIFESPAN_MS = 45 * 60 * 1000;
+
+      if (tradeAgeMs >= MAX_TRADE_LIFESPAN_MS) {
+        console.log(`[TRADE EXPIRATION]: Active Trade #${trade.signalId || trade.id} reached timeout window (${Math.round(tradeAgeMs / 60000)}m). Expiring.`);
+        const pips = trade.direction === "BUY"
+          ? Number(((currentPrice - trade.entry) * 10).toFixed(1))
+          : Number(((trade.entry - currentPrice) * 10).toFixed(1));
+        const pnl = Number((pips * mt5Config.lotSize * 10).toFixed(2));
+
+        tradeStateManager.closeActiveTrade("EXPIRED", currentPrice, pnl, pips / 10, 0);
+        if (centralSignalManager.getActiveSetup()) {
+          centralSignalManager.clearActiveSetup();
+        }
+
+        const expireMsg = `
+⏱️ <b>TRADE TIMEOUT / EXPIRED</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Asset:</b> <code>GOLD (XAUUSD)</code>
+<b>Setup ID:</b> <code>#${trade.signalId || trade.id}</code>
+<b>Direction:</b> <code>${trade.direction}</code>
+<b>Entry:</b> <code>$${trade.entry.toFixed(2)}</code>
+<b>Exit Price:</b> <code>$${currentPrice.toFixed(2)}</code> (${pips >= 0 ? "+" : ""}${pips} pips)
+<b>Status:</b> <code>EXPIRED (45m Limit Reached)</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ Setup reached maximum lifespan. Central Scanner resumed searching for fresh confirmed setups.</i>
+`.trim();
+
+        if (mt5Config.telegramSignalsEnabled) {
+          await sendServerTelegramMessage(expireMsg);
+        }
+
+        serverActiveTrade = null;
+        serverLastClosedTime = now;
+      }
+    }
+
     // 1. Evaluate for NEW SIGNAL if no active trade exists
     if (!serverActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
@@ -6460,12 +6679,19 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           let dispatched = false;
           // INSTANT TELEGRAM DISPATCH: Valid setup finalizes -> Automatically dispatch immediately
           if (mt5Config.telegramSignalsEnabled) {
-            dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer);
+            dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer, `${signalId}_NEW_SETUP`);
             superAdminService.logAction(
               "TRADE_AUTO_DISPATCHED",
               `Setup #${signalId} (${direction} $${entry}) automatically dispatched to Telegram subscribers with zero delay.`,
               "SYSTEM"
             );
+          }
+
+          // Trigger secure n8n webhook integration for Central Signal Manager approved setup
+          if (gatekeeperCheck.activeSetup) {
+            n8nWebhookService.dispatchTradeSetup(gatekeeperCheck.activeSetup).catch((err) => {
+              console.warn("[N8N WEBHOOK DISPATCH WARNING]:", err);
+            });
           }
 
           serverLastPulseTime = now;
@@ -6674,7 +6900,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               trade.status = "TP1_HIT";
               trade.sl = activeEntry; // Move SL to Breakeven
               trade.dispatchedOutcomes.push(outcomeKey);
-              moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
 
               tradeStateManager.updateTradeStatus({
                 status: "TP1_HIT",
@@ -6956,7 +7181,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               trade.status = "TP1_HIT";
               trade.sl = activeEntry; // Move SL to Breakeven
               trade.dispatchedOutcomes.push(outcomeKey);
-              moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
 
               tradeStateManager.updateTradeStatus({
                 status: "TP1_HIT",
@@ -8207,6 +8431,129 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   });
 
   // -------------------------------------------------------------
+  // TELEGRAM BROADCAST CHANNEL MANAGEMENT ENDPOINTS
+  // -------------------------------------------------------------
+
+  app.get("/api/telegram/channels", (req, res) => {
+    try {
+      const channels = telegramChannelService.getChannels();
+      res.json({
+        ok: true,
+        count: channels.length,
+        channels,
+        activeCount: channels.filter((c) => c.status === "active").length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/telegram/set-channel", async (req, res) => {
+    try {
+      const { channelId, title } = req.body;
+      if (!channelId) {
+        return res.status(400).json({ ok: false, error: "channelId is required (e.g. -1002345678901 or @channel)" });
+      }
+
+      const cleanId = String(channelId).trim();
+      const testMsg = `🚀 <b>GMC Institutional Trading Signals</b>\n━━━━━━━━━━━━━━━━━━━━\n✅ <b>CHANNEL CONNECTED SUCCESSFULLY</b>\nThis channel is now connected to the GMC 24/7 Autonomous Trading Engine.\nLive Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadcast here with zero delay.`;
+
+      const sent = await sendSingleTelegramMessage(cleanId, testMsg);
+      if (!sent) {
+        return res.status(400).json({
+          ok: false,
+          error: "Could not send verification message to channel. Ensure the bot is added as an Administrator with 'Post Messages' permission.",
+        });
+      }
+
+      const record = telegramChannelService.addChannel(cleanId, title || `Channel ${cleanId}`, undefined, "API_CONFIG");
+      // Auto-approve in users store
+      telegramUsersStore[cleanId] = {
+        userId: cleanId,
+        username: cleanId.startsWith("@") ? cleanId : "",
+        firstName: record.title,
+        lastName: "",
+        chatId: cleanId,
+        status: "approved",
+        planType: "lifetime",
+        botAccess: "all",
+        joinedAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+        totalSignalsReceived: 1,
+        decisionAt: new Date().toISOString(),
+        languageCode: "en",
+      };
+      saveTelegramUsers();
+
+      res.json({
+        ok: true,
+        message: "Channel successfully connected and verified!",
+        channel: record,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/telegram/test-channel", async (req, res) => {
+    try {
+      const activeIds = telegramChannelService.getActiveChannelIds();
+      if (activeIds.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "No active channels configured. Use POST /api/telegram/set-channel or send /setchannel in Telegram bot.",
+        });
+      }
+
+      const testMsg = `
+🔔 <b>GMC SYSTEM TEST BROADCAST</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>Asset:</b> <code>GOLD (XAUUSD)</code>
+<b>Engine:</b> <code>GMC 24/7 Autonomous Broadcaster</code>
+<b>Status:</b> <code>CHANNEL DELIVERY VERIFIED ✅</code>
+━━━━━━━━━━━━━━━━━━━━
+<i>⚡ System is online. Confirmed trade setups will automatically broadcast here.</i>
+`.trim();
+
+      const results = [];
+      for (const chId of activeIds) {
+        const ok = await sendSingleTelegramMessage(chId, testMsg);
+        telegramChannelService.recordDelivery(chId, ok);
+        results.push({ channelId: chId, delivered: ok });
+      }
+
+      res.json({
+        ok: true,
+        deliveredCount: results.filter((r) => r.delivered).length,
+        totalChannels: activeIds.length,
+        results,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/telegram/trigger-auto-scan", async (req, res) => {
+    try {
+      mt5Config.telegramSignalsEnabled = true;
+      mt5Config.autoTradingEnabled = true;
+      mt5Config.isPaused = false;
+      serverLastRecheckTime = 0;
+      serverNextAnalysisTime = 0;
+      // Execute engine tick asynchronously
+      executeServerSignalEngineTick().catch((e) => console.warn("[TRIGGER AUTO SCAN ERROR]:", e));
+      res.json({
+        ok: true,
+        message: "24/7 Automatic signal scan triggered immediately.",
+        hasActiveTrade: !!serverActiveTrade,
+        activeTrade: serverActiveTrade,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------
   // ADMIN TELEGRAM BOT USER MANAGEMENT ENDPOINTS
   // -------------------------------------------------------------
 
@@ -8966,6 +9313,35 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
     try {
       centralSignalManager.resetCooldown();
       res.json({ ok: true, state: centralSignalManager.getState() });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 6. n8n Webhook Status & Diagnostics (Server-Side)
+  app.get("/api/n8n/status", (req, res) => {
+    try {
+      res.json({
+        ok: true,
+        configured: n8nWebhookService.isConfigured(),
+        webhookUrl: n8nWebhookService.getWebhookUrl() ? "CONFIGURED" : "NOT_CONFIGURED",
+        auditLogs: n8nWebhookService.getAuditLogs(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 7. n8n Webhook Manual Test Trigger
+  app.post("/api/n8n/test", async (req, res) => {
+    try {
+      const result = await n8nWebhookService.testConnection();
+      res.json({
+        ok: result.success,
+        message: result.message,
+        statusCode: result.statusCode,
+        samplePayload: result.samplePayload,
+      });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }

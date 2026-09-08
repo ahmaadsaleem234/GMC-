@@ -92,10 +92,11 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
 
   const confidenceVal = typeof params.confidence === "number" ? Math.round(params.confidence) : 92;
   const statusEmoji = isBuy ? "🟢" : "🔴";
+  const idDisplay = params.signalId ? `#${params.signalId.replace(/^#/, "")}` : "";
 
   return `🤖 HARAMI AI | ${params.direction}
 
-${symbolShort}
+${idDisplay ? `${idDisplay} • ` : ""}${symbolShort}
 Entry: ${entryLow.toFixed(2)} – ${entryHigh.toFixed(2)}
 Best Entry: ${bestEntry.toFixed(2)}
 

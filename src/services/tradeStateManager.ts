@@ -167,8 +167,15 @@ export class MasterTradeStateManager {
         const raw = fs.readFileSync(STATE_RECOVERY_FILE, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed.activeTrade && (parsed.activeTrade.status === "WAITING_FOR_ENTRY" || parsed.activeTrade.status === "ENTRY_CONFIRMED" || parsed.activeTrade.status === "OPEN" || parsed.activeTrade.status?.startsWith("TP"))) {
-          this.activeTrade = parsed.activeTrade;
-          console.log(`[TRADE STATE RECOVERY]: Restored ACTIVE/WAITING trade ${this.activeTrade?.signalId} (${this.activeTrade?.direction} @ $${this.activeTrade?.entry}) from disk.`);
+          const ageMs = Date.now() - (parsed.activeTrade.createdAt || 0);
+          const MAX_RESTORE_AGE_MS = 45 * 60 * 1000; // 45 minutes limit for intraday trades
+          if (ageMs > MAX_RESTORE_AGE_MS) {
+            console.log(`[TRADE STATE RECOVERY]: Stored trade ${parsed.activeTrade.signalId} is ${Math.round(ageMs / 60000)}m old (>45m limit). Expiring to allow immediate fresh scanning.`);
+            this.activeTrade = null;
+          } else {
+            this.activeTrade = parsed.activeTrade;
+            console.log(`[TRADE STATE RECOVERY]: Restored ACTIVE/WAITING trade ${this.activeTrade?.signalId} (${this.activeTrade?.direction} @ $${this.activeTrade?.entry}) from disk.`);
+          }
         }
         if (parsed.cooldownState) {
           this.cooldownState = parsed.cooldownState;

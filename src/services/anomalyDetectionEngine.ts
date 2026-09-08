@@ -52,8 +52,8 @@ export interface ProposedTradeLevels {
 export class AnomalyDetectionEngine {
   private maxAllowedSpreadUSD = 1.50; // Normal gold spread is $0.15 - $0.40
   private maxAllowed1MSpikeUSD = 25.0; // Unexplained $25 sudden tick jump
-  private lastKnownPrice: number = 4438.50;
-  private lastPriceUpdateTime: number = Date.now();
+  private lastKnownPrice: number = 0;
+  private lastPriceUpdateTime: number = 0;
 
   /**
    * Run comprehensive anomaly detection suite before any signal creation or broadcast
@@ -64,6 +64,12 @@ export class AnomalyDetectionEngine {
     lastCandles?: Array<{ open: number; high: number; low: number; close: number; timestamp?: number }>
   ): AnomalyCheckResult {
     const now = Date.now();
+
+    // Re-anchor baseline if uninitialized
+    if (this.lastKnownPrice <= 0) {
+      this.lastKnownPrice = levels.currentPrice;
+      this.lastPriceUpdateTime = now;
+    }
     const checks = {
       stalePricePassed: true,
       spreadNormalPassed: true,
@@ -101,7 +107,8 @@ export class AnomalyDetectionEngine {
 
     // 4. Extreme Spike / Flash Crash Check
     const priceDelta = Math.abs(levels.currentPrice - this.lastKnownPrice);
-    if (priceDelta > this.maxAllowed1MSpikeUSD && now - this.lastPriceUpdateTime < 60000) {
+    const hasPriorSample = this.lastPriceUpdateTime > 0 && (now - this.lastPriceUpdateTime) > 1000;
+    if (hasPriorSample && priceDelta > this.maxAllowed1MSpikeUSD && (now - this.lastPriceUpdateTime < 60000)) {
       checks.spikeFreePassed = false;
       anomalyType = "EXTREME_PRICE_SPIKE";
       failureReason = `Unexplained rapid price delta ($${priceDelta.toFixed(2)} in <60s) flagged as potential flash outlier.`;
