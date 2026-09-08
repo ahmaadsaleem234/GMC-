@@ -704,9 +704,9 @@ Error generating stack: `+S.message+`
 
 ${t.symbolShort||"XAUUSD"}
 Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
-    `.trim();const e=(t.symbolShort||"XAUUSD").replace("FOREXCOM:",""),n=t.bestEntry??2885,r=t.direction==="BUY",a=t.entryLow??(r?n-1.5:n-.5),i=t.entryHigh??(r?n+.5:n+1.5),o=t.sl??(r?n-5.5:n+5.5),l=t.tp1??(r?n+8.25:n-8.25),c=t.tp2??(r?n+13.75:n-13.75),u=t.tp3??(r?n+19.8:n-19.8),h=t.tp4??(r?n+26.4:n-26.4);let x=t.rr;if(x)x=x.replace(/^R:R:\s*/i,"").trim();else{const g=Math.abs(n-o),v=Math.abs(c-n);g>0?x=`1:${(v/g).toFixed(1)}`:x="1:2.5"}const f=typeof t.confidence=="number"?Math.round(t.confidence):92,p=r?"🟢":"🔴";return`🤖 HARAMI AI | ${t.direction}
+    `.trim();const e=(t.symbolShort||"XAUUSD").replace("FOREXCOM:",""),n=t.bestEntry??2885,r=t.direction==="BUY",a=t.entryLow??(r?n-1.5:n-.5),i=t.entryHigh??(r?n+.5:n+1.5),o=t.sl??(r?n-5.5:n+5.5),l=t.tp1??(r?n+8.25:n-8.25),c=t.tp2??(r?n+13.75:n-13.75),u=t.tp3??(r?n+19.8:n-19.8),h=t.tp4??(r?n+26.4:n-26.4);let x=t.rr;if(x)x=x.replace(/^R:R:\s*/i,"").trim();else{const v=Math.abs(n-o),y=Math.abs(c-n);v>0?x=`1:${(y/v).toFixed(1)}`:x="1:2.5"}const f=typeof t.confidence=="number"?Math.round(t.confidence):92,p=r?"🟢":"🔴",g=t.signalId?`#${t.signalId.replace(/^#/,"")}`:"";return`🤖 HARAMI AI | ${t.direction}
 
-${e}
+${g?`${g} • `:""}${e}
 Entry: ${a.toFixed(2)} – ${i.toFixed(2)}
 Best Entry: ${n.toFixed(2)}
 
