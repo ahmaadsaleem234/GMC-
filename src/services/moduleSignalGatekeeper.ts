@@ -34,8 +34,70 @@ export class ModuleSignalGatekeeper {
     }
   > = new Map();
 
+  // Global cross-module cooldown state
+  private globalCooldown: {
+    cooldownUntil: number;
+    triggeredBy: string;
+    tradeId?: string;
+    startedAt: number;
+  } | null = null;
+
   // 30 Minutes standard cooldown
   public readonly COOLDOWN_DURATION_MS = 30 * 60 * 1000;
+
+  /**
+   * Start a global 30-minute cooldown across the entire system.
+   * Prevents any engine from dispatching conflicting signals.
+   */
+  public startGlobalCooldown(
+    durationMinutes: number = 30,
+    outcome: string = "TRADE_CLOSED",
+    tradeId?: string
+  ): void {
+    const now = Date.now();
+    const durationMs = durationMinutes * 60 * 1000;
+    this.globalCooldown = {
+      cooldownUntil: now + durationMs,
+      triggeredBy: outcome,
+      tradeId,
+      startedAt: now,
+    };
+
+    // Also put all known modules into cooldown
+    const modules = ["RETEST_X", "WAR_ROOM", "HARAMI_AI", "KHATARNAK_JUGAAD", "PRECISION_HUNTER", "GBPUSD_SNIPER"];
+    for (const mod of modules) {
+      this.moduleCooldowns.set(mod, {
+        cooldownUntil: now + durationMs,
+        triggeredBy: outcome,
+        tradeId,
+        startedAt: now,
+        loggedEnd: false,
+      });
+    }
+
+    console.log(
+      `[GLOBAL COOLDOWN ACTIVATED] ⏳ All AI trading engines entered strict 30-minute system-wide cooldown until ${new Date(now + durationMs).toISOString()} (Triggered by ${outcome} on Trade #${tradeId || "N/A"}).`
+    );
+  }
+
+  /**
+   * Check if global cooldown is active
+   */
+  public isGlobalCooldownActive(): { inCooldown: boolean; remainingMinutes: number; reason: string | null } {
+    if (!this.globalCooldown) return { inCooldown: false, remainingMinutes: 0, reason: null };
+    const now = Date.now();
+    if (now >= this.globalCooldown.cooldownUntil) {
+      this.globalCooldown = null;
+      return { inCooldown: false, remainingMinutes: 0, reason: null };
+    }
+    const remainingMs = this.globalCooldown.cooldownUntil - now;
+    const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+    return {
+      inCooldown: true,
+      remainingMinutes,
+      reason: `System in strict 30-minute post-trade cooldown (${remainingMinutes}m remaining) triggered by ${this.globalCooldown.triggeredBy}.`,
+    };
+  }
 
   /**
    * Normalize input module name to canonical key
@@ -180,6 +242,14 @@ export class ModuleSignalGatekeeper {
     const idStr = signalId || "N/A";
     const score = typeof confidenceScore === "number" && !isNaN(confidenceScore) ? confidenceScore : 85.0;
 
+    // 0. Check GLOBAL cross-module 30-minute cooldown
+    const globalCheck = this.isGlobalCooldownActive();
+    if (globalCheck.inCooldown) {
+      const reason = `[GLOBAL COOLDOWN SUPPRESSED] 🛑 System-wide 30-minute cooldown active (${globalCheck.remainingMinutes}m remaining). Signal #${idStr} from '${label}' blocked to ensure high-quality, non-conflicting trade flow.`;
+      console.log(reason);
+      return { canSend: false, reason, moduleKey };
+    }
+
     // 1. Check if candidate's OWN module is in cooldown
     const ownCheck = this.isModuleInCooldown(moduleKey);
     if (ownCheck.inCooldown) {
@@ -188,7 +258,14 @@ export class ModuleSignalGatekeeper {
       return { canSend: false, reason, moduleKey };
     }
 
-    // 2. Check if ANY OTHER module in the system is currently cooling down
+    // 2. Strict Quality Filter: Only high confidence (>= 90%) setups allowed to Telegram
+    if (score < 90.0) {
+      const reason = `[QUALITY GATE BLOCKED] ⚠️ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (< 90% minimum threshold). Skipped to prioritize signal quality over quantity and avoid conflicting signals.`;
+      console.log(reason);
+      return { canSend: false, reason, moduleKey };
+    }
+
+    // 3. Check if ANY OTHER module in the system is currently cooling down
     const activeCooldowns = this.getActiveCooldowns();
     const otherCooldowns = activeCooldowns.filter((c) => c.module !== moduleKey);
 
@@ -197,19 +274,13 @@ export class ModuleSignalGatekeeper {
         .map((c) => `${c.label} (${c.remainingMinutes}m left, ${c.triggeredBy})`)
         .join(", ");
 
-      if (score >= 90.0) {
-        const reason = `[QUALITY GATE PASSED] ✅ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (>= 90%). Allowed immediate dispatch during system cooldown of [${coolingSummary}].`;
-        console.log(reason);
-        return { canSend: true, reason, moduleKey };
-      } else {
-        const reason = `[QUALITY GATE BLOCKED] ⚠️ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (< 90%). Skipped low-quality setup during active system cooldown of [${coolingSummary}].`;
-        console.log(reason);
-        return { canSend: false, reason, moduleKey };
-      }
+      const reason = `[QUALITY GATE PASSED] ✅ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (>= 90%). Allowed high-confidence dispatch during module cooldown of [${coolingSummary}].`;
+      console.log(reason);
+      return { canSend: true, reason, moduleKey };
     }
 
-    // 3. No system cooldowns active -> Normal dispatch allowed
-    const reason = `[NORMAL DISPATCH] 🟢 Module '${label}' clear to send (Score: ${score.toFixed(1)}%, No active cooldowns).`;
+    // 4. Clear to send
+    const reason = `[HIGH QUALITY DISPATCH] 🟢 Module '${label}' clear to send (Score: ${score.toFixed(1)}% >= 90%).`;
     return { canSend: true, reason, moduleKey };
   }
 

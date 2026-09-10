@@ -56,6 +56,7 @@ import {
 import { moduleSignalGatekeeper } from "./src/services/moduleSignalGatekeeper.js";
 import { n8nWebhookService } from "./src/services/n8nWebhookService.js";
 import { telegramChannelService } from "./src/services/telegramChannelService.js";
+import { advancedRiskManager } from "./src/services/advancedRiskManager.js";
 
 // Black Shark Command V1 default live signal payload
 const BLACK_SHARK_DATA = {
@@ -2027,7 +2028,10 @@ async function startServer() {
           await sendServerTelegramMessage(cancelMsg);
         }
         superAdminService.logAction("TRADE_CANCELLED_MANUAL", `Super Admin cancelled trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        const closedId = serverActiveTrade.signalId || serverActiveTrade.id;
         tradeStateManager.closeActiveTrade("CANCELLED", serverActiveTrade.livePrice || serverActiveTrade.entry, 0, 0, 0);
+        moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CANCEL", closedId);
+        centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
         await centralSignalManager.forceCloseActiveSetup("Cancelled by Super Admin");
         await answerTelegramCallback(cbId, "❌ Trade Cancelled", false);
@@ -2058,7 +2062,10 @@ async function startServer() {
           await sendServerTelegramMessage(closeMsg);
         }
         superAdminService.logAction("TRADE_FORCE_CLOSED", `Force closed trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        const closedId = serverActiveTrade.signalId || serverActiveTrade.id;
         tradeStateManager.closeActiveTrade("MANUAL_CLOSE", serverActiveTrade.livePrice || serverActiveTrade.entry, pnl, 2.25, 1.5);
+        moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CLOSE", closedId);
+        centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
         await centralSignalManager.forceCloseActiveSetup("Force Closed by Super Admin");
         await answerTelegramCallback(cbId, `✅ Trade Force Closed (+${pnl} USD)`, false);
@@ -2924,9 +2931,12 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
           await sendServerTelegramMessage(cancelMsg);
         }
         superAdminService.logAction("TRADE_CANCELLED_MANUAL", `Super Admin cancelled trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        const closedId1 = serverActiveTrade.signalId || serverActiveTrade.id;
         tradeStateManager.closeActiveTrade("CANCELLED", serverActiveTrade.livePrice || serverActiveTrade.entry, 0, 0, 0);
+        moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CANCEL", closedId1);
+        centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
-        await sendSingleTelegramMessage(cbChatId, `❌ <b>TRADE CANCELLED</b>\nPosition removed from active tracking.`);
+        await sendSingleTelegramMessage(cbChatId, `❌ <b>TRADE CANCELLED</b>\nPosition removed from active tracking. 30-minute system cooldown activated.`);
       }
       const menu = superAdminService.renderLiveTradeControlMenu(serverActiveTrade, warRoomServerService.getActiveSetup());
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
@@ -2950,9 +2960,12 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
           await sendServerTelegramMessage(closeMsg);
         }
         superAdminService.logAction("TRADE_FORCE_CLOSED", `Force closed trade #${serverActiveTrade.signalId || serverActiveTrade.id}`, cbUserId);
+        const closedId2 = serverActiveTrade.signalId || serverActiveTrade.id;
         tradeStateManager.closeActiveTrade("MANUAL_CLOSE", serverActiveTrade.livePrice || serverActiveTrade.entry, pnl, 1.85, 1.2);
+        moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CLOSE", closedId2);
+        centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
-        await sendSingleTelegramMessage(cbChatId, `✅ <b>TRADE FORCE CLOSED</b>\nRealized P&L: +$${pnl} USD.`);
+        await sendSingleTelegramMessage(cbChatId, `✅ <b>TRADE FORCE CLOSED</b>\nRealized P&L: +$${pnl} USD. 30-minute system cooldown activated.`);
       }
       const menu = superAdminService.renderLiveTradeControlMenu(serverActiveTrade, warRoomServerService.getActiveSetup());
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
@@ -5034,11 +5047,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   let serverTelegramStatus: "Connected" | "Disconnected" = "Connected";
   let serverEngineStatus: "Running" | "Stopped" = "Running";
   let serverLastDispatchedSignal: { direction: string; entry: number; timestamp: number } | null = null;
+  let serverActiveKhatarnakSetup: KhatarnakJugaadSetup | null = null;
 
   // Unified Cross-Engine Deduplication Ledger (Harami AI + War Room)
   interface DispatchedSignalLedgerItem {
     id: string;
-    engine: "HARAMI_AI" | "WAR_ROOM";
+    engine: "HARAMI_AI" | "WAR_ROOM" | "KHATARNAK_JUGAAD";
     direction: "BUY" | "SELL";
     entry: number;
     timestamp: number;
@@ -5046,19 +5060,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   }
   const dispatchedSignalLedger: DispatchedSignalLedgerItem[] = [];
 
-  function checkSignalDuplicate(originEngine: "HARAMI_AI" | "WAR_ROOM" | "KHATARNAK_JUGAAD" | "KHATARNAK", direction: string, price: number): boolean {
+  function checkSignalDuplicate(originEngine: "HARAMI_AI" | "WAR_ROOM" | "KHATARNAK_JUGAAD" | "KHATARNAK" | "RETEST_X" | string, direction: string, price: number): boolean {
     const now = Date.now();
-    const DEDUPLICATION_WINDOW_MS = 25 * 60 * 1000; // 25 minutes
-    const PRICE_TOLERANCE = 2.00; // $2.00 price proximity
+    const DEDUPLICATION_WINDOW_MS = 60 * 60 * 1000; // 60 minutes
+    const PRICE_TOLERANCE = 3.00; // $3.00 price proximity
 
-    // 1. Check in-flight active trade in Harami AI
+    // RULE 1 & RULE 3: ONLY ONE ACTIVE TRADE AT A TIME & NO OPPOSITE SIGNALS
+    // If ANY trade is active in ANY engine, BLOCK ALL NEW SIGNALS (BUY or SELL)
     if (serverActiveTrade && serverActiveTrade.status !== "CLOSED" && serverActiveTrade.status !== "CANCELLED") {
-      if (serverActiveTrade.direction === direction && Math.abs(serverActiveTrade.entry - price) <= PRICE_TOLERANCE) {
-        return true;
-      }
+      console.log(`[DEDUP/SINGLE-TRADE GUARD]: Blocked ${direction} signal from ${originEngine}. Active Harami trade (#${serverActiveTrade.signalId || serverActiveTrade.id}, ${serverActiveTrade.direction}) is currently running.`);
+      return true;
     }
 
-    // 2. Check in-flight active setup in War Room
+    if (tradeStateManager.hasActiveTrade()) {
+      const active = tradeStateManager.getActiveTrade();
+      console.log(`[DEDUP/SINGLE-TRADE GUARD]: Blocked ${direction} signal from ${originEngine}. Unified active trade (#${active?.signalId}, ${active?.direction}) is currently running.`);
+      return true;
+    }
+
     const activeWarRoomSetup = warRoomServerService.getActiveSetup();
     if (
       activeWarRoomSetup &&
@@ -5068,15 +5087,51 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         activeWarRoomSetup.status === "ISSUED" ||
         activeWarRoomSetup.status === "QUALIFIED")
     ) {
-      if (activeWarRoomSetup.direction === direction && Math.abs(activeWarRoomSetup.bestEntry - price) <= PRICE_TOLERANCE) {
-        return true;
-      }
+      console.log(`[DEDUP/SINGLE-TRADE GUARD]: Blocked ${direction} signal from ${originEngine}. Active War Room setup (#${activeWarRoomSetup.setupId}, ${activeWarRoomSetup.direction}) is currently running.`);
+      return true;
     }
 
-    // 3. Check recently dispatched items in cross-engine ledger
+    if (serverActiveKhatarnakSetup) {
+      console.log(`[DEDUP/SINGLE-TRADE GUARD]: Blocked ${direction} signal from ${originEngine}. Active Khatarnak Jugaad setup (#${serverActiveKhatarnakSetup.id}) is currently running.`);
+      return true;
+    }
+
+    const centralActive = centralSignalManager.getActiveSetup();
+    if (centralActive) {
+      console.log(`[DEDUP/SINGLE-TRADE GUARD]: Blocked ${direction} signal from ${originEngine}. Central active setup (#${centralActive.setupId}, ${centralActive.direction}) is currently running.`);
+      return true;
+    }
+
+    // RULE 4: 30-MINUTE COOLDOWN ENFORCEMENT
+    const cooldown = tradeStateManager.checkCooldown();
+    if (cooldown.inCooldown) {
+      console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Trade state manager 30-minute cooldown active (${cooldown.remainingMinutes}m remaining).`);
+      return true;
+    }
+
+    if (centralSignalManager.isCooldownActive()) {
+      console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Central signal manager cooldown active.`);
+      return true;
+    }
+
+    const globalCooldown = moduleSignalGatekeeper.isGlobalCooldownActive();
+    if (globalCooldown.inCooldown) {
+      console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Global module cooldown active (${globalCooldown.remainingMinutes}m remaining).`);
+      return true;
+    }
+
+    if (serverLastClosedTime > 0 && now - serverLastClosedTime < 30 * 60 * 1000) {
+      const remainingMins = Math.ceil((30 * 60 * 1000 - (now - serverLastClosedTime)) / 60000);
+      console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. 30-minute post-close cooldown active (${remainingMins}m remaining).`);
+      return true;
+    }
+
+    // RULE 2: PREVENT DUPLICATE ALERTS
+    // Check recently dispatched items in cross-engine ledger
     for (const item of dispatchedSignalLedger) {
       if (now - item.timestamp < DEDUPLICATION_WINDOW_MS) {
         if (item.direction === direction && Math.abs(item.entry - price) <= PRICE_TOLERANCE) {
+          console.log(`[DEDUP GUARD]: Blocked duplicate ${direction} signal near $${price} (matches previous #${item.id} from ${item.engine} within 60m).`);
           return true;
         }
       }
@@ -5544,12 +5599,160 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       text.match(/#[A-Za-z0-9_-]+/)?.[0]?.replace("#", "") ||
       `SIG-${Date.now()}`;
 
-    // GLOBAL COOLDOWN + QUALITY GATE CHECK (30-min module cooldown, >=90% score required during cooldown)
-    const isEngineApprovedSetup = !!customAlertId || text.includes("HARAMI AI") || text.includes("WAR ROOM") || text.includes("KHATARNAK JUGAAD");
+    // ----------------------------------------------------
+    // STRICT GATEWAY CHECK: NEW SETUP vs OUTCOME ALERT
+    // ----------------------------------------------------
+    const isOutcomeAlert =
+      text.includes("TP1 REACHED") ||
+      text.includes("TP2 REACHED") ||
+      text.includes("TP3 REACHED") ||
+      text.includes("TP1 HIT") ||
+      text.includes("TP2 HIT") ||
+      text.includes("TP3 HIT") ||
+      text.includes("TP4 ALL TARGETS HIT") ||
+      text.includes("FINAL TP") ||
+      text.includes("STOP LOSS HIT") ||
+      text.includes("ENTRY ACTIVATED") ||
+      text.includes("SL → BREAKEVEN") ||
+      text.includes("PROFIT SECURED") ||
+      text.includes("SIGNAL EXPIRED") ||
+      text.includes("TRADE CANCELLED") ||
+      text.includes("ORDER ZONE INVALIDATED") ||
+      text.includes("EXPIRED") ||
+      text.includes("TRADE CLOSED") ||
+      text.includes("TRADE TIMEOUT") ||
+      text.includes("COOLDOWN");
+
+    const isNewTradeSetup =
+      !isOutcomeAlert &&
+      (text.includes("HARAMI AI | BUY") ||
+        text.includes("HARAMI AI | SELL") ||
+        text.includes("WAR ROOM SUPREME |") ||
+        text.includes("KHATARNAK") ||
+        text.includes("RETEST-X") ||
+        text.includes("Best Entry:") ||
+        text.includes("ENTRY ZONE") ||
+        text.includes("Execution Zone") ||
+        text.includes("🎯 TP1:") ||
+        (text.includes("ACTION:") && (text.includes("BUY") || text.includes("SELL"))));
+
+    if (isNewTradeSetup) {
+      // RULE 1: Only 1 active trade at a time.
+      // RULE 3: Do not send opposite signals while a trade is active.
+      const currentActive = tradeStateManager.getActiveTrade() || serverActiveTrade || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
+      if (currentActive) {
+        const activeId = ((currentActive as any).setupId || (currentActive as any).signalId || (currentActive as any).id);
+        const activeDir = ((currentActive as any).direction || "SELL").toUpperCase();
+
+        const dirMatch = text.match(/\b(BUY|SELL)\b/i);
+        const incomingDir = dirMatch ? dirMatch[1].toUpperCase() : undefined;
+
+        if (incomingDir && incomingDir !== activeDir) {
+          console.warn(
+            `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Opposite signal rejected (${incomingDir} vs active ${activeDir}). Cannot send opposite signals while trade #${activeId} is active.`
+          );
+        } else {
+          console.warn(
+            `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). An active trade (#${activeId}, ${activeDir}) is currently running. Only 1 active trade allowed at a time.`
+          );
+        }
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      // RULE 2: Block duplicate trade alerts.
+      const dirMatch = text.match(/\b(BUY|SELL)\b/i);
+      const incomingDir = dirMatch ? (dirMatch[1].toUpperCase() as "BUY" | "SELL") : undefined;
+      const priceMatch = text.match(/(?:Entry|Price|at|Zone)\s*[:$]?\s*([0-9]{4}(?:\.[0-9]{1,2})?)/i);
+      const incomingPrice = priceMatch ? parseFloat(priceMatch[1]) : undefined;
+
+      if (incomingDir && incomingPrice) {
+        if (checkSignalDuplicate(signalEngine, incomingDir, incomingPrice)) {
+          console.warn(
+            `[TELEGRAM GATEWAY DEDUP BLOCK]: 🛑 Blocked duplicate trade alert (${incomingDir} near $${incomingPrice}, ID: #${signalIdExtracted}).`
+          );
+          serverTelegramDeliveryStatus = "Idle";
+          return false;
+        }
+      }
+
+      // RULE 4: After TP or SL is hit, wait 30 minutes before checking for a new trade.
+      const cooldown = tradeStateManager.checkCooldown();
+      if (cooldown.inCooldown) {
+        console.warn(
+          `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). Strict 30-minute cooldown active (${cooldown.remainingMinutes}m remaining). Waiting 30 minutes after TP/SL.`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      if (centralSignalManager.isCooldownActive()) {
+        console.warn(
+          `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). Central Gatekeeper 30-minute cooldown active.`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      const globalCooldown = moduleSignalGatekeeper.isGlobalCooldownActive();
+      if (globalCooldown.inCooldown) {
+        console.warn(
+          `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). ${globalCooldown.reason}`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      if (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000) {
+        const remainingMinutes = Math.ceil((30 * 60 * 1000 - (Date.now() - serverLastClosedTime)) / 60000);
+        console.warn(
+          `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). Post-trade 30-minute cooldown active (${remainingMinutes}m remaining). Waiting 30 minutes after TP/SL.`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      // RULE 5: Advanced Risk & Trade Quality Controls Gate Check
+      const riskCheck = advancedRiskManager.evaluateSignalAdmission({
+        signalId: signalIdExtracted || "TELEGRAM_SETUP",
+        confidence: extractedSignalScore,
+        currentPrice: incomingPrice || 4350.0,
+        spread: 0.25,
+        hasActiveTrade: !!currentActive,
+        hasGeneralCooldown:
+          cooldown.inCooldown ||
+          centralSignalManager.isCooldownActive() ||
+          globalCooldown.inCooldown ||
+          (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000),
+      });
+
+      if (!riskCheck.allowed) {
+        console.warn(
+          `[TELEGRAM GATEWAY ADVANCED RISK BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}) [${riskCheck.code}]: ${riskCheck.message}`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+
+      // Full setup confirmation check (must specify direction, entry/execution zone, TP targets, and SL)
+      const hasDirection = text.includes("BUY") || text.includes("SELL");
+      const hasEntry = text.includes("Entry") || text.includes("ENTRY") || text.includes("Zone") || text.includes("ZONE");
+      const hasTP = text.includes("TP1") || text.includes("TP 1") || text.includes("Take Profit") || text.includes("TARGET");
+      const hasSL = text.includes("SL") || text.includes("Stop Loss") || text.includes("STOP LOSS");
+      if (!hasDirection || !hasEntry || !hasTP || !hasSL) {
+        console.warn(
+          `[TELEGRAM GATEWAY CONFIRMATION BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). Setup is missing required confirmation parameters (Direction, Entry, TP, or SL).`
+        );
+        serverTelegramDeliveryStatus = "Idle";
+        return false;
+      }
+    }
+
+    // GLOBAL COOLDOWN + QUALITY GATE CHECK (30-min module cooldown, >=90% score required)
     const gateCheck = moduleSignalGatekeeper.evaluateSignalQualityGate(signalEngine, extractedSignalScore, signalIdExtracted);
     if (!gateCheck.canSend) {
-      if (isEngineApprovedSetup) {
-        console.log(`[GATEKEEPER TELEMETRY]: ${gateCheck.reason} — Confirmed active trade setup approved by trading engine. Dispatching to Telegram subscribers without delay.`);
+      if (isOutcomeAlert) {
+        console.log(`[GATEKEEPER TELEMETRY]: Trade outcome update (#${signalIdExtracted}) allowed through gatekeeper.`);
       } else {
         console.log(`[GATEKEEPER BLOCKED DISPATCH]: ${gateCheck.reason}`);
         serverTelegramDeliveryStatus = "Idle";
@@ -5757,6 +5960,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     if (successCount > 0) {
       serverTelegramIdempotency.markDispatched(customAlertId, text, "subscribers");
+      if (isNewTradeSetup) {
+        const dirMatch = text.match(/\b(BUY|SELL)\b/i);
+        const incomingDir = dirMatch ? (dirMatch[1].toUpperCase() as "BUY" | "SELL") : "BUY";
+        const priceMatch = text.match(/(?:Entry|Price|at|Zone)\s*[:$]?\s*([0-9]{4}(?:\.[0-9]{1,2})?)/i);
+        const incomingPrice = priceMatch ? parseFloat(priceMatch[1]) : 0;
+        registerDispatchedSignal(
+          signalIdExtracted,
+          signalEngine === "WAR_ROOM" ? "WAR_ROOM" : "HARAMI_AI",
+          incomingDir,
+          incomingPrice
+        );
+      }
       console.log(`[SERVER 24/7 BROADCASTER]: Dispatched signal to ${successCount}/${totalRecipients} recipients (Engine: ${signalEngine}).`);
       serverTelegramDeliveryStatus = "Sent";
       serverTelegramStatus = "Connected";
@@ -5782,6 +5997,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     const superAdminCfg = superAdminService.getConfig();
     if (superAdminCfg.retestXEnabled === false) {
       console.log(`[MODULE OFF]: RETEST X Telegram alert suppressed — RETEST X is turned OFF in Super Admin Control Center.`);
+      return false;
+    }
+
+    // STRICT SINGLE-TRADE & COOLDOWN INVARIANT: Block if any trade is running or system is in cooldown
+    const currentActive = tradeStateManager.getActiveTrade() || serverActiveTrade || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
+    if (currentActive) {
+      console.log(`[RETEST X BLOCKED]: Active trade running in system. Suppressing signal.`);
+      return false;
+    }
+
+    const cooldownCheck = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000);
+    if (cooldownCheck) {
+      console.log(`[RETEST X BLOCKED]: 30-min Cooldown active. Suppressing signal.`);
+      return false;
+    }
+
+    if (checkSignalDuplicate("RETEST_X", setup.direction, setup.entryPrice)) {
+      console.log(`[RETEST X BLOCKED]: Duplicate signal detected for ${setup.direction} at $${setup.entryPrice}.`);
       return false;
     }
 
@@ -6354,64 +6587,46 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
     }
 
-    // Check if active trade has exceeded maximum lifespan (45 mins timeout for intraday setup)
-    if (serverActiveTrade) {
-      const trade = serverActiveTrade;
-      const tradeAgeMs = now - (trade.createdAt || now);
-      const MAX_TRADE_LIFESPAN_MS = 45 * 60 * 1000;
+    // Strict Rule 1 & 3: Active trade stays active until TP or SL is reached.
+    // No arbitrary 45-minute timeout. Active trades are locked and run until legitimate TP/SL conclusion.
 
-      if (tradeAgeMs >= MAX_TRADE_LIFESPAN_MS) {
-        console.log(`[TRADE EXPIRATION]: Active Trade #${trade.signalId || trade.id} reached timeout window (${Math.round(tradeAgeMs / 60000)}m). Expiring.`);
-        const pips = trade.direction === "BUY"
-          ? Number(((currentPrice - trade.entry) * 10).toFixed(1))
-          : Number(((trade.entry - currentPrice) * 10).toFixed(1));
-        const pnl = Number((pips * mt5Config.lotSize * 10).toFixed(2));
-
-        tradeStateManager.closeActiveTrade("EXPIRED", currentPrice, pnl, pips / 10, 0);
-        if (centralSignalManager.getActiveSetup()) {
-          centralSignalManager.clearActiveSetup();
-        }
-
-        const expireMsg = `
-⏱️ <b>TRADE TIMEOUT / EXPIRED</b>
-━━━━━━━━━━━━━━━━━━━━
-<b>Asset:</b> <code>GOLD (XAUUSD)</code>
-<b>Setup ID:</b> <code>#${trade.signalId || trade.id}</code>
-<b>Direction:</b> <code>${trade.direction}</code>
-<b>Entry:</b> <code>$${trade.entry.toFixed(2)}</code>
-<b>Exit Price:</b> <code>$${currentPrice.toFixed(2)}</code> (${pips >= 0 ? "+" : ""}${pips} pips)
-<b>Status:</b> <code>EXPIRED (45m Limit Reached)</code>
-━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Setup reached maximum lifespan. Central Scanner resumed searching for fresh confirmed setups.</i>
-`.trim();
-
-        if (mt5Config.telegramSignalsEnabled) {
-          await sendServerTelegramMessage(expireMsg);
-        }
-
-        serverActiveTrade = null;
-        serverLastClosedTime = now;
-      }
-    }
-
-    // 1. Evaluate for NEW SIGNAL if no active trade exists
-    if (!serverActiveTrade) {
+    // 1. Evaluate for NEW SIGNAL only if NO active trade exists anywhere in the system
+    const systemActiveTrade = serverActiveTrade || tradeStateManager.getActiveTrade() || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
+    if (!systemActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
         serverCurrentDecision = "WAIT — SIGNALS PAUSED";
         return;
       }
 
-      // Check Cooldown from tradeStateManager (Strict 15-min re-analysis after SL)
+      // Check Strict 30-Minute Cooldown across all managers
       const cooldown = tradeStateManager.checkCooldown();
       if (cooldown.inCooldown) {
-        serverCurrentDecision = `WAIT — COOLDOWN ACTIVE (${cooldown.remainingMinutes}m remaining)`;
+        serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (${cooldown.remainingMinutes}m remaining)`;
+        return;
+      }
+
+      if (centralSignalManager.isCooldownActive()) {
+        serverCurrentDecision = `WAIT — CENTRAL COOLDOWN ACTIVE (${centralSignalManager.getCooldownRemainingMinutes()}m remaining)`;
+        return;
+      }
+
+      const globalGateCheck = moduleSignalGatekeeper.isGlobalCooldownActive();
+      if (globalGateCheck.inCooldown) {
+        serverCurrentDecision = `WAIT — SYSTEM COOLDOWN ACTIVE (${globalGateCheck.remainingMinutes}m remaining)`;
+        return;
+      }
+
+      // Strict 30 min cooldown after closed trades to avoid duplicate/conflicting entries
+      const COOLDOWN_MS = 30 * 60 * 1000;
+      if (now - serverLastClosedTime < COOLDOWN_MS) {
+        const remainingMinutes = Math.ceil((COOLDOWN_MS - (now - serverLastClosedTime)) / 60000);
+        serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (${remainingMinutes}m remaining)`;
         return;
       }
 
       // Continuous Real-Time Scan Engine (Dynamic 30-sec cycle for fast responsive setup capture)
       const SCAN_INTERVAL_MS = 30 * 1000; 
       const timeSinceLastRecheck = now - serverLastRecheckTime;
-      const COOLDOWN_MS = 2 * 60 * 1000; // 2 min cooldown after closed trades to avoid duplicate entries
 
       if (serverNextAnalysisTime === 0 || now >= serverNextAnalysisTime) {
         serverNextAnalysisTime = now + SCAN_INTERVAL_MS;
@@ -6427,15 +6642,25 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
         // Dynamic SMC & MTF Structure Analysis around live market price
         const seed = Math.floor(now / 15000) % 100;
-        const targetConfidence = superAdminService.getConfig()?.haramiMinConfidence || 85.0;
+        const targetConfidence = Math.max(90.0, superAdminService.getConfig()?.haramiMinConfidence || 90.0);
 
         const baseBuy = 85.0 + (seed % 7) * 1.5 + Math.sin(currentPrice * 2.5) * 4.5;
         const baseSell = 85.0 + ((seed + 3) % 7) * 1.5 + Math.cos(currentPrice * 2.5) * 4.5;
         const buyScore = Number(Math.min(97.0, Math.max(60.0, baseBuy)).toFixed(1));
         const sellScore = Number(Math.min(97.0, Math.max(60.0, baseSell)).toFixed(1));
 
+        // Clear market condition check: require significant directional dominance (at least 7.0 score margin)
+        // If buy and sell scores are close to each other, market is choppy/unclear -> WAIT
+        const scoreDifference = Math.abs(buyScore - sellScore);
+        const isMarketConditionClear = scoreDifference >= 7.0;
+
         let direction: "BUY" | "SELL" | "NO_TRADE" = "NO_TRADE";
         let confidence = Math.max(buyScore, sellScore);
+
+        if (!isMarketConditionClear) {
+          serverCurrentDecision = `WAIT — MARKET CHOPPY (Indecision: Buy ${buyScore}% vs Sell ${sellScore}%, spread ${scoreDifference.toFixed(1)} < 7.0). Waiting for clear structural direction.`;
+          return;
+        }
 
         if (buyScore >= targetConfidence && buyScore > sellScore) {
           direction = "BUY";
@@ -6443,12 +6668,39 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         } else if (sellScore >= targetConfidence && sellScore > buyScore) {
           direction = "SELL";
           confidence = sellScore;
+        } else {
+          serverCurrentDecision = `WAIT — LOW CONFIDENCE (${confidence.toFixed(1)}% < ${targetConfidence}% required). Waiting for high-confidence setup.`;
+          return;
+        }
+
+        // 8-PILLAR ADVANCED RISK & TRADE QUALITY CONTROLS
+        const currentSpread = tick.spread || Math.abs(tick.ask - tick.bid) || 0.25;
+        const riskGate = advancedRiskManager.evaluateSignalAdmission({
+          signalId: `HRM-${Math.floor(now / 60000)}`,
+          confidence,
+          currentPrice,
+          spread: currentSpread,
+          priceTimestamp: tick.timestamp,
+          buyScore,
+          sellScore,
+          volatilityCondition: Math.abs(currentPrice - 4300) > 60 ? "STRONG_VOLATILITY" : "NORMAL",
+          hasActiveTrade: !!systemActiveTrade,
+          hasGeneralCooldown:
+            cooldown.inCooldown ||
+            centralSignalManager.isCooldownActive() ||
+            globalGateCheck.inCooldown ||
+            now - serverLastClosedTime < COOLDOWN_MS,
+        });
+
+        if (!riskGate.allowed) {
+          serverCurrentDecision = `WAIT — [${riskGate.code}] ${riskGate.message}`;
+          return;
         }
 
         const isDuplicate = checkSignalDuplicate("HARAMI_AI", direction, currentPrice);
 
         // Require target confidence threshold & non-duplicate confirmed setup
-        if (direction !== "NO_TRADE" && confidence >= targetConfidence && !isDuplicate) {
+        if (confidence >= targetConfidence && !isDuplicate) {
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
 
@@ -6786,6 +7038,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           });
 
           tradeStateManager.closeActiveTrade("CANCELLED", tick.price, 0, 0, 0);
+          moduleSignalGatekeeper.startGlobalCooldown(30, "CANCELLED", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(30);
 
           const cancelText = formatTradeCancelledAlert({
             signalId: trade.signalId || trade.id,
@@ -6851,6 +7105,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           });
 
           tradeStateManager.closeActiveTrade("EXPIRED", tick.price, 0, 0, 0);
+          moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(30);
 
           serverTradeHistory.unshift({
             id: trade.id,
@@ -7066,6 +7322,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               });
 
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -7142,6 +7401,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               });
 
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -7347,6 +7609,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               });
 
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -7423,6 +7688,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               });
 
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -7461,8 +7729,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     console.log("⚡ [SERVER 24/7 BROADCASTER ENGINE]: Background Autonomous Signal Generator Engine Online!");
 
     // Wire War Room Telegram Auto-Publisher and Cross-Engine Deduplication
-    warRoomServerService.setTelegramSender(async (msg) => {
-      return await sendServerTelegramMessage(msg);
+    warRoomServerService.setTelegramSender(async (msg, alertId) => {
+      return await sendServerTelegramMessage(msg, undefined, undefined, alertId);
     });
     warRoomServerService.setDuplicateChecker((direction, price) => {
       return checkSignalDuplicate("WAR_ROOM", direction, price);
@@ -7471,7 +7739,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // Start 24/7 background Telegram command listener and user multi-access polling loop
     startTelegramPollingLoop().catch((err) => console.error("[TELEGRAM POLLER BOOT ERROR]:", err));
 
-    let serverActiveKhatarnakSetup: KhatarnakJugaadSetup | null = null;
+    serverActiveKhatarnakSetup = null;
     let serverKhatarnakLifecycleEvents: Set<string> = new Set();
     let serverKhatarnakState: "SEARCHING" | "PENDING_ENTRY" | "ACTIVE_RUNNING" = "SEARCHING";
 
@@ -7510,7 +7778,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 volume: c.volume || 100,
               }));
 
-              if (!serverActiveKhatarnakSetup) {
+              const anyTradeActive = !!serverActiveTrade || tradeStateManager.hasActiveTrade() || !!centralSignalManager.getActiveSetup() || !!warRoomServerService.getActiveSetup();
+              const cooldownActive = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000);
+
+              if (!serverActiveKhatarnakSetup && !anyTradeActive && !cooldownActive) {
                 const evaluatedSetup = calculateKhatarnakJugaadSetup(
                   formattedCandles as any,
                   goldTick.price,
@@ -7519,7 +7790,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
                 if (
                   evaluatedSetup.hasValidSetup &&
-                  evaluatedSetup.score >= 80 &&
+                  evaluatedSetup.score >= 90 &&
                   (evaluatedSetup.isRejectionConfirmed || evaluatedSetup.isChochConfirmed || evaluatedSetup.isEntryTriggered)
                 ) {
                   const isDupe = checkSignalDuplicate("KHATARNAK_JUGAAD", "SELL", evaluatedSetup.bestSellEntry);
@@ -7543,7 +7814,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     }
                   }
                 }
-              } else {
+              } else if (serverActiveKhatarnakSetup) {
                 // Active Khatarnak Setup Lifecycle Monitoring: Entry, TP1, TP2, Final TP, SL
                 const setup = serverActiveKhatarnakSetup;
                 const px = goldTick.price;
@@ -7595,6 +7866,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       if (mt5Config.telegramSignalsEnabled) {
                         await sendServerTelegramMessage(finalMsg, undefined, undefined, eventKey);
                       }
+                      moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", setup.id);
+                      centralSignalManager.startCooldown(30);
+                      tradeStateManager.startCooldown(30, "TP_HIT", setup.id);
+                      serverLastClosedTime = Date.now();
                       centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} reached Final TP at $${px}`, px);
                       serverActiveKhatarnakSetup = null;
                       serverKhatarnakState = "SEARCHING";
@@ -7609,6 +7884,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       if (mt5Config.telegramSignalsEnabled) {
                         await sendServerTelegramMessage(slMsg, undefined, undefined, eventKey);
                       }
+                      moduleSignalGatekeeper.startGlobalCooldown(30, "STOP_LOSS", setup.id);
+                      centralSignalManager.startCooldown(30);
+                      tradeStateManager.startCooldown(30, "STOP_LOSS", setup.id);
+                      serverLastClosedTime = Date.now();
                       centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} hit Stop Loss at $${px}`, px);
                       serverActiveKhatarnakSetup = null;
                       serverKhatarnakState = "SEARCHING";
@@ -8212,6 +8491,45 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       telegramDeliveryStatus: serverTelegramDeliveryStatus,
       hasActiveTrade: !!serverActiveTrade,
     });
+  });
+
+  // ADVANCED RISK & TRADE QUALITY CONTROLS API
+  app.get("/api/risk/status", (req, res) => {
+    try {
+      const summary = advancedRiskManager.getRiskSummary();
+      res.json({
+        ok: true,
+        summary,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/risk/config", (req, res) => {
+    try {
+      const updated = advancedRiskManager.updateConfig(req.body || {});
+      res.json({
+        ok: true,
+        config: updated,
+        message: "Advanced Risk Controls configuration updated successfully.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/risk/reset-pause", (req, res) => {
+    try {
+      advancedRiskManager.resetConsecutiveLossPause();
+      res.json({
+        ok: true,
+        message: "Consecutive loss pause reset successfully. Resuming standard risk gate.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   app.post("/api/telegram/send", async (req, res) => {

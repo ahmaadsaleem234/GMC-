@@ -33,6 +33,8 @@ export interface ServerEngineStatusData {
 
 export const ServerEngineStatusPanel: React.FC = () => {
   const [status, setStatus] = useState<ServerEngineStatusData | null>(null);
+  const [riskReport, setRiskReport] = useState<any | null>(null);
+  const [showRiskDetails, setShowRiskDetails] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -41,9 +43,13 @@ export const ServerEngineStatusPanel: React.FC = () => {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch("/api/telegram/status");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const [statusRes, riskRes] = await Promise.all([
+        fetch("/api/telegram/status"),
+        fetch("/api/risk/status").catch(() => null),
+      ]);
+
+      if (!statusRes.ok) throw new Error(`HTTP ${statusRes.status}`);
+      const data = await statusRes.json();
       if (data.ok) {
         setStatus({
           engineStatus: data.engineStatus || "Running",
@@ -59,6 +65,13 @@ export const ServerEngineStatusPanel: React.FC = () => {
           accountMetrics: data.accountMetrics,
         });
         setError(null);
+      }
+
+      if (riskRes && riskRes.ok) {
+        const riskData = await riskRes.json();
+        if (riskData.ok && riskData.summary) {
+          setRiskReport(riskData.summary);
+        }
       }
     } catch (err: any) {
       console.warn("Failed to fetch server engine status:", err);
@@ -280,10 +293,123 @@ export const ServerEngineStatusPanel: React.FC = () => {
         {/* 9. Active Trade */}
         <div className="bg-[#0E1115] p-2.5 rounded-xl border border-[#242A31] flex flex-col justify-between">
           <span className="text-[10px] text-[#9299A3] uppercase font-medium block mb-1">ACTIVE TRADE</span>
-          <span className={`font-semibold text-xs ${status?.hasActiveTrade ? "text-[#F1CC6B]" : "text-[#9299A3]"}`}>
-            {status?.hasActiveTrade ? "YES (IN POSITION)" : "NO (STANDBY)"}
+          <span className={`font-semibold text-xs ${status?.hasActiveTrade ? "text-[#F1CC6B]" : "text-[#74D8A0]"}`}>
+            {status?.hasActiveTrade ? "YES (LOCKED)" : "STANDBY (READY)"}
           </span>
         </div>
+      </div>
+
+      {/* 8-PILLAR ADVANCED RISK & TRADE QUALITY CONTROLS MONITOR */}
+      <div className="mt-3 pt-3 border-t border-[#242A31]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-[#F1CC6B]" />
+            <span className="text-xs font-bold text-[#F3F4F5] tracking-wide uppercase">
+              8-Pillar Advanced Risk & Quality Controls
+            </span>
+            <span className="text-[10px] bg-[#242A31] text-[#9299A3] px-2 py-0.5 rounded font-mono">
+              ACTIVE
+            </span>
+          </div>
+          <button
+            onClick={() => setShowRiskDetails(!showRiskDetails)}
+            className="text-[11px] text-[#F1CC6B] hover:text-[#F1CC6B]/80 font-medium transition-colors"
+          >
+            {showRiskDetails ? "Hide Details" : "Show All 8 Rules"}
+          </button>
+        </div>
+
+        {/* Quick Badges Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+          {/* Rule 1: Daily Trade Limit */}
+          <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+            <span className="text-[10px] text-[#9299A3] font-mono">1. DAILY TRADES</span>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="font-bold text-[#F3F4F5]">
+                {riskReport?.daily?.tradesExecuted ?? 0} / {riskReport?.daily?.limitNormal ?? 14}
+              </span>
+              <span className={`text-[10px] font-semibold ${riskReport?.daily?.isLimitReached ? "text-[#EE777F]" : "text-[#74D8A0]"}`}>
+                {riskReport?.daily?.isLimitReached ? "MAX REACHED" : `${riskReport?.daily?.remaining ?? 14} REM`}
+              </span>
+            </div>
+          </div>
+
+          {/* Rule 2: Consecutive Loss Protection */}
+          <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+            <span className="text-[10px] text-[#9299A3] font-mono">2. LOSS SHIELD (4 SL)</span>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="font-bold text-[#F3F4F5]">
+                {riskReport?.consecutiveLoss?.count ?? 0} / {riskReport?.consecutiveLoss?.limit ?? 4} SL
+              </span>
+              <span className={`text-[10px] font-semibold ${riskReport?.consecutiveLoss?.isPaused ? "text-[#EE777F]" : "text-[#74D8A0]"}`}>
+                {riskReport?.consecutiveLoss?.isPaused
+                  ? `PAUSED (${riskReport?.consecutiveLoss?.pauseRemainingMinutes}m)`
+                  : "SAFE"}
+              </span>
+            </div>
+          </div>
+
+          {/* Rule 3: Signal Expiry (45-60 min) */}
+          <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+            <span className="text-[10px] text-[#9299A3] font-mono">3. SIGNAL EXPIRY</span>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="font-bold text-[#F3F4F5]">45 Min Limit</span>
+              <span className="text-[10px] font-semibold text-[#74D8A0]">AUTO-CANCEL</span>
+            </div>
+          </div>
+
+          {/* Rule 6: Economic News Filter */}
+          <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+            <span className="text-[10px] text-[#9299A3] font-mono">6. NEWS BLACKOUT</span>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="font-bold text-[#F3F4F5]">±30m High Impact</span>
+              <span className={`text-[10px] font-semibold ${riskReport?.news?.inBlackout ? "text-[#EE777F]" : "text-[#74D8A0]"}`}>
+                {riskReport?.news?.inBlackout ? "BLACKOUT" : "CLEAR"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Expandable Details for Rules 4, 5, 7, 8 */}
+        {showRiskDetails && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mt-2 pt-2 border-t border-[#242A31]/50">
+            {/* Rule 4: Market Regime Filter */}
+            <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+              <span className="text-[10px] text-[#9299A3] font-mono">4. MARKET REGIME</span>
+              <span className="text-[11px] text-[#74D8A0] font-semibold mt-0.5">
+                TRENDING ALLOWED
+              </span>
+              <span className="text-[9px] text-[#9299A3]">Range/Choppy/Extreme Vol Blocked</span>
+            </div>
+
+            {/* Rule 5: Spread & Slippage */}
+            <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+              <span className="text-[10px] text-[#9299A3] font-mono">5. SPREAD & SLIPPAGE</span>
+              <span className="text-[11px] text-[#F3F4F5] font-semibold mt-0.5">
+                Max Spread: ${riskReport?.spread?.maxPermissibleUSD ?? 0.45}
+              </span>
+              <span className="text-[9px] text-[#9299A3]">Fast quote freshness verified</span>
+            </div>
+
+            {/* Rule 7: Confidence Score */}
+            <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+              <span className="text-[10px] text-[#9299A3] font-mono">7. CONFIDENCE GATE</span>
+              <span className="text-[11px] text-[#F1CC6B] font-semibold mt-0.5">
+                ≥90% Normal | &lt;80% Reject
+              </span>
+              <span className="text-[9px] text-[#9299A3]">80-90% requires strong MTF sync</span>
+            </div>
+
+            {/* Rule 8: Fast TP Cooldown */}
+            <div className="bg-[#0E1115] p-2 rounded-lg border border-[#242A31] flex flex-col">
+              <span className="text-[10px] text-[#9299A3] font-mono">8. FAST TP COOLDOWN</span>
+              <span className={`text-[11px] font-semibold mt-0.5 ${riskReport?.fastTp?.isActive ? "text-[#F1CC6B]" : "text-[#74D8A0]"}`}>
+                {riskReport?.fastTp?.isActive ? `${riskReport?.fastTp?.remainingMinutes}m Cooldown` : "IDLE (READY)"}
+              </span>
+              <span className="text-[9px] text-[#9299A3]">15-30m cooldown after quick spike</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

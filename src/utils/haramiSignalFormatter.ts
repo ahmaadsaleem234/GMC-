@@ -168,6 +168,7 @@ ${signalId} | ${symbol} | ${params.direction}
 
 📍 Price: ${price}
 ✅ TRADE FULLY CLOSED
+⏳ 30-Minute Quality Cooldown Initiated
     `.trim();
   }
 
@@ -224,6 +225,7 @@ ${signalId} | ${symbol} | ${params.direction}
 
 📍 Exit: ${price}
 ✅ CLOSED
+⏳ 30-Minute Quality Cooldown Initiated
   `.trim();
 }
 

@@ -101,6 +101,10 @@ class TelegramIdempotencyRegistry {
     const wrMatch = text.match(/(?:SETUP ID|ID):\s*<code>(WR-[0-9A-Za-z-]+)<\/code>/i) || text.match(/\b(WR-[0-9A-Za-z-]+)\b/i);
     if (wrMatch) return wrMatch[1].toUpperCase();
 
+    // Match Retest-X: RX-XXXX, RETX-XXXX, RETEST-XXXX
+    const rxMatch = text.match(/(?:SETUP ID|ID):\s*<code>(R[EX]TX?-[0-9A-Za-z-]+)<\/code>/i) || text.match(/\b(R[EX]TX?-[0-9A-Za-z-]+)\b/i);
+    if (rxMatch) return rxMatch[1].toUpperCase();
+
     return undefined;
   }
 
@@ -122,15 +126,27 @@ class TelegramIdempotencyRegistry {
     }
 
     const t = text.toUpperCase();
-    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT")) return "FINAL_TP_HIT";
-    if (t.includes("TP3 HIT") || t.includes("TARGET 3 HIT")) return "TP3_HIT";
-    if (t.includes("TP2 HIT") || t.includes("TARGET 2 HIT")) return "TP2_HIT";
-    if (t.includes("TP1 HIT") || t.includes("TARGET 1 HIT")) return "TP1_HIT";
+    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT") || t.includes("TP4 ALL TARGETS HIT")) return "FINAL_TP_HIT";
+    if (t.includes("TP3 HIT") || t.includes("TARGET 3 HIT") || t.includes("TP3 REACHED")) return "TP3_HIT";
+    if (t.includes("TP2 HIT") || t.includes("TARGET 2 HIT") || t.includes("TP2 REACHED")) return "TP2_HIT";
+    if (t.includes("TP1 HIT") || t.includes("TARGET 1 HIT") || t.includes("TP1 REACHED")) return "TP1_HIT";
     if (t.includes("SL HIT") || t.includes("STOP LOSS HIT") || t.includes("STOP LOSS TRIGGERED")) return "SL_HIT";
     if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO")) return "ENTRY_HIT";
     if (t.includes("INVALIDATED") || t.includes("CANCELLED")) return "INVALIDATED";
     if (t.includes("EXPIRED")) return "EXPIRED";
-    if (t.includes("SIGNAL ALERT") || t.includes("NEW SETUP") || t.includes("KHATARNAK JUGAAD") || t.includes("HARAMI AI") || t.includes("HARAMI AI MASTER")) return "NEW_SETUP";
+    if (
+      t.includes("SIGNAL ALERT") ||
+      t.includes("NEW SETUP") ||
+      t.includes("KHATARNAK JUGAAD") ||
+      t.includes("HARAMI AI") ||
+      t.includes("HARAMI AI MASTER") ||
+      t.includes("WAR ROOM") ||
+      t.includes("RETEST-X") ||
+      t.includes("RETEST X") ||
+      t.includes("ENTRY ZONE") ||
+      t.includes("EXECUTION ZONE") ||
+      t.includes("BEST ENTRY")
+    ) return "NEW_SETUP";
 
     return "GENERAL_ALERT";
   }

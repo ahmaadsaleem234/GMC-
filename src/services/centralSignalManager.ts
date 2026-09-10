@@ -795,6 +795,21 @@ export class CentralSignalManagerEngine {
     this.resetCooldownManually();
   }
 
+  public isCooldownActive(): boolean {
+    this.updateCooldownTicker();
+    return this.cooldown.isActive;
+  }
+
+  public getCooldownRemainingSeconds(): number {
+    this.updateCooldownTicker();
+    return this.cooldown.remainingSeconds || 0;
+  }
+
+  public getCooldownRemainingMinutes(): number {
+    this.updateCooldownTicker();
+    return Math.ceil((this.cooldown.remainingSeconds || 0) / 60);
+  }
+
   public async forceCloseActiveSetup(
     reason: string = "Manual Close",
     currentPrice?: number,

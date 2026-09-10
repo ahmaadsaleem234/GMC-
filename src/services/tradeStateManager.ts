@@ -14,6 +14,7 @@ import fs from "fs";
 import path from "path";
 import { multiFeedPriceService, ConsensusReport } from "./multiFeedPriceService.js";
 import { anomalyDetectionEngine, ProposedTradeLevels } from "./anomalyDetectionEngine.js";
+import { advancedRiskManager } from "./advancedRiskManager.js";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STATE_RECOVERY_FILE = path.join(DATA_DIR, "trade_state_recovery.json");
@@ -344,21 +345,56 @@ export class MasterTradeStateManager {
     this.persistState();
   }
 
-  public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
+  public triggerTradeClosedCooldown(
+    trade: UnifiedActiveTrade,
+    outcome: string,
+    customDurationMinutes: number = 30
+  ) {
     const now = Date.now();
-    const COOLDOWN_DURATION_MS = 15 * 60 * 1000; // Strict 15-minute minimum
+    const durationMinutes = customDurationMinutes || 30;
+    const durationMs = durationMinutes * 60 * 1000;
     this.cooldownState = {
       inCooldown: true,
-      cooldownUntil: now + COOLDOWN_DURATION_MS,
-      remainingMinutes: 15,
-      reason: `Trade ${failedTrade.signalId} hit Stop Loss. 15-Minute Cooldown active for fresh market re-analysis.`,
-      lastSlHitTimestamp: now,
+      cooldownUntil: now + durationMs,
+      remainingMinutes: durationMinutes,
+      reason: `Trade #${trade.signalId} concluded with ${outcome}. Strict 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
+      lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
       lastFailedSetupZone: {
-        low: Math.min(failedTrade.entryZone[0], failedTrade.entryZone[1]),
-        high: Math.max(failedTrade.entryZone[0], failedTrade.entryZone[1]),
-        direction: failedTrade.direction,
+        low: Math.min(trade.entryZone[0], trade.entryZone[1]),
+        high: Math.max(trade.entryZone[0], trade.entryZone[1]),
+        direction: trade.direction,
       },
     };
+    console.log(
+      `[TRADE STATE MANAGER]: ⏳ 30-Minute Cooldown Activated for trade #${trade.signalId} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
+    );
+    this.persistState();
+  }
+
+  public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
+    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 30);
+  }
+
+  public startCooldown(
+    customDurationMinutes: number = 30,
+    outcome: string = "TRADE_CLOSED",
+    signalId?: string,
+    zone?: { low: number; high: number; direction: "BUY" | "SELL" }
+  ) {
+    const now = Date.now();
+    const durationMinutes = customDurationMinutes || 30;
+    const durationMs = durationMinutes * 60 * 1000;
+    this.cooldownState = {
+      inCooldown: true,
+      cooldownUntil: now + durationMs,
+      remainingMinutes: durationMinutes,
+      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. Strict 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
+      lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
+      lastFailedSetupZone: zone || this.cooldownState.lastFailedSetupZone,
+    };
+    console.log(
+      `[TRADE STATE MANAGER]: ⏳ 30-Minute Cooldown Activated for trade #${signalId || "N/A"} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
+    );
     this.persistState();
   }
 
@@ -445,20 +481,20 @@ export class MasterTradeStateManager {
     confidence: number,
     minConfidence: number
   ): { allowed: boolean; blockReason: string | null; anomalyReport?: any } {
-    // A. ONE-TRADE-AT-A-TIME RULE
+    // A. ONE-TRADE-AT-A-TIME & CONFLICT PREVENTION RULE
     if (this.hasActiveTrade()) {
       return {
         allowed: false,
-        blockReason: `ONE-TRADE-AT-A-TIME: System has an active/waiting trade (${this.activeTrade?.signalId} - ${this.activeTrade?.status}). New trades blocked until previous trade closes.`,
+        blockReason: `ONE-TRADE-AT-A-TIME: System has an active/waiting trade (${this.activeTrade?.signalId} - ${this.activeTrade?.direction} @ $${this.activeTrade?.entry}). Opposite or simultaneous signals are strictly blocked until current setup has a confirmed outcome.`,
       };
     }
 
-    // B. COOLDOWN RULE
+    // B. STRICT 30-MINUTE COOLDOWN RULE
     const cooldown = this.checkCooldown();
     if (cooldown.inCooldown) {
       return {
         allowed: false,
-        blockReason: `COOLDOWN ACTIVE: Minimum 15-minute re-analysis window in progress (${cooldown.remainingMinutes}m remaining). Reason: ${cooldown.reason}`,
+        blockReason: `COOLDOWN ACTIVE: Strict 30-minute re-analysis window in progress (${cooldown.remainingMinutes}m remaining). Quality over quantity filter active. ${cooldown.reason || ""}`,
       };
     }
 
@@ -507,6 +543,25 @@ export class MasterTradeStateManager {
       };
     }
 
+    // H. ADVANCED RISK & TRADE QUALITY CONTROLS (8-Pillar Gate)
+    const spread = consensus.recommendedSpread || Math.abs(consensus.recommendedAsk - consensus.recommendedBid) || 0.25;
+    const riskAdmission = advancedRiskManager.evaluateSignalAdmission({
+      signalId: levels.symbol || "XAUUSD",
+      confidence,
+      currentPrice: levels.currentPrice,
+      spread,
+      priceTimestamp: consensus.timestamp,
+      hasActiveTrade: this.hasActiveTrade(),
+      hasGeneralCooldown: cooldown.inCooldown,
+    });
+
+    if (!riskAdmission.allowed) {
+      return {
+        allowed: false,
+        blockReason: `ADVANCED RISK CONTROL [${riskAdmission.code}]: ${riskAdmission.message}`,
+      };
+    }
+
     return { allowed: true, blockReason: null };
   }
 
@@ -534,6 +589,14 @@ export class MasterTradeStateManager {
     isAlreadyInZone?: boolean;
     actualExecutedPrice?: number;
   }): UnifiedActiveTrade {
+    // Strict Single Trade Invariant: Never overwrite an existing active trade
+    if (this.activeTrade) {
+      console.warn(
+        `[TRADE STATE MANAGER]: ⚠️ Invariant Protection Blocked attempt to register trade ${params.signalId} while trade #${this.activeTrade.signalId} (${this.activeTrade.direction}) is still running.`
+      );
+      return this.activeTrade;
+    }
+
     const now = Date.now();
     const nowUtc = new Date(now).toISOString().replace("T", " ").substring(0, 16) + " UTC";
     const initialStatus = params.isAlreadyInZone ? "ENTRY_CONFIRMED" : "WAITING_FOR_ENTRY";
@@ -582,6 +645,7 @@ export class MasterTradeStateManager {
       ],
     };
 
+    advancedRiskManager.recordNewTradeExecuted(params.signalId);
     this.persistState();
     return this.activeTrade;
   }
@@ -606,6 +670,18 @@ export class MasterTradeStateManager {
     const now = Date.now();
     const nowUtc = new Date(now).toISOString().replace("T", " ").substring(0, 16) + " UTC";
 
+    // Update Advanced Risk Manager with outcome and check fast TP cooldown
+    advancedRiskManager.recordTradeOutcome(outcome, this.activeTrade.signalId);
+    if (outcome === "WIN_TP") {
+      advancedRiskManager.checkAndTriggerFastTpCooldown({
+        tradeId: this.activeTrade.signalId,
+        entryTriggeredAt: this.activeTrade.entryTriggeredAt,
+        createdAt: this.activeTrade.createdAt,
+        outcome: "WIN_TP",
+        pnlPoints,
+      });
+    }
+
     // Record to Versioned Strategy Performance History
     const record: VersionedStrategyRecord = {
       strategyName: this.activeTrade.strategyName,
@@ -629,10 +705,8 @@ export class MasterTradeStateManager {
     this.versionedHistory.unshift(record);
     this.persistVersionedHistory();
 
-    // Trigger Cooldown if trade resulted in Stop Loss
-    if (outcome === "STOP_LOSS") {
-      this.triggerSlCooldown(this.activeTrade);
-    }
+    // Trigger strict 30-minute cooldown on ALL trade closures (TP, SL, BE, EXPIRED, CANCELLED, MANUAL)
+    this.triggerTradeClosedCooldown(this.activeTrade, outcome, 30);
 
     this.activeTrade = null;
     this.persistState();

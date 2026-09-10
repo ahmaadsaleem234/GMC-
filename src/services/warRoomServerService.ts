@@ -64,6 +64,7 @@ import {
 } from "../types/setupLifecycle.js";
 import { centralSignalManager } from "./centralSignalManager.js";
 import { sp500NewsMacroService } from "./sp500NewsMacroService.js";
+import { tradeStateManager } from "./tradeStateManager.js";
 
 // Valid Historical Trade Database (Authentic Historical Setups with Stored Evidence)
 const INITIAL_HISTORICAL_DATABASE: LockedWarRoomSetup[] = [
@@ -412,7 +413,7 @@ class WarRoomServerService {
   private lastAnalyzedTick: { price: number; timestamp: number } | null = null;
   private dispatchedSetupIds: Set<string> = new Set(["GMC-WAR-20260814-001", "GMC-WAR-20260812-002"]);
   private lastTradeClosedAt: number = 0;
-  private telegramSender?: (msg: string) => Promise<boolean>;
+  private telegramSender?: (msg: string, alertId?: string) => Promise<boolean>;
   private duplicateChecker?: (direction: string, price: number) => boolean;
 
   constructor() {
@@ -474,7 +475,7 @@ class WarRoomServerService {
     return [...this.auditLogs];
   }
 
-  public setTelegramSender(fn: (msg: string) => Promise<boolean>) {
+  public setTelegramSender(fn: (msg: string, alertId?: string) => Promise<boolean>) {
     this.telegramSender = fn;
   }
 
@@ -1293,16 +1294,30 @@ class WarRoomServerService {
       spread
     );
 
-    // 15. Auto-Lock Candidate Check (Enforces Cooldown and Complete 7-Gate Execution Clearance)
-    const cooldownMs = (this.config.cooldownMinutesAfterClose || 15) * 60000;
-    const isCooldownActive = nowMs - this.lastTradeClosedAt < cooldownMs;
+    // 15. Auto-Lock Candidate Check (Enforces 30-Min Cooldown, System Single-Active Invariant, and High-Confidence Gates)
+    const cooldownCheck = tradeStateManager.checkCooldown();
+    const centralCooldown = centralSignalManager.isCooldownActive();
+    const globalCooldown = moduleSignalGatekeeper.isGlobalCooldownActive();
+    const isSystemInCooldown =
+      cooldownCheck.inCooldown ||
+      centralCooldown ||
+      globalCooldown.inCooldown ||
+      nowMs - this.lastTradeClosedAt < 30 * 60000;
+
+    const hasAnyActiveTradeInSystem =
+      !!this.activeSetup ||
+      tradeStateManager.hasActiveTrade() ||
+      !!centralSignalManager.getActiveSetup() ||
+      (this.duplicateChecker ? this.duplicateChecker(targetDirection, candidateSetup.candidateBestEntry) : false);
+
+    const effectiveMinScore = Math.max(90, this.config.minimumSetupScore || 90);
 
     if (
       this.config.autoLockEnabled &&
-      !this.activeSetup &&
-      !isCooldownActive &&
+      !hasAnyActiveTradeInSystem &&
+      !isSystemInCooldown &&
       formationProgress.isReadyForExecution &&
-      confluence.totalScore >= this.config.minimumSetupScore &&
+      confluence.totalScore >= effectiveMinScore &&
       riskAnalysis.executionAllowed &&
       (aiConsensus.consensus.includes("EXECUTION APPROVED") || aiConsensus.consensus.includes("EXECUTION ALLOWED"))
     ) {
@@ -1358,7 +1373,7 @@ class WarRoomServerService {
         expectedActionIfConfirmed: formationProgress.expectedActionIfConfirmed,
         gateState: executionGateState,
       };
-    } else if (this.database.length > 0 && isCooldownActive) {
+    } else if (this.database.length > 0 && isSystemInCooldown) {
       masterSignalState = {
         stateCode: 4,
         stateType: "TRADE_CLOSED",
@@ -1584,7 +1599,9 @@ class WarRoomServerService {
       try {
         let telegramText = "";
         if (eventType === "CANDIDATE_CREATED" || eventType === "LEVELS_FROZEN") {
-          telegramText = `<b>🟡 GMC WAR ROOM • CANDIDATE FROZEN (WAITING)</b>\n━━━━━━━━━━━━━━━━━━━\n<b>SETUP ID:</b> <code>${setup.setupId}</code>\n<b>ASSET:</b> <code>${setup.symbol}</code>\n<b>DIRECTION:</b> <b>${setup.direction} (GRADE ${setup.grade})</b>\n<b>ENTRY ZONE:</b> <code>${setup.entryZone[0].toFixed(2)} - ${setup.entryZone[1].toFixed(2)}</code>\n<b>BEST ENTRY:</b> <code>${setup.bestEntry.toFixed(2)}</code>\n<b>STOP LOSS:</b> <code>${setup.stopLoss.toFixed(2)}</code>\n<b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code> | <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code>\n<b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code> | <b>TP4:</b> <code>${setup.tp4.toFixed(2)}</code>\n<b>CONFIDENCE:</b> <code>${setup.confidence}%</code>\n\n<i>Setup candidate levels are locked. Waiting for execution gates trigger.</i>`;
+          // STRICT DEDUP RULE: Do not broadcast candidate formation/frozen levels to Telegram subscribers.
+          // Exactly ONE Telegram alert is sent when the valid setup is officially activated.
+          return alert;
         } else if (eventType === "SETUP_ACTIVATED") {
           telegramText = formatWarRoomTelegramSignal(setup);
         } else if (eventType === "ENTRY_HIT") {
@@ -1600,7 +1617,8 @@ class WarRoomServerService {
           telegramText = formatWarRoomTelegramUpdate(setup, eventType as any, message);
         }
 
-        const sent = await effectiveSendTelegram(telegramText);
+        const alertKey = `${setup.setupId}_${eventType}`;
+        const sent = await effectiveSendTelegram(telegramText, alertKey);
         if (sent) {
           alert.telegramSent = true;
           alert.telegramSentAt = new Date().toISOString().replace("T", " ").substring(11, 19) + " UTC";
@@ -1830,6 +1848,9 @@ class WarRoomServerService {
     setupLifecycleStorage.saveSetup(setup as any);
     this.database.unshift({ ...setup });
     this.lastTradeClosedAt = Date.now();
+    moduleSignalGatekeeper.startGlobalCooldown(30, "CANCELLED", setup.setupId);
+    centralSignalManager.startCooldown(30);
+    tradeStateManager.startCooldown(30, "CANCELLED", setup.setupId);
     this.activeSetup = null;
 
     this.addAuditLog("LIFECYCLE", "SETUP_CANCELLED", `Setup ${setup.setupId} cancelled. Reason: ${reason}`, setup.currentPrice, 95, "WARNING");
@@ -1896,6 +1917,9 @@ class WarRoomServerService {
       setupLifecycleStorage.saveSetup(setup as any);
       this.database.unshift({ ...setup });
       this.lastTradeClosedAt = nowMs;
+      moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", setup.setupId);
+      centralSignalManager.startCooldown(30);
+      tradeStateManager.startCooldown(30, "EXPIRED", setup.setupId);
       this.addAuditLog("LIFECYCLE", "SETUP_EXPIRED", `Setup ${setup.setupId} expired after ${setup.currentAgeMinutes} minutes.`, px, 98, "OK");
 
       await this.emitLifecycleAlert(
@@ -2034,6 +2058,9 @@ class WarRoomServerService {
         this.database.unshift({ ...setup });
         this.lastTradeClosedAt = nowMs;
         moduleSignalGatekeeper.startCooldown("WAR_ROOM", "TP", setup.setupId);
+        moduleSignalGatekeeper.startGlobalCooldown(30, "WIN_TP4", setup.setupId);
+        centralSignalManager.startCooldown(30);
+        tradeStateManager.startCooldown(30, "WIN_TP4", setup.setupId);
         this.addAuditLog("LIFECYCLE", "TP4_FULL_TARGET_COMPLETED", `Setup ${setup.setupId} FULL TARGET TP4 hit at ${setup.tp4}. Trade closed with maximum profit.`, px, 98, "OK");
 
         await this.emitLifecycleAlert(
@@ -2071,7 +2098,11 @@ class WarRoomServerService {
         setupLifecycleStorage.saveSetup(setup as any);
         this.database.unshift({ ...setup });
         this.lastTradeClosedAt = nowMs;
+        const outcome = isBE ? "BREAKEVEN" : "STOP_LOSS";
         moduleSignalGatekeeper.startCooldown("WAR_ROOM", isBE ? "TP" : "SL", setup.setupId);
+        moduleSignalGatekeeper.startGlobalCooldown(30, outcome, setup.setupId);
+        centralSignalManager.startCooldown(30);
+        tradeStateManager.startCooldown(30, outcome, setup.setupId);
         this.addAuditLog("LIFECYCLE", isBE ? "BREAKEVEN_EXIT" : "STOP_LOSS_HIT", `Setup ${setup.setupId} hit stop at ${px}.`, px, 98, "WARNING");
 
         await this.emitLifecycleAlert(
