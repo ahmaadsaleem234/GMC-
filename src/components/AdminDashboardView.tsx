@@ -68,6 +68,7 @@ import { MT5AutoTradingDashboard } from "./MT5AutoTradingDashboard";
 import { TelegramBotUsersSection } from "./TelegramBotUsersSection";
 import { AiBrainControlCenterView } from "./AiBrainControlCenterView";
 import { PriceFeedMonitor } from "./PriceFeedMonitor";
+import { TradeLockAdminDashboard } from "./TradeLockAdminDashboard";
 
 interface AdminDashboardViewProps {
   isLoggedIn: boolean;
@@ -83,8 +84,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   onForceLogoutUser,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    "ai_brain" | "overview" | "mt5" | "price_feed" | "sessions" | "users" | "ipblock" | "telegram" | "audit" | "analytics"
-  >("ai_brain");
+    "trade_lock" | "ai_brain" | "overview" | "mt5" | "price_feed" | "sessions" | "users" | "ipblock" | "telegram" | "audit" | "analytics"
+  >("trade_lock");
 
   // Real-time state
   const [sessions, setSessions] = useState<UserSessionData[]>([]);
@@ -582,8 +583,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         {/* Tab Navigation Pill Bar */}
         <div className="flex items-center gap-2 overflow-x-auto pt-5 mt-4 border-t border-slate-800/80 no-scrollbar font-mono text-xs">
           <button
-            onClick={() => setActiveTab("ai_brain")}
+            onClick={() => setActiveTab("trade_lock")}
             className={`px-4 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all border whitespace-nowrap ${
+              activeTab === "trade_lock"
+                ? "bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20"
+                : "bg-slate-900/80 text-amber-400 border-amber-500/40 hover:text-white hover:bg-slate-800"
+            }`}
+          >
+            <Lock className="w-4 h-4 text-amber-400 fill-current" />
+            <span>🔒 TRADE LOCK &amp; RISK CONTROLS</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("ai_brain")}
+            className={`px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border whitespace-nowrap ${
               activeTab === "ai_brain"
                 ? "bg-amber-500 text-black border-amber-400 shadow-lg shadow-amber-500/20"
                 : "bg-slate-900/80 text-amber-400 border-amber-500/40 hover:text-white hover:bg-slate-800"
@@ -702,6 +715,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* TAB: TRADE LOCK & RISK CONTROLS */}
+      {activeTab === "trade_lock" && (
+        <div className="animate-fade-in">
+          <TradeLockAdminDashboard />
+        </div>
+      )}
 
       {/* TAB -1: AI BRAIN CONTROL CENTER */}
       {activeTab === "ai_brain" && (

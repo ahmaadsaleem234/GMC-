@@ -467,6 +467,10 @@ class WarRoomServerService {
     return this.activeSetup ? { ...this.activeSetup } : null;
   }
 
+  public clearActiveSetup(): void {
+    this.activeSetup = null;
+  }
+
   public getDatabase(): LockedWarRoomSetup[] {
     return [...this.database];
   }

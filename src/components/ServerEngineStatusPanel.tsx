@@ -15,7 +15,10 @@ import {
   TrendingDown,
   Pause,
   Play,
+  Lock,
+  X,
 } from "lucide-react";
+import { TradeLockAdminDashboard } from "./TradeLockAdminDashboard";
 
 export interface ServerEngineStatusData {
   engineStatus: "Running" | "Stopped";
@@ -35,6 +38,7 @@ export const ServerEngineStatusPanel: React.FC = () => {
   const [status, setStatus] = useState<ServerEngineStatusData | null>(null);
   const [riskReport, setRiskReport] = useState<any | null>(null);
   const [showRiskDetails, setShowRiskDetails] = useState<boolean>(false);
+  const [showTradeLockModal, setShowTradeLockModal] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -157,6 +161,13 @@ export const ServerEngineStatusPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTradeLockModal(true)}
+            className="px-2.5 py-1 bg-[#1A1E26] hover:bg-[#252C38] text-[#F1CC6B] rounded-lg border border-[#3A4350] text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+          >
+            <Lock className="w-3.5 h-3.5 text-[#F1CC6B]" />
+            <span>Trade Lock Dashboard</span>
+          </button>
           <button
             onClick={handleTestTelegram}
             disabled={testingTelegram}
@@ -411,6 +422,22 @@ export const ServerEngineStatusPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* TRADE LOCK & RISK CONTROLS MODAL OVERLAY */}
+      {showTradeLockModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-[#0B0E14] border border-[#242A31] rounded-3xl max-w-5xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto shadow-2xl relative">
+            <button
+              onClick={() => setShowTradeLockModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl bg-[#151921] border border-[#242A31] hover:bg-[#242A31] text-[#9299A3] hover:text-[#F3F4F5] transition-colors"
+              title="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <TradeLockAdminDashboard />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

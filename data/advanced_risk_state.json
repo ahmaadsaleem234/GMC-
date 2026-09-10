@@ -1,0 +1,10 @@
+{
+  "currentDayUtc": "2026-09-10",
+  "dailyTradesCount": 0,
+  "consecutiveLossCount": 0,
+  "consecutiveLossPauseUntil": 0,
+  "consecutiveLossMode": "NORMAL",
+  "fastTpCooldownUntil": 0,
+  "fastTpLastTradeId": "",
+  "autoRiskMode": "NORMAL"
+}

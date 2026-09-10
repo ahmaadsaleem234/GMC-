@@ -305,6 +305,7 @@ export class MasterTradeStateManager {
   }
 
   public getActiveTrade(): UnifiedActiveTrade | null {
+    if (!this.hasActiveTrade()) return null;
     return this.activeTrade;
   }
 
@@ -483,45 +484,95 @@ export class MasterTradeStateManager {
   ): { allowed: boolean; blockReason: string | null; anomalyReport?: any } {
     // A. ONE-TRADE-AT-A-TIME & CONFLICT PREVENTION RULE
     if (this.hasActiveTrade()) {
+      const reason = `ONE-TRADE-AT-A-TIME: System has an active/waiting trade (${this.activeTrade?.signalId} - ${this.activeTrade?.direction} @ $${this.activeTrade?.entry}). Opposite or simultaneous signals are strictly blocked until current setup has a confirmed outcome.`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "ACTIVE_TRADE_LOCK",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `ONE-TRADE-AT-A-TIME: System has an active/waiting trade (${this.activeTrade?.signalId} - ${this.activeTrade?.direction} @ $${this.activeTrade?.entry}). Opposite or simultaneous signals are strictly blocked until current setup has a confirmed outcome.`,
+        blockReason: reason,
       };
     }
 
     // B. STRICT 30-MINUTE COOLDOWN RULE
     const cooldown = this.checkCooldown();
     if (cooldown.inCooldown) {
+      const reason = `COOLDOWN ACTIVE: Strict 30-minute re-analysis window in progress (${cooldown.remainingMinutes}m remaining). Quality over quantity filter active. ${cooldown.reason || ""}`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "COOLDOWN_ACTIVE",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `COOLDOWN ACTIVE: Strict 30-minute re-analysis window in progress (${cooldown.remainingMinutes}m remaining). Quality over quantity filter active. ${cooldown.reason || ""}`,
+        blockReason: reason,
       };
     }
 
     // C. REVENGE RE-ENTRY PROTECTION
     const revengeCheck = this.isRevengeReentry(levels.direction, levels.bestEntry);
     if (revengeCheck.isRevenge) {
+      const reason = `REVENGE RE-ENTRY BLOCKED: ${revengeCheck.reason}`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "MARKET_CHOP",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `REVENGE RE-ENTRY BLOCKED: ${revengeCheck.reason}`,
+        blockReason: reason,
       };
     }
 
     // D. DUAL-FEED CONSENSUS & FAILOVER CHECK
     const consensus = multiFeedPriceService.evaluatePriceConsensus();
     if (!consensus.isConsensusHealthy) {
+      const reason = `PRICE FEED BLOCKED: ${consensus.blockReason || "Price feeds are not synchronized or healthy."}`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "HIGH_SPREAD",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `PRICE FEED BLOCKED: ${consensus.blockReason || "Price feeds are not synchronized or healthy."}`,
+        blockReason: reason,
       };
     }
 
     // E. ANOMALY DETECTION ENGINE
     const anomalyResult = anomalyDetectionEngine.evaluateSignalAnomalies(levels, consensus);
     if (!anomalyResult.passed) {
+      const reason = `🚫 SIGNAL BLOCKED — DATA/MARKET ANOMALY: ${anomalyResult.anomalyDetails}`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "HIGH_SPREAD",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `🚫 SIGNAL BLOCKED — DATA/MARKET ANOMALY: ${anomalyResult.anomalyDetails}`,
+        blockReason: reason,
         anomalyReport: anomalyResult,
       };
     }
@@ -529,28 +580,54 @@ export class MasterTradeStateManager {
     // F. SIGNAL ARBITRATION (CONFLICT) CHECK
     const arbitration = this.evaluateArbitration();
     if (arbitration.hasConflict) {
+      const reason = `ARBITRATION CONFLICT: Opposite signals between Harami AI & War Room. Held until market resolution.`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "OPPOSITE_TRADE",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `ARBITRATION CONFLICT: Opposite signals between Harami AI & War Room. Held until market resolution.`,
+        blockReason: reason,
       };
     }
 
     // G. CONFIDENCE VALIDATION
     if (confidence < minConfidence) {
+      const reason = `CONFIDENCE THRESHOLD: Confidence (${confidence}%) is below minimum required (${minConfidence}%).`;
+      advancedRiskManager.recordRejection({
+        signalId: levels.symbol || "XAUUSD",
+        symbol: levels.symbol || "XAUUSD (Gold)",
+        engine: strategyName,
+        confidence,
+        category: "LOW_CONFIDENCE",
+        reason,
+        currentPrice: levels.currentPrice,
+      });
       return {
         allowed: false,
-        blockReason: `CONFIDENCE THRESHOLD: Confidence (${confidence}%) is below minimum required (${minConfidence}%).`,
+        blockReason: reason,
       };
     }
 
     // H. ADVANCED RISK & TRADE QUALITY CONTROLS (8-Pillar Gate)
     const spread = consensus.recommendedSpread || Math.abs(consensus.recommendedAsk - consensus.recommendedBid) || 0.25;
+    const isBuy = levels.direction === "BUY";
+    const buyScore = isBuy ? confidence : Number((confidence - 10.0).toFixed(1));
+    const sellScore = !isBuy ? confidence : Number((confidence - 10.0).toFixed(1));
+
     const riskAdmission = advancedRiskManager.evaluateSignalAdmission({
       signalId: levels.symbol || "XAUUSD",
       confidence,
       currentPrice: levels.currentPrice,
       spread,
       priceTimestamp: consensus.timestamp,
+      buyScore,
+      sellScore,
       hasActiveTrade: this.hasActiveTrade(),
       hasGeneralCooldown: cooldown.inCooldown,
     });
@@ -782,6 +859,10 @@ export class MasterTradeStateManager {
 
   public getVersionedHistory(): VersionedStrategyRecord[] {
     return [...this.versionedHistory];
+  }
+
+  public getTradeLockStatusReport() {
+    return advancedRiskManager.getTradeLockStatusReport(this.activeTrade, this.cooldownState);
   }
 }
 

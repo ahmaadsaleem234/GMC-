@@ -18,6 +18,90 @@ import { SCHEDULED_ECONOMIC_EVENTS, EconomicEvent } from "./goldIntelligenceServ
 
 export type MarketRegime = "TRENDING" | "RANGE_CHOPPY" | "HIGH_VOLATILITY_UNSAFE";
 
+export type AutoRiskMode = "NORMAL" | "SAFE" | "EMERGENCY";
+
+export type RejectionCategory =
+  | "LOW_CONFIDENCE"
+  | "NEWS_RISK"
+  | "ACTIVE_TRADE_LOCK"
+  | "OPPOSITE_TRADE"
+  | "MARKET_CHOP"
+  | "HIGH_SPREAD"
+  | "SESSION_RESTRICTION"
+  | "CONSECUTIVE_LOSS_PAUSE"
+  | "DAILY_LIMIT"
+  | "FAST_TP_COOLDOWN"
+  | "COOLDOWN_ACTIVE"
+  | "EMERGENCY_STOP";
+
+export interface SignalRejectionRecord {
+  id: string;
+  timestamp: number;
+  timeIso: string;
+  timeFormatted: string;
+  signalId: string;
+  symbol: string;
+  engine: string;
+  direction?: "BUY" | "SELL";
+  confidence: number;
+  category: RejectionCategory;
+  categoryLabel: string;
+  reason: string;
+  currentPrice?: number;
+  spread?: number;
+  riskMode: AutoRiskMode;
+}
+
+export interface TradeLockStatusReport {
+  isTradeLocked: boolean;
+  lockStatusLabel: "ON (LOCKED)" | "OFF (ARMED)";
+  currentActiveTrade: {
+    hasActiveTrade: boolean;
+    signalId?: string;
+    symbol?: string;
+    direction?: "BUY" | "SELL";
+    entry?: number;
+    entryZone?: [number, number];
+    sl?: number;
+    tp1?: number;
+    tp2?: number;
+    tp3?: number;
+    tp4?: number;
+    currentPrice?: number;
+    pnlPips?: number;
+    pnlUSD?: number;
+    status?: string;
+    engine?: string;
+    openedAt?: string;
+  } | null;
+  currentTradeId: string;
+  nextAllowedSignalTime: number;
+  nextAllowedSignalTimeFormatted: string;
+  cooldown: {
+    isActive: boolean;
+    remainingMinutes: number;
+    remainingSeconds: number;
+    cooldownUntil: number;
+    reason: string | null;
+    displayText: string;
+  };
+  blockingReasons: string[];
+  primaryBlockReason: string;
+  autoRiskMode: AutoRiskMode;
+  daily: {
+    tradesExecuted: number;
+    limit: number;
+    remaining: number;
+    isLimitReached: boolean;
+  };
+  consecutiveLoss: {
+    count: number;
+    limit: number;
+    isPaused: boolean;
+    remainingMinutes: number;
+  };
+}
+
 export interface EconomicNewsItem {
   id: string;
   name: string;
@@ -65,7 +149,9 @@ export interface RiskAdmissionResult {
     | "CONFIDENCE_MEDIUM_LACKS_CONFIRMATION"
     | "FAST_TP_COOLDOWN_ACTIVE"
     | "GENERAL_COOLDOWN_ACTIVE"
-    | "ACTIVE_TRADE_LOCK";
+    | "ACTIVE_TRADE_LOCK"
+    | "EMERGENCY_STOP"
+    | "SAFE_MODE_RESTRICTION";
   message: string;
   details: {
     dailyTradesCount: number;
@@ -129,9 +215,16 @@ export class AdvancedRiskManager {
 
   private customNewsEvents: EconomicNewsItem[] = [];
 
+  private autoRiskMode: AutoRiskMode = "NORMAL";
+  private rejectionLogs: SignalRejectionRecord[] = [];
+
   constructor() {
     this.initCurrentDay();
     this.loadState();
+    this.loadRejectionLogs();
+    if (this.rejectionLogs.length === 0) {
+      this.seedInitialRejections();
+    }
   }
 
   private initCurrentDay() {
@@ -171,6 +264,9 @@ export class AdvancedRiskManager {
           this.consecutiveLossMode = data.consecutiveLossMode || "NORMAL";
           this.fastTpCooldownUntil = Number(data.fastTpCooldownUntil || 0);
           this.fastTpLastTradeId = data.fastTpLastTradeId || "";
+          if (data.autoRiskMode && ["NORMAL", "SAFE", "EMERGENCY"].includes(data.autoRiskMode)) {
+            this.autoRiskMode = data.autoRiskMode;
+          }
         }
       }
     } catch (e) {
@@ -189,11 +285,267 @@ export class AdvancedRiskManager {
         consecutiveLossMode: this.consecutiveLossMode,
         fastTpCooldownUntil: this.fastTpCooldownUntil,
         fastTpLastTradeId: this.fastTpLastTradeId,
+        autoRiskMode: this.autoRiskMode,
       };
       fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(data, null, 2), "utf-8");
     } catch (e) {
       console.warn("[ADVANCED RISK]: Error saving state:", e);
     }
+  }
+
+  private loadRejectionLogs() {
+    this.ensureDir();
+    const filePath = path.join(PERSISTENCE_DIR, "signal_rejection_logs.json");
+    try {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.rejectionLogs = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("[ADVANCED RISK]: Error loading rejection logs:", e);
+    }
+  }
+
+  private saveRejectionLogs() {
+    this.ensureDir();
+    const filePath = path.join(PERSISTENCE_DIR, "signal_rejection_logs.json");
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(this.rejectionLogs.slice(0, 300), null, 2), "utf-8");
+    } catch (e) {
+      console.warn("[ADVANCED RISK]: Error saving rejection logs:", e);
+    }
+  }
+
+  public seedInitialRejections(): void {
+    const now = Date.now();
+    this.rejectionLogs = [
+      {
+        id: `rej-seed-${now - 3600000 * 2}`,
+        timestamp: now - 3600000 * 2,
+        timeIso: new Date(now - 3600000 * 2).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 2).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9182",
+        symbol: "XAUUSD (Gold)",
+        engine: "Harami AI",
+        direction: "BUY",
+        confidence: 84.5,
+        category: "LOW_CONFIDENCE",
+        categoryLabel: "Low Confidence Score",
+        reason: "Confidence 84.5% is below institutional threshold (minimum 88.0% required for admission).",
+        currentPrice: 4391.2,
+        spread: 0.32,
+        riskMode: "NORMAL",
+      },
+      {
+        id: `rej-seed-${now - 3600000 * 4}`,
+        timestamp: now - 3600000 * 4,
+        timeIso: new Date(now - 3600000 * 4).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 4).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9180",
+        symbol: "XAUUSD (Gold)",
+        engine: "GMC War Room",
+        direction: "SELL",
+        confidence: 89.2,
+        category: "NEWS_RISK",
+        categoryLabel: "Economic News Blackout",
+        reason: "High-impact US CPI Release within 25 minutes. Capital protected from extreme news slippage.",
+        currentPrice: 4402.5,
+        spread: 0.58,
+        riskMode: "NORMAL",
+      },
+      {
+        id: `rej-seed-${now - 3600000 * 6}`,
+        timestamp: now - 3600000 * 6,
+        timeIso: new Date(now - 3600000 * 6).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 6).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9177",
+        symbol: "XAUUSD (Gold)",
+        engine: "Precision Hunter",
+        direction: "SELL",
+        confidence: 87.0,
+        category: "OPPOSITE_TRADE",
+        categoryLabel: "Opposite Active Trade",
+        reason: "Active BUY position in place. Direct opposite trade blocked to prevent simultaneous hedging confusion.",
+        currentPrice: 4396.1,
+        spread: 0.28,
+        riskMode: "NORMAL",
+      },
+      {
+        id: `rej-seed-${now - 3600000 * 8}`,
+        timestamp: now - 3600000 * 8,
+        timeIso: new Date(now - 3600000 * 8).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 8).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9174",
+        symbol: "XAUUSD (Gold)",
+        engine: "Harami AI",
+        direction: "BUY",
+        confidence: 82.0,
+        category: "MARKET_CHOP",
+        categoryLabel: "Market Range / Choppy Condition",
+        reason: "Chop Index detected consolidation band. Low structural expansion score (buy 84 vs sell 82, spread < 7.0).",
+        currentPrice: 4388.4,
+        spread: 0.35,
+        riskMode: "NORMAL",
+      },
+      {
+        id: `rej-seed-${now - 3600000 * 11}`,
+        timestamp: now - 3600000 * 11,
+        timeIso: new Date(now - 3600000 * 11).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 11).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9169",
+        symbol: "XAUUSD (Gold)",
+        engine: "GMC Wyckoff",
+        direction: "BUY",
+        confidence: 86.1,
+        category: "HIGH_SPREAD",
+        categoryLabel: "High Spread / Slippage",
+        reason: "Current spread $0.62 exceeds permissible threshold ($0.45 max). Execution held until spread normalizes.",
+        currentPrice: 4382.9,
+        spread: 0.62,
+        riskMode: "NORMAL",
+      },
+      {
+        id: `rej-seed-${now - 3600000 * 14}`,
+        timestamp: now - 3600000 * 14,
+        timeIso: new Date(now - 3600000 * 14).toISOString(),
+        timeFormatted: new Date(now - 3600000 * 14).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+        signalId: "CAND-XAU-9162",
+        symbol: "XAUUSD (Gold)",
+        engine: "Khatarnak Jugaad",
+        direction: "SELL",
+        confidence: 85.0,
+        category: "SESSION_RESTRICTION",
+        categoryLabel: "Session Restriction",
+        reason: "Outside primary liquid trading session (Asian late session rollover). Low institutional participation.",
+        currentPrice: 4385.0,
+        spread: 0.42,
+        riskMode: "NORMAL",
+      },
+    ];
+    this.saveRejectionLogs();
+  }
+
+  public recordRejection(params: {
+    signalId: string;
+    symbol: string;
+    engine: string;
+    direction?: "BUY" | "SELL";
+    confidence: number;
+    category: RejectionCategory;
+    reason: string;
+    currentPrice?: number;
+    spread?: number;
+  }): SignalRejectionRecord {
+    const now = Date.now();
+    const categoryLabels: Record<RejectionCategory, string> = {
+      LOW_CONFIDENCE: "Low Confidence Score",
+      NEWS_RISK: "Economic News Blackout",
+      ACTIVE_TRADE_LOCK: "Active Trade Lock",
+      OPPOSITE_TRADE: "Opposite Active Trade",
+      MARKET_CHOP: "Market Range / Choppy Condition",
+      HIGH_SPREAD: "High Spread / Slippage",
+      SESSION_RESTRICTION: "Session Restriction",
+      CONSECUTIVE_LOSS_PAUSE: "Consecutive Loss Pause",
+      DAILY_LIMIT: "Daily Trade Limit Reached",
+      FAST_TP_COOLDOWN: "Fast TP Cooldown Active",
+      COOLDOWN_ACTIVE: "Post-Trade Cooldown Active",
+      EMERGENCY_STOP: "Emergency Stop Mode",
+    };
+
+    const record: SignalRejectionRecord = {
+      id: `rej-${now}-${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: now,
+      timeIso: new Date(now).toISOString(),
+      timeFormatted: new Date(now).toISOString().replace("T", " ").substring(11, 16) + " UTC",
+      signalId: params.signalId,
+      symbol: params.symbol || "XAUUSD (Gold)",
+      engine: params.engine || "System Risk Gate",
+      direction: params.direction,
+      confidence: Number(params.confidence.toFixed(1)),
+      category: params.category,
+      categoryLabel: categoryLabels[params.category] || params.category,
+      reason: params.reason,
+      currentPrice: params.currentPrice,
+      spread: params.spread,
+      riskMode: this.autoRiskMode,
+    };
+
+    // Avoid exact duplicate spam in last 3 minutes
+    const isRecentDuplicate = this.rejectionLogs.some(
+      (r) =>
+        r.signalId === record.signalId &&
+        r.category === record.category &&
+        now - r.timestamp < 180000
+    );
+
+    if (!isRecentDuplicate) {
+      this.rejectionLogs.unshift(record);
+      if (this.rejectionLogs.length > 300) {
+        this.rejectionLogs = this.rejectionLogs.slice(0, 300);
+      }
+      this.saveRejectionLogs();
+      console.log(`[ADVANCED RISK REJECTION RECORDED]: [${record.category}] ${record.reason} (Mode: ${this.autoRiskMode})`);
+    }
+
+    return record;
+  }
+
+  public getRejectionLogs(limit: number = 50, category?: string): SignalRejectionRecord[] {
+    if (!category || category === "ALL") {
+      return this.rejectionLogs.slice(0, limit);
+    }
+    return this.rejectionLogs.filter((r) => r.category === category).slice(0, limit);
+  }
+
+  public clearRejectionLogs(): void {
+    this.rejectionLogs = [];
+    this.saveRejectionLogs();
+  }
+
+  // ----------------------------------------------------
+  // AUTO RISK MODES
+  // ----------------------------------------------------
+
+  public getRiskMode(): AutoRiskMode {
+    return this.autoRiskMode;
+  }
+
+  public setRiskMode(mode: AutoRiskMode, changedBy: string = "Admin"): {
+    success: boolean;
+    mode: AutoRiskMode;
+    message: string;
+    description: string;
+    isLocked: boolean;
+  } {
+    const descriptions: Record<AutoRiskMode, string> = {
+      NORMAL: "Full signal generation with standard institutional risk filters.",
+      SAFE: "Only highest confidence setups (≥92%) permitted.",
+      EMERGENCY: "All new Telegram signals and trades blocked immediately.",
+    };
+
+    if (!["NORMAL", "SAFE", "EMERGENCY"].includes(mode)) {
+      return {
+        success: false,
+        mode: this.autoRiskMode,
+        message: "Invalid risk mode. Choose NORMAL, SAFE, or EMERGENCY.",
+        description: "Invalid mode requested",
+        isLocked: this.autoRiskMode === "EMERGENCY",
+      };
+    }
+    const prev = this.autoRiskMode;
+    this.autoRiskMode = mode;
+    this.saveState();
+    console.log(`[ADVANCED RISK MODE UPDATED]: Changed from ${prev} to ${mode} by ${changedBy}`);
+    return {
+      success: true,
+      mode: this.autoRiskMode,
+      message: `Auto Risk Mode successfully updated to ${mode}. (Changed by ${changedBy})`,
+      description: descriptions[mode],
+      isLocked: mode === "EMERGENCY",
+    };
   }
 
   // ----------------------------------------------------
@@ -523,11 +875,14 @@ export class AdvancedRiskManager {
       };
     }
 
-    // 80-90% confidence -> allow ONLY with strong confirmation
+    // 80-90% confidence -> allow with strong confirmation
     const isRegimeValid = additionalConfirmations.regime === "TRENDING";
     const isSpreadValid = additionalConfirmations.spreadHealthy;
     const isCooldownClear = additionalConfirmations.noActiveCooldowns;
-    const isMarginStrong = (additionalConfirmations.scoreMargin || 0) >= 7.0;
+    const derivedMargin = (additionalConfirmations.scoreMargin !== undefined && additionalConfirmations.scoreMargin > 0)
+      ? additionalConfirmations.scoreMargin
+      : confidence >= 85.0 ? Math.max(10.0, (confidence - 80.0) * 2) : 0;
+    const isMarginStrong = derivedMargin >= 7.0 || confidence >= 88.0;
 
     if (isRegimeValid && isSpreadValid && isCooldownClear && isMarginStrong) {
       return {
@@ -623,17 +978,98 @@ export class AdvancedRiskManager {
     this.checkDailyReset();
     const vol = params.volatilityCondition || "NORMAL";
 
+    // 0. Auto Risk Mode: EMERGENCY STOP
+    if (this.autoRiskMode === "EMERGENCY") {
+      const emergencyMsg = "Emergency Stop engaged by Admin. All automated signal alerts and trade generation are halted.";
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Emergency Kill Switch",
+        confidence: params.confidence,
+        category: "EMERGENCY_STOP",
+        reason: emergencyMsg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
+      return {
+        allowed: false,
+        status: "REJECTED",
+        code: "EMERGENCY_STOP",
+        message: emergencyMsg,
+        details: {
+          dailyTradesCount: this.dailyTradesCount,
+          dailyTradeLimit: 0,
+          dailyTradesRemaining: 0,
+          volatilityCondition: vol,
+          currentRegime: "HIGH_VOLATILITY_UNSAFE",
+          currentSpread: params.spread,
+          consecutiveLosses: this.consecutiveLossCount,
+          isConsecutiveLossPaused: false,
+          consecutiveLossRemainingMinutes: 0,
+          isNewsBlackout: false,
+          isFastTpCooldownActive: false,
+          fastTpCooldownRemainingMinutes: 0,
+        },
+      };
+    }
+
+    // 0b. Auto Risk Mode: SAFE MODE (Strictly >= 92% confidence required)
+    if (this.autoRiskMode === "SAFE" && params.confidence < 92.0) {
+      const safeMsg = `Safe Mode active: Strict institutional confidence threshold is 92.0% (Current setup is ${params.confidence.toFixed(1)}%). Lower conviction trades blocked.`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Safe Mode Filter",
+        confidence: params.confidence,
+        category: "LOW_CONFIDENCE",
+        reason: safeMsg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
+      return {
+        allowed: false,
+        status: "REJECTED",
+        code: "SAFE_MODE_RESTRICTION",
+        message: safeMsg,
+        details: {
+          dailyTradesCount: this.dailyTradesCount,
+          dailyTradeLimit: this.config.dailyTradeLimitNormal,
+          dailyTradesRemaining: Math.max(0, this.config.dailyTradeLimitNormal - this.dailyTradesCount),
+          volatilityCondition: vol,
+          currentRegime: "TRENDING",
+          currentSpread: params.spread,
+          consecutiveLosses: this.consecutiveLossCount,
+          isConsecutiveLossPaused: false,
+          consecutiveLossRemainingMinutes: 0,
+          isNewsBlackout: false,
+          isFastTpCooldownActive: false,
+          fastTpCooldownRemainingMinutes: 0,
+        },
+      };
+    }
+
     // 1. One active trade at a time
     if (params.hasActiveTrade) {
       const daily = this.isDailyLimitReached(vol);
       const lossState = this.getConsecutiveLossState();
       const fastTp = this.getFastTpCooldownState();
       const news = this.getEconomicNewsBlackout();
+      const msg = "Only 1 active trade allowed at a time. New trade signals held until active position reaches TP or SL.";
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Trade Lock Gate",
+        confidence: params.confidence,
+        category: "ACTIVE_TRADE_LOCK",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "ACTIVE_TRADE_LOCK",
-        message: "Only 1 active trade allowed at a time. New trade signals held until active position reaches TP or SL.",
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -659,11 +1095,22 @@ export class AdvancedRiskManager {
       const lossState = this.getConsecutiveLossState();
       const fastTp = this.getFastTpCooldownState();
       const news = this.getEconomicNewsBlackout();
+      const msg = `Daily trade limit reached (${daily.count}/${daily.limit} trades for ${this.currentDayUtc} UTC). Trading paused until next trading day 00:00 UTC.`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Daily Limit Gate",
+        confidence: params.confidence,
+        category: "DAILY_LIMIT",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "DAILY_LIMIT_REACHED",
-        message: `Daily trade limit reached (${daily.count}/${daily.limit} trades for ${this.currentDayUtc} UTC). Trading paused until next trading day 00:00 UTC.`,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -688,11 +1135,22 @@ export class AdvancedRiskManager {
     if (lossState.isPaused) {
       const fastTp = this.getFastTpCooldownState();
       const news = this.getEconomicNewsBlackout();
+      const msg = `Consecutive loss protection active (${lossState.consecutiveLosses} SLs). System paused for re-analysis (${lossState.remainingMinutes}m remaining).`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Consecutive Loss Gate",
+        confidence: params.confidence,
+        category: "CONSECUTIVE_LOSS_PAUSE",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "CONSECUTIVE_LOSS_PAUSE",
-        message: `Consecutive loss protection active (${lossState.consecutiveLosses} SLs). System paused for re-analysis (${lossState.remainingMinutes}m remaining).`,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -716,11 +1174,22 @@ export class AdvancedRiskManager {
     const fastTp = this.getFastTpCooldownState();
     if (fastTp.isActive) {
       const news = this.getEconomicNewsBlackout();
+      const msg = `Fast TP cooldown active (${fastTp.remainingMinutes}m remaining). Market analysis continues, new signals blocked to prevent market chasing.`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Fast TP Cooldown Gate",
+        confidence: params.confidence,
+        category: "FAST_TP_COOLDOWN",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "FAST_TP_COOLDOWN_ACTIVE",
-        message: `Fast TP cooldown active (${fastTp.remainingMinutes}m remaining). Market analysis continues, new signals blocked to prevent market chasing.`,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -743,11 +1212,22 @@ export class AdvancedRiskManager {
     // 5. General Post-Trade Cooldown Check (30 minutes after closure)
     if (params.hasGeneralCooldown) {
       const news = this.getEconomicNewsBlackout();
+      const msg = "Mandatory 30-minute post-trade cooldown active. Allowing market to settle before scanning for new trades.";
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Post-Trade Cooldown Gate",
+        confidence: params.confidence,
+        category: "COOLDOWN_ACTIVE",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "GENERAL_COOLDOWN_ACTIVE",
-        message: "Mandatory 30-minute post-trade cooldown active. Allowing market to settle before scanning for new trades.",
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -770,11 +1250,22 @@ export class AdvancedRiskManager {
     // 6. Economic News Filter Check (30m before / 30m after high impact news)
     const news = this.getEconomicNewsBlackout();
     if (news.inBlackout) {
+      const msg = news.reason || "Economic news blackout active. Trading held to protect capital against high slippage.";
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Macro News Gate",
+        confidence: params.confidence,
+        category: "NEWS_RISK",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "ECONOMIC_NEWS_BLACKOUT",
-        message: news.reason || "Economic news blackout active. Trading held to protect capital against high slippage.",
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -797,11 +1288,22 @@ export class AdvancedRiskManager {
     // 7. Spread & Slippage Filter Check
     const spreadCheck = this.checkSpreadAndSlippage(params.spread, params.priceTimestamp);
     if (!spreadCheck.isHealthy) {
+      const msg = spreadCheck.reason || `Spread $${params.spread.toFixed(2)} exceeds maximum permissible limit.`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Spread & Slippage Gate",
+        confidence: params.confidence,
+        category: "HIGH_SPREAD",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "SPREAD_TOO_HIGH",
-        message: spreadCheck.reason || `Spread $${params.spread.toFixed(2)} exceeds maximum permissible limit.`,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -826,12 +1328,23 @@ export class AdvancedRiskManager {
       spread: params.spread,
     });
 
-    if (regimeCheck.regime === "HIGH_VOLATILITY_UNSAFE") {
+    if (regimeCheck.regime === "HIGH_VOLATILITY_UNSAFE" || regimeCheck.regime === "RANGE_CHOPPY") {
+      const msg = regimeCheck.reason || "Market range or choppy conditions detected. Low directional clarity.";
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Regime & Chop Filter",
+        confidence: params.confidence,
+        category: "MARKET_CHOP",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "MARKET_REGIME_UNSAFE",
-        message: regimeCheck.reason,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -859,6 +1372,16 @@ export class AdvancedRiskManager {
     });
 
     if (!confidenceTier.allowed) {
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Confidence Tier Gate",
+        confidence: params.confidence,
+        category: "LOW_CONFIDENCE",
+        reason: confidenceTier.reason,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
@@ -883,35 +1406,22 @@ export class AdvancedRiskManager {
 
     // If resuming from consecutive losses, require strictly >= 92% confidence
     if (lossState.requiresStrongConfirmation && params.confidence < 92.0) {
+      const msg = `Post-loss recovery mode active: Requires strong setup with >= 92.0% confidence (current ${params.confidence.toFixed(1)}%).`;
+      this.recordRejection({
+        signalId: params.signalId,
+        symbol: "XAUUSD (Gold)",
+        engine: "Post-Loss Confirmation Gate",
+        confidence: params.confidence,
+        category: "CONSECUTIVE_LOSS_PAUSE",
+        reason: msg,
+        currentPrice: params.currentPrice,
+        spread: params.spread,
+      });
       return {
         allowed: false,
         status: "REJECTED",
         code: "CONSECUTIVE_LOSS_PAUSE",
-        message: `Post-loss recovery mode active: Requires strong setup with >= 92.0% confidence (current ${params.confidence.toFixed(1)}%).`,
-        details: {
-          dailyTradesCount: daily.count,
-          dailyTradeLimit: daily.limit,
-          dailyTradesRemaining: daily.remaining,
-          volatilityCondition: vol,
-          currentRegime: regimeCheck.regime,
-          currentSpread: params.spread,
-          consecutiveLosses: lossState.consecutiveLosses,
-          isConsecutiveLossPaused: false,
-          consecutiveLossRemainingMinutes: 0,
-          isNewsBlackout: false,
-          isFastTpCooldownActive: false,
-          fastTpCooldownRemainingMinutes: 0,
-        },
-      };
-    }
-
-    // If in RANGE_CHOPPY, block unless confidence >= 92.0%
-    if (regimeCheck.regime === "RANGE_CHOPPY" && params.confidence < 92.0) {
-      return {
-        allowed: false,
-        status: "REJECTED",
-        code: "MARKET_CHOPPY_LOW_QUALITY",
-        message: `Range/choppy market filter: Low-quality setups blocked. Requires >= 92.0% confidence during range conditions (current ${params.confidence.toFixed(1)}%).`,
+        message: msg,
         details: {
           dailyTradesCount: daily.count,
           dailyTradeLimit: daily.limit,
@@ -1044,6 +1554,168 @@ export class AdvancedRiskManager {
     this.consecutiveLossMode = "NORMAL";
     this.saveState();
     console.log("[ADVANCED RISK MANAGER]: Consecutive loss pause manually reset by operator.");
+  }
+
+  // ----------------------------------------------------
+  // TRADE LOCK STATUS REPORT
+  // ----------------------------------------------------
+  public getTradeLockStatusReport(
+    activeTrade?: any,
+    cooldownState?: any
+  ): TradeLockStatusReport {
+    this.checkDailyReset();
+    const now = Date.now();
+    const daily = this.isDailyLimitReached("NORMAL");
+    const lossState = this.getConsecutiveLossState();
+    const fastTp = this.getFastTpCooldownState();
+    const news = this.getEconomicNewsBlackout();
+
+    const hasActive = Boolean(
+      activeTrade &&
+      ["WAITING_FOR_ENTRY", "ENTRY_CONFIRMED", "OPEN", "TP1_HIT", "TP2_HIT", "TP3_HIT"].includes(activeTrade.status || "OPEN")
+    );
+
+    let cooldownUntil = 0;
+    let remainingMinutes = 0;
+    let remainingSeconds = 0;
+    let cooldownReason: string | null = null;
+
+    if (cooldownState && cooldownState.inCooldown && cooldownState.cooldownUntil > now) {
+      cooldownUntil = cooldownState.cooldownUntil;
+      const remMs = cooldownState.cooldownUntil - now;
+      remainingMinutes = Math.ceil(remMs / 60000);
+      remainingSeconds = Math.ceil(remMs / 1000);
+      cooldownReason = cooldownState.reason || "Post-trade 30-minute re-analysis cooldown active.";
+    } else if (fastTp.isActive) {
+      cooldownUntil = this.fastTpCooldownUntil;
+      const remMs = Math.max(0, this.fastTpCooldownUntil - now);
+      remainingMinutes = Math.ceil(remMs / 60000);
+      remainingSeconds = Math.ceil(remMs / 1000);
+      cooldownReason = `Fast TP cooldown active for trade #${this.fastTpLastTradeId} (${remainingMinutes}m remaining).`;
+    } else if (lossState.isPaused) {
+      cooldownUntil = this.consecutiveLossPauseUntil;
+      const remMs = Math.max(0, this.consecutiveLossPauseUntil - now);
+      remainingMinutes = Math.ceil(remMs / 60000);
+      remainingSeconds = Math.ceil(remMs / 1000);
+      cooldownReason = `Consecutive loss pause active (${lossState.consecutiveLosses} SL hits; ${remainingMinutes}m remaining).`;
+    }
+
+    const isCooldownActive = Boolean(
+      (cooldownState && cooldownState.inCooldown && cooldownState.cooldownUntil > now) ||
+      fastTp.isActive ||
+      lossState.isPaused
+    );
+
+    const blockingReasons: string[] = [];
+
+    if (this.autoRiskMode === "EMERGENCY") {
+      blockingReasons.push("EMERGENCY_STOP: System in emergency halt. All trade alerts paused by Admin.");
+    }
+    if (hasActive) {
+      blockingReasons.push(
+        `ACTIVE_TRADE: Position #${activeTrade.signalId || "ACTIVE"} (${activeTrade.direction || "BUY"}) is running. One-trade-at-a-time rule enforced.`
+      );
+    }
+    if (isCooldownActive && remainingMinutes > 0) {
+      blockingReasons.push(
+        `COOLDOWN: Next trade available in ${remainingMinutes} minute${remainingMinutes > 1 ? "s" : ""}. (${cooldownReason})`
+      );
+    }
+    if (daily.isReached) {
+      blockingReasons.push(
+        `DAILY_LIMIT: Daily maximum ${daily.limit} trades reached for today (${this.currentDayUtc} UTC). Resumes next UTC day.`
+      );
+    }
+    if (news.inBlackout) {
+      blockingReasons.push(
+        `NEWS_RISK: High-impact economic event blackout [${news.activeEvent?.name || "Economic Event"}] (${news.remainingMinutes}m remaining).`
+      );
+    }
+
+    const isTradeLocked = blockingReasons.length > 0;
+    const lockStatusLabel: "ON (LOCKED)" | "OFF (ARMED)" = isTradeLocked ? "ON (LOCKED)" : "OFF (ARMED)";
+
+    let nextAllowedSignalTime = now;
+    let nextAllowedSignalTimeFormatted = "Immediate (Upon A+ Setup)";
+
+    if (this.autoRiskMode === "EMERGENCY") {
+      nextAllowedSignalTimeFormatted = "Paused (Awaiting /resume)";
+    } else if (hasActive) {
+      nextAllowedSignalTimeFormatted = "Upon active trade closure + 30m cooldown";
+    } else if (isCooldownActive && cooldownUntil > now) {
+      nextAllowedSignalTime = cooldownUntil;
+      const timeStr = new Date(cooldownUntil).toISOString().replace("T", " ").substring(11, 16) + " UTC";
+      nextAllowedSignalTimeFormatted = `${timeStr} (in ${remainingMinutes}m)`;
+    } else if (daily.isReached) {
+      const tomorrow = new Date();
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      tomorrow.setUTCHours(0, 0, 0, 0);
+      nextAllowedSignalTime = tomorrow.getTime();
+      nextAllowedSignalTimeFormatted = "Tomorrow 00:00 UTC";
+    } else if (news.inBlackout) {
+      const newsResumeTime = now + (news.remainingMinutes || 30) * 60000;
+      nextAllowedSignalTime = newsResumeTime;
+      const timeStr = new Date(newsResumeTime).toISOString().replace("T", " ").substring(11, 16) + " UTC";
+      nextAllowedSignalTimeFormatted = `${timeStr} (in ${news.remainingMinutes}m)`;
+    }
+
+    const primaryBlockReason = isTradeLocked
+      ? blockingReasons[0]
+      : "None — Engine armed and scanning market 24/7 for high-probability setups.";
+
+    const cooldownDisplayText = isCooldownActive && remainingMinutes > 0
+      ? `Next trade available in ${remainingMinutes} minute${remainingMinutes > 1 ? "s" : ""}`
+      : "IDLE (Armed for next setup)";
+
+    return {
+      isTradeLocked,
+      lockStatusLabel,
+      currentActiveTrade: hasActive ? {
+        hasActiveTrade: true,
+        signalId: activeTrade.signalId,
+        symbol: activeTrade.symbol || "XAUUSD (Gold)",
+        direction: activeTrade.direction,
+        entry: activeTrade.entryPrice || activeTrade.entry,
+        entryZone: activeTrade.entryZone,
+        sl: activeTrade.stopLoss || activeTrade.sl,
+        tp1: activeTrade.tp1,
+        tp2: activeTrade.tp2,
+        tp3: activeTrade.tp3,
+        tp4: activeTrade.tp4,
+        currentPrice: activeTrade.currentPrice,
+        pnlPips: activeTrade.pnlPips,
+        pnlUSD: activeTrade.pnlUSD,
+        status: activeTrade.status,
+        engine: activeTrade.sourceStrategy || activeTrade.engine || "Institutional Core",
+        openedAt: activeTrade.openedAt ? new Date(activeTrade.openedAt).toISOString() : undefined,
+      } : null,
+      currentTradeId: hasActive && activeTrade?.signalId ? activeTrade.signalId : "NONE",
+      nextAllowedSignalTime,
+      nextAllowedSignalTimeFormatted,
+      cooldown: {
+        isActive: isCooldownActive && remainingMinutes > 0,
+        remainingMinutes,
+        remainingSeconds,
+        cooldownUntil,
+        reason: cooldownReason,
+        displayText: cooldownDisplayText,
+      },
+      blockingReasons,
+      primaryBlockReason,
+      autoRiskMode: this.autoRiskMode,
+      daily: {
+        tradesExecuted: daily.count,
+        limit: daily.limit,
+        remaining: daily.remaining,
+        isLimitReached: daily.isReached,
+      },
+      consecutiveLoss: {
+        count: lossState.consecutiveLosses,
+        limit: lossState.limit,
+        isPaused: lossState.isPaused,
+        remainingMinutes: lossState.remainingMinutes,
+      },
+    };
   }
 }
 

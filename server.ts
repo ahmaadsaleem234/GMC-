@@ -4865,16 +4865,134 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
                     netPips: totalPips,
                     winRate: tradesCount > 0 ? winRate : mt5AccountMetrics.winRatePct,
                   });
+                } else if (textLower.startsWith("/lock") || textLower.startsWith("/tradelock")) {
+                  const lockReport = tradeStateManager.getTradeLockStatusReport();
+                  const act = lockReport.currentActiveTrade;
+                  const activeDetails = act
+                    ? `<code>ACTIVE: #${act.signalId} (${act.direction} @ $${act.entry}) [${act.status}]</code>`
+                    : `<code>NONE (Arm & Scan)</code>`;
+
+                  replyText = `
+<b>🔒 TRADE LOCK STATUS DASHBOARD</b>
+━━━━━━━━━━━━━━━━━━━
+<b>🛡️ LOCK STATUS:</b> <code>${lockReport.lockStatusLabel}</code>
+<b>⚡ AUTO RISK MODE:</b> <code>${lockReport.autoRiskMode}</code>
+<b>📊 CURRENT ACTIVE TRADE:</b> ${activeDetails}
+<b>🆔 CURRENT TRADE ID:</b> <code>${lockReport.currentTradeId}</code>
+<b>⏳ NEXT ALLOWED SIGNAL:</b> <code>${lockReport.nextAllowedSignalTimeFormatted}</code>
+<b>⛔ PRIMARY BLOCK REASON:</b>
+<i>${lockReport.primaryBlockReason}</i>
+
+<b>📅 DAILY LIMIT:</b> <code>${lockReport.daily.tradesExecuted} / ${lockReport.daily.limit} trades (${lockReport.daily.remaining} remaining)</code>
+<b>🛑 CONSECUTIVE LOSSES:</b> <code>${lockReport.consecutiveLoss.count} / ${lockReport.consecutiveLoss.limit} SLs ${lockReport.consecutiveLoss.isPaused ? `(PAUSED: ${lockReport.consecutiveLoss.remainingMinutes}m)` : "(Normal)"}</code>
+<b>⏲️ COOLDOWN:</b> <code>${lockReport.cooldown.displayText}</code>
+`.trim();
+                } else if (textLower.startsWith("/cooldown") || textLower.startsWith("/timer")) {
+                  const lockReport = tradeStateManager.getTradeLockStatusReport();
+                  const cd = lockReport.cooldown;
+                  replyText = `
+<b>⏳ COOLDOWN TIMER DISPLAY</b>
+━━━━━━━━━━━━━━━━━━━
+<b>⏱️ STATUS:</b> <code>${cd.isActive ? "ACTIVE (SIGNALS HELD)" : "IDLE (ARMED)"}</code>
+<b>🕒 REMAINING:</b> <code>${cd.displayText}</code>
+<b>🔔 NEXT TRADE AVAILABLE:</b> <code>${lockReport.nextAllowedSignalTimeFormatted}</code>
+${cd.reason ? `<b>📝 REASON:</b> <i>${cd.reason}</i>` : ""}
+`.trim();
+                } else if (textLower.startsWith("/rejections") || textLower.startsWith("/rejectionlog") || textLower.startsWith("/rejects")) {
+                  const logs = advancedRiskManager.getRejectionLogs(5);
+                  if (logs.length === 0) {
+                    replyText = `
+<b>🛡️ SIGNAL REJECTION LOG</b>
+━━━━━━━━━━━━━━━━━━━
+<i>No rejected signals recorded. System is operating within clean risk boundaries.</i>
+`.trim();
+                  } else {
+                    const lines = logs.map((l, idx) => {
+                      const timeStr = new Date(l.timestamp).toISOString().replace("T", " ").substring(11, 19) + " UTC";
+                      return `<b>${idx + 1}. [${l.category}]</b> — <code>${timeStr}</code>
+<b>Setup:</b> <code>${l.signalId || "SCAN"} (${l.confidence ? l.confidence.toFixed(1) + "%" : "N/A"})</code>
+<b>Reason:</b> <i>${l.reason}</i>`;
+                    }).join("\n\n");
+
+                    replyText = `
+<b>🛡️ SIGNAL REJECTION LOG (LAST ${logs.length})</b>
+━━━━━━━━━━━━━━━━━━━
+${lines}
+
+<i>ℹ️ Admin tip: Use /lock or /mode to adjust parameters.</i>
+`.trim();
+                  }
+                } else if (textLower.startsWith("/mode") || textLower.startsWith("/riskmode")) {
+                  const parts = textLower.split(" ").filter(Boolean);
+                  const subMode = parts[1]?.toUpperCase();
+
+                  if (subMode === "NORMAL" || subMode === "SAFE" || subMode === "EMERGENCY") {
+                    const result = advancedRiskManager.setRiskMode(subMode as any);
+                    replyText = `
+<b>⚙️ AUTO RISK MODE UPDATED</b>
+━━━━━━━━━━━━━━━━━━━
+<b>🎯 NEW MODE:</b> <code>${result.mode}</code>
+<b>📝 DESCRIPTION:</b> <i>${result.description}</i>
+<b>🔒 TRADE LOCK STATUS:</b> <code>${result.isLocked ? "ON (BLOCKED)" : "OFF (ARMED)"}</code>
+`.trim();
+                  } else {
+                    const currentMode = advancedRiskManager.getRiskMode();
+                    replyText = `
+<b>⚙️ AUTO RISK MODES</b>
+━━━━━━━━━━━━━━━━━━━
+<b>CURRENT MODE:</b> <code>${currentMode}</code>
+
+<b>Available Commands:</b>
+• <code>/mode normal</code> — Full signal generation (standard filters)
+• <code>/mode safe</code> — High confidence only (≥92.0% required)
+• <code>/mode emergency</code> — Block all new signals immediately
+• <code>/resume</code> — Switch back to Normal Mode
+`.trim();
+                  }
+                } else if (textLower.startsWith("/emergencystop") || textLower.startsWith("/emergency")) {
+                  const result = advancedRiskManager.setRiskMode("EMERGENCY");
+                  replyText = `
+<b>🚨 EMERGENCY STOP ACTIVATED</b>
+━━━━━━━━━━━━━━━━━━━
+<b>STATUS:</b> <code>ALL NEW TELEGRAM SIGNALS HALTED</code>
+<b>ACTION:</b> System is locked down. No orders or signals will dispatch.
+<b>TO RESUME:</b> Send <code>/resume</code> or <code>/mode normal</code>.
+`.trim();
+                } else if (textLower.startsWith("/resume")) {
+                  const result = advancedRiskManager.setRiskMode("NORMAL");
+                  replyText = `
+<b>✅ TRADING RESUMED — NORMAL MODE</b>
+━━━━━━━━━━━━━━━━━━━
+<b>STATUS:</b> <code>ARMED & SCANNING 24/7</code>
+<b>ACTION:</b> Emergency halt lifted. Signal engine resumed standard operations.
+`.trim();
+                } else if (textLower.startsWith("/resetlosses") || textLower.startsWith("/reset_losses")) {
+                  advancedRiskManager.resetConsecutiveLossPause();
+                  replyText = `
+<b>🔄 CONSECUTIVE LOSS PAUSE RESET</b>
+━━━━━━━━━━━━━━━━━━━
+<b>STATUS:</b> <code>CONSECUTIVE LOSS COUNTER CLEARED</code>
+<b>ACTION:</b> Loss pause terminated. Standard signal generation resumed.
+`.trim();
                 } else if (textLower.startsWith("/help") || textLower.startsWith("/tools")) {
                   replyText = `
 <b>🛠️ GMC TRADING AI BOT COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━
-/start — Welcome & bot overview
+<b>📈 SIGNALS & ENGINE:</b>
 /signal — View active trade setup or market status
-/warroom — Live GMC War Room 7-gate confluences & candidate
+/warroom — Live GMC War Room 7-gate confluences
 /harami — Harami AI 30-min SMC & MTF scan status
 /summary — Daily performance & trade breakdown
-/status — Complete 24/7 engine health & spot gold price
+/status — 24/7 engine health & spot gold price
+
+<b>🛡️ RISK & ADMIN CONTROLS:</b>
+/lock — Trade Lock Status Dashboard & block reason
+/cooldown — Remaining cooldown timer display
+/rejections — Recent signal rejection log (with reasons)
+/mode normal | safe | emergency — Switch Auto Risk Mode
+/emergencystop — Immediate halt to all new signals
+/resume — Resume normal signal broadcasting
+/resetlosses — Clear consecutive loss pause
 /help — Show commands list
 `.trim();
                 } else if (textLower.startsWith("/unsubscribe")) {
@@ -6591,7 +6709,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // No arbitrary 45-minute timeout. Active trades are locked and run until legitimate TP/SL conclusion.
 
     // 1. Evaluate for NEW SIGNAL only if NO active trade exists anywhere in the system
-    const systemActiveTrade = serverActiveTrade || tradeStateManager.getActiveTrade() || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
+    const stateManagerActiveTrade = tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null;
+    const systemActiveTrade = serverActiveTrade || stateManagerActiveTrade || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
     if (!systemActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
         serverCurrentDecision = "WAIT — SIGNALS PAUSED";
@@ -6784,7 +6903,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           if (!admission.allowed) {
             console.log(`[SAFETY GATE ADMISSION REJECTED]: ${admission.blockReason}`);
-            serverCurrentDecision = "WAIT — BLOCKED BY SAFETY GATE";
+            serverCurrentDecision = `WAIT — BLOCKED BY SAFETY GATE: ${admission.blockReason}`;
             serverAnalysisLogs.unshift({
               cycleId: `cycle-${now}`,
               timestampUtc: nowUtc,
@@ -6983,6 +7102,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
     // 2. Continuous Tracking & Real-Price Outcome Handling for Active Trade
     else {
+      if (!serverActiveTrade) {
+        // Active position belongs to another engine (War Room, Khatarnak Jugaad, Central Signal Manager)
+        const activeName =
+          warRoomServerService.getActiveSetup()?.setupId ||
+          serverActiveKhatarnakSetup?.id ||
+          centralSignalManager.getActiveSetup()?.setupId ||
+          (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade()?.signalId : null) ||
+          "Active Trade";
+        serverCurrentDecision = `HOLD — ACTIVE POSITION RUNNING (${activeName})`;
+        return;
+      }
+
       const trade = serverActiveTrade;
       trade.currentBid = tick.bid;
       trade.currentAsk = tick.ask;
@@ -6991,6 +7122,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       trade.priceFeedStatus = "Live";
       trade.priceSource = tick.source;
       trade.priceFeedNote = undefined;
+      if (!Array.isArray(trade.auditLogs)) trade.auditLogs = [];
+      if (!Array.isArray(trade.dispatchedOutcomes)) trade.dispatchedOutcomes = [];
 
       const activeEntry = trade.actualExecutedEntryPrice || trade.entry;
       const isBuy = trade.direction === "BUY";
@@ -7019,9 +7152,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
       // 2A. Zone Entry Check if Waiting For Entry
       if (trade.status === "WAITING_FOR_ENTRY") {
+        const entryLow = Array.isArray(trade.entryZone) ? trade.entryZone[0] : trade.entry - 1.0;
+        const entryHigh = Array.isArray(trade.entryZone) ? trade.entryZone[1] : trade.entry + 1.0;
         const inZone = isBuy
-          ? tick.ask <= trade.entryZone[1] && tick.ask >= trade.entryZone[0] - 2.0
-          : tick.bid >= trade.entryZone[0] && tick.bid <= trade.entryZone[1] + 2.0;
+          ? tick.ask <= entryHigh && tick.ask >= entryLow - 2.0
+          : tick.bid >= entryLow && tick.bid <= entryHigh + 2.0;
 
         const isInvalidated = isBuy ? tick.bid <= trade.sl : tick.ask >= trade.sl;
 
@@ -8526,6 +8661,110 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       res.json({
         ok: true,
         message: "Consecutive loss pause reset successfully. Resuming standard risk gate.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 1) TRADE LOCK STATUS DASHBOARD API
+  app.get("/api/trade-lock-status", (req, res) => {
+    try {
+      const report = tradeStateManager.getTradeLockStatusReport();
+      res.json({
+        ok: true,
+        data: report,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 2) SIGNAL REJECTION LOG API
+  app.get("/api/signal-rejections", (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 100;
+      const logs = advancedRiskManager.getRejectionLogs(limit);
+      res.json({
+        ok: true,
+        data: logs,
+        count: logs.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/signal-rejections/clear", (req, res) => {
+    try {
+      advancedRiskManager.clearRejectionLogs();
+      res.json({
+        ok: true,
+        message: "Signal rejection logs cleared successfully.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 3) AUTO RISK MODES API
+  app.post("/api/risk-mode", (req, res) => {
+    try {
+      const { mode } = req.body || {};
+      if (!mode || !["NORMAL", "SAFE", "EMERGENCY"].includes(mode)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid mode. Allowed modes are 'NORMAL', 'SAFE', or 'EMERGENCY'.",
+        });
+      }
+      const result = advancedRiskManager.setRiskMode(mode);
+      res.json({
+        ok: true,
+        data: result,
+        message: `Auto risk mode switched to ${mode}.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 4) COOLDOWN & PAUSE CONTROLS API
+  app.post("/api/consecutive-loss/reset", (req, res) => {
+    try {
+      advancedRiskManager.resetConsecutiveLossPause();
+      res.json({
+        ok: true,
+        message: "Consecutive loss pause reset. Resumed standard signal evaluation.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/cooldown/reset", (req, res) => {
+    try {
+      tradeStateManager.resetCooldown();
+      res.json({
+        ok: true,
+        message: "Trade cooldown timer reset. Armed for next setup.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/trade-lock/release", (req, res) => {
+    try {
+      tradeStateManager.closeActiveTrade("MANUAL_CLOSE", 0, 0, 0, 0);
+      tradeStateManager.resetCooldown();
+      serverActiveTrade = null;
+      serverActiveKhatarnakSetup = null;
+      centralSignalManager.clearActiveSetup();
+      warRoomServerService.clearActiveSetup();
+      res.json({
+        ok: true,
+        message: "Trade lock and active trade position released across all engines by Admin override.",
       });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
