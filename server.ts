@@ -6761,23 +6761,23 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
         // Dynamic SMC & MTF Structure Analysis around live market price
         const seed = Math.floor(now / 15000) % 100;
-        const targetConfidence = Math.max(90.0, superAdminService.getConfig()?.haramiMinConfidence || 90.0);
+        const targetConfidence = Math.max(80.0, superAdminService.getConfig()?.haramiMinConfidence || 80.0);
 
         const baseBuy = 85.0 + (seed % 7) * 1.5 + Math.sin(currentPrice * 2.5) * 4.5;
         const baseSell = 85.0 + ((seed + 3) % 7) * 1.5 + Math.cos(currentPrice * 2.5) * 4.5;
         const buyScore = Number(Math.min(97.0, Math.max(60.0, baseBuy)).toFixed(1));
         const sellScore = Number(Math.min(97.0, Math.max(60.0, baseSell)).toFixed(1));
 
-        // Clear market condition check: require significant directional dominance (at least 7.0 score margin)
+        // Clear market condition check: require directional margin (at least 2.0 score margin)
         // If buy and sell scores are close to each other, market is choppy/unclear -> WAIT
         const scoreDifference = Math.abs(buyScore - sellScore);
-        const isMarketConditionClear = scoreDifference >= 7.0;
+        const isMarketConditionClear = scoreDifference >= 2.0;
 
         let direction: "BUY" | "SELL" | "NO_TRADE" = "NO_TRADE";
         let confidence = Math.max(buyScore, sellScore);
 
         if (!isMarketConditionClear) {
-          serverCurrentDecision = `WAIT — MARKET CHOPPY (Indecision: Buy ${buyScore}% vs Sell ${sellScore}%, spread ${scoreDifference.toFixed(1)} < 7.0). Waiting for clear structural direction.`;
+          serverCurrentDecision = `WAIT — MARKET CHOPPY (Indecision: Buy ${buyScore}% vs Sell ${sellScore}%, spread ${scoreDifference.toFixed(1)} < 2.0). Waiting for clear structural direction.`;
           return;
         }
 
@@ -6898,7 +6898,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             proposedLevels,
             "Harami AI",
             confidence,
-            88.0
+            80.0
           );
 
           if (!admission.allowed) {

@@ -211,52 +211,27 @@ export async function dispatchTradeAlertToTelegram(trade: {
   reason?: string;
 }) {
   const alertId = `trade-harami-${trade.asset}-${trade.type}-${trade.entry}-${Math.floor(Date.now() / 300000)}`;
-  const icon = trade.type === "BUY" ? "🟢 🚀" : "🔴 📉";
-
   const isBuy = trade.type === "BUY";
-  const iconEmoji = isBuy ? "🟢🔥" : "🔴🔥";
-  const entryLowStr = (trade.entry - 0.55).toFixed(2);
-  const entryHighStr = (trade.entry + 0.65).toFixed(2);
-  const entryZone = `$${entryLowStr} - $${entryHighStr}`;
-  const risk = Math.abs(trade.entry - trade.sl);
-  const reward = Math.abs(trade.tp1 - trade.entry);
-  const rr = risk > 0 ? `1 : ${(reward / risk).toFixed(1)}` : "1 : 1.6";
-  const confidence = trade.confidence || 96.9;
-  const tp2 = trade.tp2 || Number((isBuy ? trade.entry + reward * 1.8 : trade.entry - reward * 1.8).toFixed(2));
-  const tp3 = trade.tp3 || Number((isBuy ? trade.entry + reward * 2.8 : trade.entry - reward * 2.8).toFixed(2));
-  const tp4 = trade.tp4 || Number((isBuy ? trade.entry + reward * 4.0 : trade.entry - reward * 4.0).toFixed(2));
+  
+  const tp2 = trade.tp2 || 0;
+  const tp3 = trade.tp3 || 0;
+  const tp4 = trade.tp4 || 0;
 
-  let assetName = "GOLD";
-  if (trade.asset.includes("BTC")) assetName = "BITCOIN";
-  else if (trade.asset.includes("ETH")) assetName = "ETHEREUM";
-  else if (!trade.asset.includes("XAU") && !trade.asset.includes("Gold")) {
-    assetName = trade.asset.split(" ")[0].replace("FOREXCOM:", "");
-  }
-
-  const symbolShort = trade.asset.includes("XAU") ? "XAUUSD" : trade.asset.split(" ")[0].replace("FOREXCOM:", "");
-  const dynamicReason = trade.reason || trade.confluence || generateDynamicReason(trade.type);
-
-  const message = formatHaramiSignalMessage({
-    direction: trade.type,
-    symbolShort,
-    assetName,
-    h4Context: isBuy ? "Bullish" : "Bearish",
-    h1Bias: isBuy ? "BULLISH" : "BEARISH",
-    m15Setup: isBuy ? "BULLISH" : "BEARISH",
-    m5Entry: "CONFIRMED",
-    entryLow: trade.entry - 0.55,
-    entryHigh: trade.entry + 0.65,
-    bestEntry: trade.entry,
-    currentPrice: trade.entry,
-    sl: trade.sl,
-    tp1: trade.tp1,
-    tp2,
-    tp3,
-    tp4,
-    rr,
-    confidence,
-    reason: dynamicReason,
-  });
+  const message = `
+<b>🚀 NEW ${trade.type} SIGNAL: ${trade.asset}</b>
+━━━━━━━━━━━━━━━━━━━
+<b>📍 ENTRY:</b> <code>$${trade.entry.toFixed(2)}</code>
+<b>🛡 SL:</b> <code>$${trade.sl.toFixed(2)}</code>
+━━━━━━━━━━━━━━━━━━━
+<b>🎯 TAKE PROFIT LEVELS:</b>
+<b>TP1:</b> <code>$${trade.tp1.toFixed(2)}</code>
+${tp2 ? `<b>TP2:</b> <code>$${tp2.toFixed(2)}</code>` : ""}
+${tp3 ? `<b>TP3:</b> <code>$${tp3.toFixed(2)}</code>` : ""}
+${tp4 ? `<b>TP4:</b> <code>$${tp4.toFixed(2)}</code>` : ""}
+━━━━━━━━━━━━━━━━━━━
+<b>🧠 CONFLUENCE:</b> <i>${trade.confluence || "N/A"}</i>
+<i>⚡ GMC Auto-Dispatch • Risk Management Active</i>
+  `.trim();
 
   return await sendTelegramMessage(message, alertId);
 }

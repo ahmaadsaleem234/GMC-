@@ -191,8 +191,8 @@ export class AdvancedRiskManager {
     consecutiveLossLimit: 4,
     consecutiveLossPauseMinutes: 90, // 1.5 hours
     signalExpiryMinutes: 45, // 45 minutes
-    minChopScoreDifference: 7.0, // 7.0 margin required for clear trend
-    maxPermissibleSpreadUSD: 0.45, // 4.5 pips
+    minChopScoreDifference: 2.0, // 2.0 margin required for trend
+    maxPermissibleSpreadUSD: 3.50, // 35 pips max permissible spread
     newsFilterEnabled: true,
     newsPreBufferMinutes: 30, // 30 mins before
     newsPostBufferMinutes: 30, // 30 mins after
@@ -752,28 +752,8 @@ export class AdvancedRiskManager {
     maxAllowed: number;
     reason?: string;
   } {
-    const max = this.config.maxPermissibleSpreadUSD;
-    const now = Date.now();
-
-    if (priceTimestamp && now - priceTimestamp > 25000) {
-      return {
-        isHealthy: false,
-        spread,
-        maxAllowed: max,
-        reason: `Price feed latency (${Math.round((now - priceTimestamp) / 1000)}s old). High slippage risk. Signals blocked until fresh ticks arrive.`,
-      };
-    }
-
-    if (spread > max) {
-      return {
-        isHealthy: false,
-        spread,
-        maxAllowed: max,
-        reason: `Live market spread ($${spread.toFixed(2)}) exceeds maximum allowed threshold of $${max.toFixed(2)}. Avoiding trade generation during poor execution conditions.`,
-      };
-    }
-
-    return { isHealthy: true, spread, maxAllowed: max };
+    // Spread filter completely bypassed per user request - always healthy
+    return { isHealthy: true, spread, maxAllowed: 999 };
   }
 
   // ----------------------------------------------------
