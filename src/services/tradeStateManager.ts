@@ -90,6 +90,7 @@ export interface UnifiedActiveTrade {
   tp4Hit: boolean;
   slHit: boolean;
   dispatchedOutcomes: string[];
+  entryDispatched?: boolean;
   createdAt: number;
   signalGeneratedAt: string;
   entryTriggeredAt?: string;
@@ -169,7 +170,7 @@ export class MasterTradeStateManager {
         const parsed = JSON.parse(raw);
         if (parsed.activeTrade && (parsed.activeTrade.status === "WAITING_FOR_ENTRY" || parsed.activeTrade.status === "ENTRY_CONFIRMED" || parsed.activeTrade.status === "OPEN" || parsed.activeTrade.status?.startsWith("TP"))) {
           const ageMs = Date.now() - (parsed.activeTrade.createdAt || 0);
-          const MAX_RESTORE_AGE_MS = 45 * 60 * 1000; // 45 minutes limit for intraday trades
+          const MAX_RESTORE_AGE_MS = 12 * 60 * 1000; // 12 minutes limit for intraday scalps
           if (ageMs > MAX_RESTORE_AGE_MS) {
             console.log(`[TRADE STATE RECOVERY]: Stored trade ${parsed.activeTrade.signalId} is ${Math.round(ageMs / 60000)}m old (>45m limit). Expiring to allow immediate fresh scanning.`);
             this.activeTrade = null;
@@ -373,28 +374,28 @@ export class MasterTradeStateManager {
   }
 
   public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
-    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 30);
+    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 1);
   }
 
   public startCooldown(
-    customDurationMinutes: number = 30,
+    customDurationMinutes: number = 1,
     outcome: string = "TRADE_CLOSED",
     signalId?: string,
     zone?: { low: number; high: number; direction: "BUY" | "SELL" }
   ) {
     const now = Date.now();
-    const durationMinutes = customDurationMinutes || 30;
+    const durationMinutes = customDurationMinutes !== undefined ? customDurationMinutes : 1;
     const durationMs = durationMinutes * 60 * 1000;
     this.cooldownState = {
       inCooldown: true,
       cooldownUntil: now + durationMs,
       remainingMinutes: durationMinutes,
-      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. Strict 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
+      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. 1-Minute Cooldown active to ensure clean state reset.`,
       lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
       lastFailedSetupZone: zone || this.cooldownState.lastFailedSetupZone,
     };
     console.log(
-      `[TRADE STATE MANAGER]: ⏳ 30-Minute Cooldown Activated for trade #${signalId || "N/A"} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
+      `[TRADE STATE MANAGER]: ⏳ Cooldown Activated for trade #${signalId || "N/A"} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
     );
     this.persistState();
   }
@@ -708,7 +709,8 @@ export class MasterTradeStateManager {
       tp3Hit: false,
       tp4Hit: false,
       slHit: false,
-      dispatchedOutcomes: ["SIGNAL"],
+      dispatchedOutcomes: [],
+      entryDispatched: false,
       createdAt: now,
       signalGeneratedAt: nowUtc,
       entryTriggeredAt: params.isAlreadyInZone ? nowUtc : undefined,
@@ -863,6 +865,32 @@ export class MasterTradeStateManager {
 
   public getTradeLockStatusReport() {
     return advancedRiskManager.getTradeLockStatusReport(this.activeTrade, this.cooldownState);
+  }
+
+  public markSignalDispatched(signalId: string): void {
+    if (this.activeTrade && (this.activeTrade.signalId === signalId || this.activeTrade.id === signalId)) {
+      if (!this.activeTrade.dispatchedOutcomes.includes("SIGNAL")) {
+        this.activeTrade.dispatchedOutcomes.push("SIGNAL");
+      }
+      this.activeTrade.entryDispatched = true;
+      this.persistState();
+      console.log(`[TRADE STATE MANAGER]: ✅ Marked trade #${signalId} as confirmed signal dispatched.`);
+    }
+  }
+
+  public isSignalDispatched(signalId?: string): boolean {
+    if (!this.activeTrade) return false;
+    if (signalId) {
+      const cleanTarget = signalId.replace("#", "").trim().toUpperCase();
+      const cleanActive = (this.activeTrade.signalId || this.activeTrade.id || "").replace("#", "").trim().toUpperCase();
+      if (cleanTarget !== cleanActive && !cleanTarget.includes(cleanActive) && !cleanActive.includes(cleanTarget)) {
+        return false;
+      }
+    }
+    return Boolean(
+      this.activeTrade.entryDispatched ||
+      this.activeTrade.dispatchedOutcomes?.includes("SIGNAL")
+    );
   }
 }
 

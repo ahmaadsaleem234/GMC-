@@ -1,6 +1,26 @@
 {
   "logs": [
     {
+      "id": "DELIV-1789340113786",
+      "signalId": "HRM-6466_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-13T22:55:13.528Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1789339323890",
+      "signalId": "HRM-5683_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-13T22:42:03.589Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
       "id": "DELIV-1787948410925",
       "signalId": "GMC-WAR-20260828-005",
       "engine": "GMC_SYSTEM",

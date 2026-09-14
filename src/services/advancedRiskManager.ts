@@ -191,13 +191,13 @@ export class AdvancedRiskManager {
     consecutiveLossLimit: 4,
     consecutiveLossPauseMinutes: 90, // 1.5 hours
     signalExpiryMinutes: 45, // 45 minutes
-    minChopScoreDifference: 2.0, // 2.0 margin required for trend
+    minChopScoreDifference: 0.5, // Sensitive directional margin
     maxPermissibleSpreadUSD: 3.50, // 35 pips max permissible spread
     newsFilterEnabled: true,
     newsPreBufferMinutes: 30, // 30 mins before
     newsPostBufferMinutes: 30, // 30 mins after
     fastTpWindowMinutes: 12, // <= 12 mins = Fast TP
-    fastTpCooldownMinutes: 25, // 25 mins cooldown
+    fastTpCooldownMinutes: 1, // 1 min pause to allow swift follow-up setups without market chasing
     highConfidenceThreshold: 90.0,
     mediumConfidenceThreshold: 80.0,
     minAbsoluteConfidence: 80.0,
@@ -725,20 +725,21 @@ export class AdvancedRiskManager {
       };
     }
 
-    // B. Range / Choppy check: directional scores are too close (< 7.0 score margin)
-    if (scoreDiff < this.config.minChopScoreDifference) {
+    // B. High-confidence institutional confluence (>=85% score or margin >= minChopScoreDifference)
+    const maxScore = Math.max(buy, sell);
+    if (maxScore >= 85.0 || scoreDiff >= this.config.minChopScoreDifference) {
       return {
-        regime: "RANGE_CHOPPY",
-        reason: `Range-bound/choppy market indecision (Buy ${buy.toFixed(1)}% vs Sell ${sell.toFixed(1)}%, margin ${scoreDiff.toFixed(1)} < ${this.config.minChopScoreDifference}). Avoid low-quality signals.`,
-        tradingAllowed: false,
+        regime: "TRENDING",
+        reason: `Institutional structure confirmed (Max confidence ${maxScore.toFixed(1)}%, score margin ${scoreDiff.toFixed(1)}). Trading fully allowed.`,
+        tradingAllowed: true,
       };
     }
 
-    // C. Trending market: clear directional advantage
+    // C. Directional scores are too close and low conviction (< 85%)
     return {
-      regime: "TRENDING",
-      reason: `Clear structural trend confirmed (Directional margin ${scoreDiff.toFixed(1)} >= ${this.config.minChopScoreDifference}). Trading fully allowed.`,
-      tradingAllowed: true,
+      regime: "RANGE_CHOPPY",
+      reason: `Range-bound market indecision (Buy ${buy.toFixed(1)}% vs Sell ${sell.toFixed(1)}%, margin ${scoreDiff.toFixed(1)} < ${this.config.minChopScoreDifference}).`,
+      tradingAllowed: false,
     };
   }
 
@@ -862,7 +863,7 @@ export class AdvancedRiskManager {
     const derivedMargin = (additionalConfirmations.scoreMargin !== undefined && additionalConfirmations.scoreMargin > 0)
       ? additionalConfirmations.scoreMargin
       : confidence >= 85.0 ? Math.max(10.0, (confidence - 80.0) * 2) : 0;
-    const isMarginStrong = derivedMargin >= 7.0 || confidence >= 88.0;
+    const isMarginStrong = derivedMargin >= 1.0 || confidence >= 82.0;
 
     if (isRegimeValid && isSpreadValid && isCooldownClear && isMarginStrong) {
       return {
@@ -876,7 +877,7 @@ export class AdvancedRiskManager {
     if (!isRegimeValid) missingReasons.push("market regime is not trending");
     if (!isSpreadValid) missingReasons.push("spread conditions are elevated");
     if (!isCooldownClear) missingReasons.push("system cooldown or recovery active");
-    if (!isMarginStrong) missingReasons.push("directional score margin < 7.0");
+    if (!isMarginStrong) missingReasons.push("directional score margin < 1.0");
 
     return {
       tier: "STRONG_CONFIRMATION_ONLY",

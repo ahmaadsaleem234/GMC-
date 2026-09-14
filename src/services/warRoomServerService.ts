@@ -1608,17 +1608,24 @@ class WarRoomServerService {
           return alert;
         } else if (eventType === "SETUP_ACTIVATED") {
           telegramText = formatWarRoomTelegramSignal(setup);
-        } else if (eventType === "ENTRY_HIT") {
-          telegramText = formatWarRoomTelegramUpdate(setup, "ENTRY_ACTIVATED", message);
-        } else if (eventType === "SL_HIT") {
-          const updateType = setup.finalOutcome === "BREAKEVEN" ? "BREAKEVEN" : "STOP_LOSS";
-          telegramText = formatWarRoomTelegramUpdate(setup, updateType, message);
-        } else if (eventType === "SETUP_EXPIRED") {
-          telegramText = formatWarRoomTelegramUpdate(setup, "EXPIRED", message);
-        } else if (eventType === "SETUP_CANCELLED") {
-          telegramText = formatWarRoomTelegramUpdate(setup, "CANCELLED", message);
         } else {
-          telegramText = formatWarRoomTelegramUpdate(setup, eventType as any, message);
+          // STRICT SEQUENTIAL DISPATCH: Initial Setup Signal MUST be sent before any lifecycle/TP/SL/Exit alerts!
+          if (!setup.telegramDispatched) {
+            console.warn(`[WAR ROOM SEQUENCE]: Suppressed ${eventType} for ${setup.setupId} because initial setup signal was not dispatched.`);
+            return alert;
+          }
+          if (eventType === "ENTRY_HIT") {
+            telegramText = formatWarRoomTelegramUpdate(setup, "ENTRY_ACTIVATED", message);
+          } else if (eventType === "SL_HIT") {
+            const updateType = setup.finalOutcome === "BREAKEVEN" ? "BREAKEVEN" : "STOP_LOSS";
+            telegramText = formatWarRoomTelegramUpdate(setup, updateType, message);
+          } else if (eventType === "SETUP_EXPIRED") {
+            telegramText = formatWarRoomTelegramUpdate(setup, "EXPIRED", message);
+          } else if (eventType === "SETUP_CANCELLED") {
+            telegramText = formatWarRoomTelegramUpdate(setup, "CANCELLED", message);
+          } else {
+            telegramText = formatWarRoomTelegramUpdate(setup, eventType as any, message);
+          }
         }
 
         const alertKey = `${setup.setupId}_${eventType}`;
@@ -1626,6 +1633,11 @@ class WarRoomServerService {
         if (sent) {
           alert.telegramSent = true;
           alert.telegramSentAt = new Date().toISOString().replace("T", " ").substring(11, 19) + " UTC";
+          if (eventType === "SETUP_ACTIVATED") {
+            setup.telegramDispatched = true;
+            setup.telegramSentAt = alert.telegramSentAt;
+            setup.telegramStatus = "SENT";
+          }
         }
       } catch (err: any) {
         console.warn("[TELEGRAM DISPATCH WARNING]:", err.message);

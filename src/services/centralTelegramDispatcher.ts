@@ -353,6 +353,13 @@ export async function dispatchCentralLifecycleEventToTelegram(
     return { success: true, message: "Lifecycle alert already dispatched." };
   }
 
+  // Guard: Ensure initial trade entry setup was dispatched to Telegram FIRST
+  const newSetupKey = `${setup.setupId}_NEW_SETUP`;
+  if (!sent.has(newSetupKey)) {
+    console.log(`[CENTRAL DISPATCH GUARD]: Initial trade signal #${setup.setupId} missing from Telegram! Dispatching initial setup FIRST.`);
+    await dispatchCentralWinningSetupToTelegram(setup);
+  }
+
   const px = currentPrice || setup.preferredEntry;
   const brainHeader =
     setup.brainSource === "KHATARNAK_JUGAAD"

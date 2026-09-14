@@ -42,15 +42,15 @@ export class ModuleSignalGatekeeper {
     startedAt: number;
   } | null = null;
 
-  // 30 Minutes standard cooldown
-  public readonly COOLDOWN_DURATION_MS = 30 * 60 * 1000;
+  // 1 Minute standard cooldown for nimble execution
+  public readonly COOLDOWN_DURATION_MS = 60 * 1000;
 
   /**
-   * Start a global 30-minute cooldown across the entire system.
-   * Prevents any engine from dispatching conflicting signals.
+   * Start a global cooldown across the entire system.
+   * Prevents conflicting signals while allowing fast follow-up trades.
    */
   public startGlobalCooldown(
-    durationMinutes: number = 30,
+    durationMinutes: number = 1,
     outcome: string = "TRADE_CLOSED",
     tradeId?: string
   ): void {
@@ -76,7 +76,7 @@ export class ModuleSignalGatekeeper {
     }
 
     console.log(
-      `[GLOBAL COOLDOWN ACTIVATED] ⏳ All AI trading engines entered strict 30-minute system-wide cooldown until ${new Date(now + durationMs).toISOString()} (Triggered by ${outcome} on Trade #${tradeId || "N/A"}).`
+      `[GLOBAL COOLDOWN ACTIVATED] ⏳ System-wide cooldown set for ${durationMinutes}m until ${new Date(now + durationMs).toISOString()} (Triggered by ${outcome} on Trade #${tradeId || "N/A"}).`
     );
   }
 
@@ -258,9 +258,9 @@ export class ModuleSignalGatekeeper {
       return { canSend: false, reason, moduleKey };
     }
 
-    // 2. Strict Quality Filter: Only high confidence (>= 90%) setups allowed to Telegram
-    if (score < 90.0) {
-      const reason = `[QUALITY GATE BLOCKED] ⚠️ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (< 90% minimum threshold). Skipped to prioritize signal quality over quantity and avoid conflicting signals.`;
+    // 2. Strict Quality Filter: Only high confidence (>= 80%) setups allowed to Telegram
+    if (score < 80.0) {
+      const reason = `[QUALITY GATE BLOCKED] ⚠️ Signal #${idStr} from '${label}' scored ${score.toFixed(1)}% (< 80% minimum threshold). Skipped to prioritize signal quality over quantity and avoid conflicting signals.`;
       console.log(reason);
       return { canSend: false, reason, moduleKey };
     }

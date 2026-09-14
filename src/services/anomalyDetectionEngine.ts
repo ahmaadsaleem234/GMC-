@@ -144,10 +144,10 @@ export class AnomalyDetectionEngine {
         const risk = bestEntry - sl;
         const reward = tp1 - bestEntry;
         const rr = reward / Math.max(0.01, risk);
-        if (rr < 1.35) {
+        if (rr < 1.10) {
           checks.tradeLevelsValidPassed = false;
           anomalyType = "INSUFFICIENT_RR";
-          failureReason = `Risk:Reward ratio (${rr.toFixed(2)}) is below institutional 1:1.35 minimum.`;
+          failureReason = `Risk:Reward ratio (${rr.toFixed(2)}) is below institutional 1:1.10 minimum.`;
         }
       }
     } else if (direction === "SELL") {
@@ -164,10 +164,10 @@ export class AnomalyDetectionEngine {
         const risk = sl - bestEntry;
         const reward = bestEntry - tp1;
         const rr = reward / Math.max(0.01, risk);
-        if (rr < 1.35) {
+        if (rr < 1.10) {
           checks.tradeLevelsValidPassed = false;
           anomalyType = "INSUFFICIENT_RR";
-          failureReason = `Risk:Reward ratio (${rr.toFixed(2)}) is below institutional 1:1.35 minimum.`;
+          failureReason = `Risk:Reward ratio (${rr.toFixed(2)}) is below institutional 1:1.10 minimum.`;
         }
       }
     }

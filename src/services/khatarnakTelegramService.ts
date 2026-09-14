@@ -285,6 +285,12 @@ export async function dispatchStatusUpdateToTelegram(
   event: JugaadTelegramEventType,
   currentPrice: number
 ): Promise<{ success: boolean; error?: string }> {
+  // Guard: Ensure initial trade entry setup was dispatched to Telegram FIRST
+  if (!isEventAlreadyDispatched(setup.id, "NEW_SETUP")) {
+    console.log(`[KHATARNAK TELEGRAM GUARD]: Initial trade signal #${setup.id} missing from Telegram! Dispatching initial setup FIRST.`);
+    await dispatchNewJugaadSetupToTelegram(setup);
+  }
+
   const message = formatStatusUpdateTelegramMessage(setup, event, currentPrice);
   const cfg = getTelegramConfig();
 

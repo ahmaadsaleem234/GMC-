@@ -5,7 +5,7 @@
     "cooldownUntil": 0,
     "remainingMinutes": 0,
     "reason": null,
-    "lastSlHitTimestamp": null,
+    "lastSlHitTimestamp": 0,
     "lastFailedSetupZone": null
   },
   "tradingMode": "LIVE",
@@ -18,5 +18,5 @@
     "lastConflictResolvedAt": null,
     "adminNotified": false
   },
-  "lastPersistedAt": "2026-09-10T09:23:17.832Z"
+  "lastPersistedAt": "2026-09-14T14:15:00.000Z"
 }

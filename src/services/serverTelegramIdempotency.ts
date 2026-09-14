@@ -259,6 +259,27 @@ class TelegramIdempotencyRegistry {
   }
 
   /**
+   * Check if the initial complete trade signal has been confirmed dispatched for this trade ID
+   */
+  public hasInitialSignalBeenDispatched(tradeId?: string): boolean {
+    if (!tradeId) return false;
+    const cleanId = tradeId.replace("#", "").trim().toUpperCase();
+    for (const key of this.dispatchedKeys) {
+      if (key.includes(cleanId) && (key.includes("NEW_SETUP") || key.includes("SIGNAL"))) {
+        return true;
+      }
+    }
+    for (const rec of this.records) {
+      if (rec.tradeId && (rec.tradeId === cleanId || rec.tradeId.includes(cleanId) || cleanId.includes(rec.tradeId))) {
+        if (rec.event === "NEW_SETUP" || (rec.key && rec.key.includes("NEW_SETUP"))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * Get audit statistics
    */
   public getStats() {
