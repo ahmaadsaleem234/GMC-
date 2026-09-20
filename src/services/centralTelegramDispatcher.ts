@@ -212,6 +212,7 @@ export function formatWarRoomTelegramMessage(setup: ActiveCentralSetup): string 
     `🛡️ <b>WAR ROOM</b>`,
     ``,
     `<b>${setup.assetKey} • ${setup.timeframe} • ${setup.direction}</b>`,
+    `ID: <code>${setup.setupId}</code>`,
     ``,
     `Execution Zone: <code>${low.toFixed(2)} — ${high.toFixed(2)}</code>`,
     ``,
@@ -545,7 +546,8 @@ export async function dispatchCentralLifecycleEventToTelegram(
 }
 
 // Automatically subscribe to Central Signal Manager setup promotions for instant auto-dispatch
-if (typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
+// Only active in non-browser environments or when standalone without backend
+if (typeof window === "undefined" && typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
   centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
     try {
       if (centralSignalManager.isAutoBroadcastEnabled()) {

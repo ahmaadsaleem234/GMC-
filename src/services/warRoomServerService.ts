@@ -1607,6 +1607,10 @@ class WarRoomServerService {
           // Exactly ONE Telegram alert is sent when the valid setup is officially activated.
           return alert;
         } else if (eventType === "SETUP_ACTIVATED") {
+          if (setup.telegramDispatched || setupLifecycleStorage.hasDispatchedAlert(`${setup.setupId}_NEW_SETUP`)) {
+            setup.telegramDispatched = true;
+            return alert;
+          }
           telegramText = formatWarRoomTelegramSignal(setup);
         } else {
           // STRICT SEQUENTIAL DISPATCH: Initial Setup Signal MUST be sent before any lifecycle/TP/SL/Exit alerts!
@@ -1889,7 +1893,7 @@ class WarRoomServerService {
    * TICK MONITORING LOOP (24/7 Engine Tick)
    * Tracks entry triggers, MFE/MAE, target hits, expiry, and stop losses
    */
-  public async tickMonitoring(currentPrice: number, sendTelegramFn?: (msg: string) => Promise<boolean>) {
+  public async tickMonitoring(currentPrice: number, sendTelegramFn?: (msg: string, alertId?: string) => Promise<boolean>) {
     if (!this.activeSetup) return;
 
     const sendFn = sendTelegramFn || this.telegramSender;

@@ -18,7 +18,7 @@ export interface GoldQuote {
   updatedAt: number;
   receivedAt: number;
   provider: string;
-  sourceType: "Twelve Data Spot" | "Gold-API Spot" | "Yahoo Finance Spot" | "Alpha Vantage Spot" | "GMC Realtime Stream";
+  sourceType: "BiQuote.io Spot" | "Twelve Data Spot" | "Gold-API Spot" | "Yahoo Finance Spot" | "Alpha Vantage Spot" | "GMC Realtime Stream";
   bid: number | null;
   ask: number | null;
   spreadPips: number | null;
@@ -351,8 +351,8 @@ export async function fetchLiveGoldPrice(force = false): Promise<GoldQuote> {
               low24h: typeof data.low24h === "number" ? Number(data.low24h.toFixed(2)) : Math.min(currentGoldQuote.low24h, data.price),
               updatedAt: now,
               receivedAt: now,
-              provider: data.source || data.provider || "Twelve Data Spot Gold (XAU/USD)",
-              sourceType: data.provider === "GOLD_API" ? "Gold-API Spot" : "Twelve Data Spot",
+              provider: data.source || data.provider || "BiQuote.io Spot Gold (XAU/USD)",
+              sourceType: data.provider === "BIQUOTE" ? "BiQuote.io Spot" : data.provider === "GOLD_API" ? "Gold-API Spot" : "Twelve Data Spot",
               bid,
               ask,
               spreadPips: Math.round(spread * 100),
@@ -375,6 +375,68 @@ export async function fetchLiveGoldPrice(force = false): Promise<GoldQuote> {
         }
       } catch (err) {
         // Fall through to Direct Client Fallback
+      }
+    }
+
+    // -------------------------------------------------------------
+    // TIER 2: DIRECT CLIENT-SIDE BIQUOTE.IO (https://biquote.io/api/XAUUSD)
+    // -------------------------------------------------------------
+    if (!fetched) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`https://biquote.io/api/XAUUSD?_t=${now}`, {
+          signal: controller.signal,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+          },
+        });
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          const bid = parseFloat(data?.bid);
+          const ask = parseFloat(data?.ask);
+          const mid = data?.mid ? parseFloat(data.mid) : ((bid + ask) / 2);
+          const rawPrice = mid || bid || ask || parseFloat(data?.price);
+
+          if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
+            const latencyMs = Math.max(12, Math.round(performance.now() - reqStart));
+            const price = Number(rawPrice.toFixed(2));
+            const spread = data?.spread ? parseFloat(data.spread) : Number((ask - bid).toFixed(2)) || 0.18;
+            const finalBid = !isNaN(bid) ? Number(bid.toFixed(2)) : Number((price - spread / 2).toFixed(2));
+            const finalAsk = !isNaN(ask) ? Number(ask.toFixed(2)) : Number((price + spread / 2).toFixed(2));
+
+            const changePct = data?.dayDiffPercent ? parseFloat(data.dayDiffPercent) : 0.45;
+
+            currentGoldQuote = {
+              price,
+              changePct: Number(changePct.toFixed(2)),
+              high24h: data?.high ? Number(parseFloat(data.high).toFixed(2)) : price * 1.004,
+              low24h: data?.low ? Number(parseFloat(data.low).toFixed(2)) : price * 0.996,
+              updatedAt: now,
+              receivedAt: now,
+              provider: "BiQuote.io Institutional MetaTrader 5 (XAU/USD)",
+              sourceType: "BiQuote.io Spot",
+              bid: finalBid,
+              ask: finalAsk,
+              spreadPips: Math.round(spread * 100),
+              status: "Live",
+              h1Trend: data?.direction === "DOWN" ? "BEARISH" : "BULLISH",
+              isFresh: true,
+              latencyMs,
+            };
+
+            fetched = true;
+            consecutiveFailures = 0;
+            notifyListeners(currentGoldQuote);
+            isFetching = false;
+            return currentGoldQuote;
+          }
+        }
+      } catch (err) {
+        // Fall through to Tier 3
       }
     }
 

@@ -374,23 +374,23 @@ export class MasterTradeStateManager {
   }
 
   public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
-    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 1);
+    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 30);
   }
 
   public startCooldown(
-    customDurationMinutes: number = 1,
+    customDurationMinutes: number = 30,
     outcome: string = "TRADE_CLOSED",
     signalId?: string,
     zone?: { low: number; high: number; direction: "BUY" | "SELL" }
   ) {
     const now = Date.now();
-    const durationMinutes = customDurationMinutes !== undefined ? customDurationMinutes : 1;
+    const durationMinutes = customDurationMinutes !== undefined ? customDurationMinutes : 30;
     const durationMs = durationMinutes * 60 * 1000;
     this.cooldownState = {
       inCooldown: true,
       cooldownUntil: now + durationMs,
       remainingMinutes: durationMinutes,
-      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. 1-Minute Cooldown active to ensure clean state reset.`,
+      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
       lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
       lastFailedSetupZone: zone || this.cooldownState.lastFailedSetupZone,
     };

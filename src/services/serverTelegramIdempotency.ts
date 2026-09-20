@@ -19,6 +19,14 @@ export interface DispatchedEventRecord {
   dateTime: string;
 }
 
+export interface IdempotencyStoreSchema {
+  records: DispatchedEventRecord[];
+  activeTradeId: string | null;
+  activeTradeStartedAt: number;
+  cooldownUntil: number;
+  cooldownDurationMinutes: number;
+}
+
 const STORAGE_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
 const DEDUPLICATION_WINDOW_MS = 45 * 60 * 1000; // 45 minutes window for text hash
 
@@ -37,6 +45,15 @@ class TelegramIdempotencyRegistry {
   private records: DispatchedEventRecord[] = [];
   private textHashRecentMap: Map<string, number> = new Map(); // hash:chatId -> timestamp
 
+  private lastNewSetupTimestamp: number = 0;
+  private recentSetups: Array<{ direction: string; entry: number; timestamp: number }> = [];
+
+  // 🛡️ STRICT SINGLE ACTIVE TRADE & COOLDOWN STATE
+  private activeTradeId: string | null = null;
+  private activeTradeStartedAt: number = 0;
+  private cooldownUntil: number = 0;
+  private cooldownDurationMinutes: number = 30;
+
   constructor() {
     this.loadFromDisk();
   }
@@ -45,15 +62,24 @@ class TelegramIdempotencyRegistry {
     try {
       if (fsModule && fsModule.existsSync && fsModule.existsSync(STORAGE_FILE)) {
         const raw = fsModule.readFileSync(STORAGE_FILE, "utf-8");
-        const parsed: DispatchedEventRecord[] = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           this.records = parsed;
-          for (const rec of parsed) {
-            if (rec.key) this.dispatchedKeys.add(rec.key);
-            if (rec.textHash) {
-              const hashKey = `${rec.textHash}::${rec.chatId || "all"}`;
-              this.textHashRecentMap.set(hashKey, rec.dispatchedAt);
-            }
+        } else if (parsed && typeof parsed === "object") {
+          this.records = Array.isArray(parsed.records) ? parsed.records : [];
+          this.activeTradeId = parsed.activeTradeId || null;
+          this.activeTradeStartedAt = parsed.activeTradeStartedAt || 0;
+          this.cooldownUntil = parsed.cooldownUntil || 0;
+          if (typeof parsed.cooldownDurationMinutes === "number") {
+            this.cooldownDurationMinutes = parsed.cooldownDurationMinutes;
+          }
+        }
+
+        for (const rec of this.records) {
+          if (rec.key) this.dispatchedKeys.add(rec.key);
+          if (rec.textHash) {
+            const hashKey = `${rec.textHash}::${rec.chatId || "all"}`;
+            this.textHashRecentMap.set(hashKey, rec.dispatchedAt);
           }
         }
       }
@@ -71,7 +97,14 @@ class TelegramIdempotencyRegistry {
         }
         // Retain the last 1,000 records
         const trimmed = this.records.slice(-1000);
-        fsModule.writeFileSync(STORAGE_FILE, JSON.stringify(trimmed, null, 2), "utf-8");
+        const payload: IdempotencyStoreSchema = {
+          records: trimmed,
+          activeTradeId: this.activeTradeId,
+          activeTradeStartedAt: this.activeTradeStartedAt,
+          cooldownUntil: this.cooldownUntil,
+          cooldownDurationMinutes: this.cooldownDurationMinutes,
+        };
+        fsModule.writeFileSync(STORAGE_FILE, JSON.stringify(payload, null, 2), "utf-8");
       }
     } catch (err) {
       // In edge environments, handled via KV / memory
@@ -84,8 +117,14 @@ class TelegramIdempotencyRegistry {
   public extractTradeId(text: string, alertId?: string): string | undefined {
     if (alertId) {
       const parts = alertId.split(/[:#_]/);
-      if (parts[0]) return parts[0];
+      if (parts[0] && (parts[0].startsWith("HA-") || parts[0].startsWith("KJ-") || parts[0].startsWith("WR-") || parts[0].startsWith("PH-") || parts[0].startsWith("HRM-") || parts[0].startsWith("RX-"))) {
+        return parts[0].toUpperCase();
+      }
     }
+    // Match Central Signals: HA-101, KJ-101, WR-101, PH-101
+    const centralMatch = text.match(/\b(HA-\d+|KJ-\d+|WR-\d+|PH-\d+)\b/i) || text.match(/(?:SETUP ID|ID):\s*<code>(HA-\d+|KJ-\d+|WR-\d+|PH-\d+)<\/code>/i);
+    if (centralMatch) return centralMatch[1].toUpperCase();
+
     // Match Khatarnak Jugaad: KJ-15M-1221, KJ-5M-1244
     const kjMatch = text.match(/(?:SETUP ID|ID):\s*<code>(KJ-[0-9A-Za-z-]+)<\/code>/i) || text.match(/\b(KJ-[0-9A-Za-z-]+)\b/i);
     if (kjMatch) return kjMatch[1].toUpperCase();
@@ -104,6 +143,11 @@ class TelegramIdempotencyRegistry {
     // Match Retest-X: RX-XXXX, RETX-XXXX, RETEST-XXXX
     const rxMatch = text.match(/(?:SETUP ID|ID):\s*<code>(R[EX]TX?-[0-9A-Za-z-]+)<\/code>/i) || text.match(/\b(R[EX]TX?-[0-9A-Za-z-]+)\b/i);
     if (rxMatch) return rxMatch[1].toUpperCase();
+
+    if (alertId) {
+      const parts = alertId.split(/[:#_]/);
+      if (parts[0]) return parts[0].toUpperCase();
+    }
 
     return undefined;
   }
@@ -187,7 +231,10 @@ class TelegramIdempotencyRegistry {
 
   /**
    * Check if this alert/signal has already been dispatched.
-   * Enforces 1 trade = 1 signal, and 1 event = 1 update.
+   * Enforces:
+   * 1. Strict 1 Active Trade Lock: While a trade is running, NO NEW trade signals can be broadcasted.
+   * 2. Post-Trade Cooldown Lock: After TP/SL closes the trade, system waits for cooldown before allowing next trade.
+   * 3. 1 Event = 1 Update: Entry, TP1, TP2, TP3, Final TP, SL can only be sent ONCE per trade.
    */
   public isDuplicate(
     alertId?: string,
@@ -195,6 +242,9 @@ class TelegramIdempotencyRegistry {
     chatId?: string
   ): { isDuplicate: boolean; key: string; reason?: string } {
     const key = this.resolveCompositeKey(alertId, messageText);
+    const tradeId = this.extractTradeId(messageText, alertId);
+    const event = this.extractEventType(messageText, alertId);
+    const now = Date.now();
 
     // 1. Direct composite key check (Permanent per trade & lifecycle event)
     if (this.dispatchedKeys.has(key)) {
@@ -205,11 +255,73 @@ class TelegramIdempotencyRegistry {
       };
     }
 
-    // 2. Text hash deduplication within sliding window (Prevents identical spam text)
+    // 2. STRICT 1 ACTIVE TRADE LOCK FOR NEW TRADES
+    if (event === "NEW_SETUP") {
+      // If a trade is currently active on Telegram, block any competing or new trade signals
+      if (this.activeTradeId) {
+        if (tradeId && tradeId === this.activeTradeId) {
+          return {
+            isDuplicate: true,
+            key,
+            reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`,
+          };
+        }
+        return {
+          isDuplicate: true,
+          key,
+          reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`,
+        };
+      }
+
+      // If system is currently in post-trade cooldown, block new trade signals
+      if (now < this.cooldownUntil) {
+        const remainingSecs = Math.max(0, Math.round((this.cooldownUntil - now) / 1000));
+        const remMins = Math.floor(remainingSecs / 60);
+        const remSecs = remainingSecs % 60;
+        const timeStr = `${remMins}m ${remSecs}s`;
+        return {
+          isDuplicate: true,
+          key,
+          reason: `Post-trade cooldown active (${timeStr} remaining). Next trade is blocked until cooldown completes.`,
+        };
+      }
+
+      // Throttle: Never allow 2 new setups within 60 seconds of each other
+      if (this.lastNewSetupTimestamp > 0 && now - this.lastNewSetupTimestamp < 60 * 1000) {
+        return {
+          isDuplicate: true,
+          key,
+          reason: `Global setup rate limit active. Another trade signal was broadcasted ${Math.round((now - this.lastNewSetupTimestamp) / 1000)}s ago.`,
+        };
+      }
+
+      // Check Direction & Execution Zone against recent setups (15 minutes window)
+      const isBuy = messageText.includes("BUY") || (alertId && alertId.includes("BUY"));
+      const isSell = messageText.includes("SELL") || (alertId && alertId.includes("SELL"));
+      const dir = isBuy ? "BUY" : isSell ? "SELL" : "UNKNOWN";
+
+      const zoneMatch = messageText.match(/(?:Execution Zone|Entry Zone|Entry):\s*<code>?\$?([\d.]+)/i) || messageText.match(/\$?(\d{4}(?:\.\d+)?)/);
+      const entryPx = zoneMatch ? parseFloat(zoneMatch[1]) : 0;
+
+      if (dir !== "UNKNOWN" && entryPx > 1000) {
+        const recentDupe = this.recentSetups.find(
+          (s) => s.direction === dir && Math.abs(s.entry - entryPx) <= 8.0 && now - s.timestamp < 15 * 60 * 1000
+        );
+        if (recentDupe) {
+          const minsAgo = Math.round((now - recentDupe.timestamp) / 60000);
+          return {
+            isDuplicate: true,
+            key,
+            reason: `Duplicate setup in ${dir} zone ($${entryPx.toFixed(2)} vs prior $${recentDupe.entry.toFixed(2)}) already broadcasted ${minsAgo}m ago.`,
+          };
+        }
+      }
+    }
+
+    // 3. Text hash deduplication within sliding window (Prevents identical spam text)
     const textHash = this.generateNormalizedHash(messageText);
     const hashKey = `${textHash}::${chatId || "all"}`;
     const lastSent = this.textHashRecentMap.get(hashKey);
-    const now = Date.now();
 
     if (lastSent && now - lastSent < DEDUPLICATION_WINDOW_MS) {
       const minutesAgo = Math.round((now - lastSent) / 60000);
@@ -241,6 +353,37 @@ class TelegramIdempotencyRegistry {
     const hashKey = `${textHash}::${chatId || "all"}`;
     this.textHashRecentMap.set(hashKey, now);
 
+    if (event === "NEW_SETUP") {
+      this.lastNewSetupTimestamp = now;
+      if (tradeId) {
+        this.activeTradeId = tradeId;
+        this.activeTradeStartedAt = now;
+      }
+      const isBuy = messageText.includes("BUY") || (alertId && alertId.includes("BUY"));
+      const isSell = messageText.includes("SELL") || (alertId && alertId.includes("SELL"));
+      const dir = isBuy ? "BUY" : isSell ? "SELL" : "UNKNOWN";
+      const zoneMatch = messageText.match(/(?:Execution Zone|Entry Zone|Entry):\s*<code>?\$?([\d.]+)/i) || messageText.match(/\$?(\d{4}(?:\.\d+)?)/);
+      const entryPx = zoneMatch ? parseFloat(zoneMatch[1]) : 0;
+      if (dir !== "UNKNOWN" && entryPx > 0) {
+        this.recentSetups.push({ direction: dir, entry: entryPx, timestamp: now });
+        this.recentSetups = this.recentSetups.filter((s) => now - s.timestamp < 45 * 60 * 1000);
+      }
+    }
+
+    // When trade closes via FINAL TP, SL, or Invalidated, start strict cooldown
+    if (
+      event === "FINAL_TP_HIT" ||
+      event === "SL_HIT" ||
+      event === "TP_THEN_SL_HIT" ||
+      event === "EXPIRED" ||
+      event === "INVALIDATED"
+    ) {
+      this.activeTradeId = null;
+      this.activeTradeStartedAt = 0;
+      this.cooldownUntil = now + (this.cooldownDurationMinutes * 60 * 1000);
+      console.log(`[TELEGRAM COOLDOWN ENGINE]: Trade closed (${event}). Activated ${this.cooldownDurationMinutes}-min cooldown until ${new Date(this.cooldownUntil).toISOString()}`);
+    }
+
     const record: DispatchedEventRecord = {
       key,
       tradeId,
@@ -254,8 +397,76 @@ class TelegramIdempotencyRegistry {
     this.records.push(record);
     this.saveToDisk();
 
-    console.log(`[TELEGRAM IDEMPOTENCY]: Registered dispatched event [${key}] (Total sent: ${this.dispatchedKeys.size})`);
+    console.log(`[TELEGRAM IDEMPOTENCY]: Registered dispatched event [${key}] (Total sent: ${this.dispatchedKeys.size}, ActiveTrade: ${this.activeTradeId || "NONE"})`);
     return key;
+  }
+
+  /**
+   * Set cooldown duration in minutes
+   */
+  public setCooldownDuration(minutes: number) {
+    if (minutes > 0) {
+      this.cooldownDurationMinutes = minutes;
+      this.saveToDisk();
+    }
+  }
+
+  /**
+   * Manually record a trade as closed and start cooldown
+   */
+  public recordTradeClosed(tradeId?: string, outcome: string = "CLOSED", customCooldownMins?: number) {
+    const mins = customCooldownMins || this.cooldownDurationMinutes || 30;
+    this.activeTradeId = null;
+    this.activeTradeStartedAt = 0;
+    this.cooldownUntil = Date.now() + (mins * 60 * 1000);
+    this.saveToDisk();
+    console.log(`[TELEGRAM IDEMPOTENCY]: Manually recorded trade #${tradeId || "ACTIVE"} closed (${outcome}). Cooldown set for ${mins}m.`);
+  }
+
+  /**
+   * Get active trade ID currently running on Telegram
+   */
+  public getActiveTradeId(): string | null {
+    return this.activeTradeId;
+  }
+
+  /**
+   * Check if an active trade is currently live on Telegram
+   */
+  public isTradeActive(): boolean {
+    return this.activeTradeId !== null;
+  }
+
+  /**
+   * Check if cooldown is currently active
+   */
+  public checkCooldown(): { inCooldown: boolean; remainingSeconds: number; remainingFormatted: string } {
+    const now = Date.now();
+    if (this.cooldownUntil > now) {
+      const remainingSecs = Math.max(0, Math.round((this.cooldownUntil - now) / 1000));
+      const remMins = Math.floor(remainingSecs / 60);
+      const remSecs = remainingSecs % 60;
+      return {
+        inCooldown: true,
+        remainingSeconds: remainingSecs,
+        remainingFormatted: `${String(remMins).padStart(2, "0")}:${String(remSecs).padStart(2, "0")}`,
+      };
+    }
+    return {
+      inCooldown: false,
+      remainingSeconds: 0,
+      remainingFormatted: "00:00",
+    };
+  }
+
+  /**
+   * Reset active trade and cooldown
+   */
+  public resetActiveTradeState() {
+    this.activeTradeId = null;
+    this.activeTradeStartedAt = 0;
+    this.cooldownUntil = 0;
+    this.saveToDisk();
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   formatDailySummaryAlert,
 } from "./src/utils/haramiSignalFormatter.js";
 import { fcsMarketService } from "./src/services/fcsMarketService.js";
+import { biquoteMarketService } from "./src/services/biquoteMarketService.js";
 import { warRoomServerService } from "./src/services/warRoomServerService.js";
 import { formatWarRoomTelegramSignal } from "./src/services/warRoomEngine.js";
 import {
@@ -5494,18 +5495,30 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     },
   ];
 
+  const chatRateLimitMap = new Map<string, number>();
+
   async function sendSingleTelegramMessage(
     targetChatId: string,
     text: string,
     customPhotoBuffer?: Buffer,
     replyMarkup?: TelegramInlineKeyboard
   ): Promise<boolean> {
-    const maxRetries = 2;
+    const chatId = cleanServerTelegramInput(targetChatId);
+    if (!chatId) return false;
+
+    const rateLimitUntil = chatRateLimitMap.get(chatId) || 0;
+    if (Date.now() < rateLimitUntil) {
+      return false;
+    }
+
+    const maxRetries = 1;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const token = await resolveWorkingTelegramToken();
         if (!token) return false;
-        const chatId = cleanServerTelegramInput(targetChatId);
+
+        // Clean & sanitize text for Telegram HTML
+        let sanitizedText = text;
 
         // If custom generated chart photo buffer is provided
         if (customPhotoBuffer) {
@@ -5514,7 +5527,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             const formData = new FormData();
             formData.append("chat_id", String(chatId));
             formData.append("photo", blob, "gmc_chart_signal.jpg");
-            formData.append("caption", text);
+            // Telegram caption limit is strictly 1024 characters
+            const caption = sanitizedText.length <= 1000 ? sanitizedText : sanitizedText.slice(0, 990) + "...";
+            formData.append("caption", caption);
             formData.append("parse_mode", "HTML");
             if (replyMarkup) {
               formData.append("reply_markup", JSON.stringify(replyMarkup));
@@ -5524,49 +5539,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               method: "POST",
               body: formData,
             });
-            const photoData = await photoRes.json();
-            if (photoData.ok) {
+            const photoData = await photoRes.json().catch(() => null);
+            if (photoData?.ok) {
               return true;
-            } else {
-              console.warn(`[SINGLE TELEGRAM MSG]: sendPhoto failed (${photoData.error_code}: ${photoData.description}). Falling back to text message delivery.`);
+            } else if (photoData?.error_code === 429 || photoRes.status === 429) {
+              const retryAfter = Number(photoData?.parameters?.retry_after || 60);
+              chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
+              console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+              return false;
             }
           } catch (e) {
             console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back to text:", e);
           }
         }
 
-        // If no replyMarkup is passed, we can try photo with logo
-        if (!replyMarkup) {
-          const hImg = path.join(process.cwd(), "public", "harami_ai_logo.jpg");
-          const dImg = path.join(process.cwd(), "public", "gmc_logo.jpg");
-          const logoPath = fs.existsSync(hImg) ? hImg : dImg;
-          if (fs.existsSync(logoPath)) {
-            try {
-              const fileBuffer = fs.readFileSync(logoPath);
-              const blob = new Blob([fileBuffer], { type: "image/jpeg" });
-              const formData = new FormData();
-              formData.append("chat_id", String(chatId));
-              formData.append("photo", blob, "harami_ai_logo.jpg");
-              formData.append("caption", text);
-              formData.append("parse_mode", "HTML");
-
-              const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-                method: "POST",
-                body: formData,
-              });
-              const photoData = await photoRes.json();
-              if (photoData.ok) {
-                return true;
-              }
-            } catch (e) {
-              // Fall back to text message
-            }
-          }
-        }
-
+        // Send Text Message via standard sendMessage (supports up to 4096 characters)
         const bodyPayload: any = {
           chat_id: chatId,
-          text,
+          text: sanitizedText,
           parse_mode: "HTML",
           disable_web_page_preview: true,
         };
@@ -5579,41 +5569,53 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bodyPayload),
         });
-        const data = await res.json();
-        if (data.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.ok) {
           return true;
         }
 
-        // If error is caused by HTML entity parsing, strip tags and send as plain text
-        if (!data.ok && data.description && (data.description.includes("entities") || data.description.includes("HTML") || data.description.includes("tag") || data.description.includes("parse"))) {
-          try {
-            const plainText = text.replace(/<[^>]+>/g, "");
-            const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: plainText,
-                disable_web_page_preview: true,
-                reply_markup: replyMarkup || undefined,
-              }),
-            });
-            const fallbackData = await fallbackRes.json();
-            if (fallbackData.ok) {
-              return true;
-            }
-          } catch (fbErr) {
-            // Ignore fallback error
-          }
+        if (data?.error_code === 429 || res.status === 429) {
+          const retryAfter = Number(data?.parameters?.retry_after || 60);
+          chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
+          console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+          return false;
         }
 
-        // If error is 429 or network, wait briefly and retry
+        // If error on HTML parsing or formatting, strip tags and send as clean plain text
+        try {
+          const plainText = sanitizedText.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ");
+          const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: plainText,
+              disable_web_page_preview: true,
+              reply_markup: replyMarkup || undefined,
+            }),
+          });
+          const fallbackData = await fallbackRes.json().catch(() => null);
+          if (fallbackData?.ok) {
+            return true;
+          } else if (fallbackData?.error_code === 429 || fallbackRes.status === 429) {
+            const retryAfter = Number(fallbackData?.parameters?.retry_after || 60);
+            chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
+            console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+            return false;
+          } else if (fallbackData?.description) {
+            console.warn(`[TELEGRAM SEND FALLBACK FAILED] Chat ${chatId} (${fallbackData.error_code}: ${fallbackData.description})`);
+          }
+        } catch (fbErr) {
+          console.warn("[TELEGRAM SEND FALLBACK ERROR]:", fbErr);
+        }
+
+        // If error is network, wait briefly and retry
         if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, 500));
         }
       } catch (err) {
         if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, 500));
         } else {
           console.error("[SINGLE TELEGRAM MSG ERROR (FINAL RETRY FAILED)]:", err);
           return false;
@@ -6153,13 +6155,19 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // 1. Dispatch to Super Admin Master ID First (always authorized)
     if (masterId) {
       dispatchedRecipients.add(masterId);
-      const adminOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
-      if (adminOk) {
-        successCount++;
-        console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: DELIVERED`);
+      const rateLimitUntil = chatRateLimitMap.get(masterId) || 0;
+      if (Date.now() < rateLimitUntil) {
+        const waitSec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
+        console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: RATE_LIMITED (${waitSec}s remaining)`);
       } else {
-        failedCount++;
-        console.warn(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: FAILED`);
+        const adminOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
+        if (adminOk) {
+          successCount++;
+          console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: DELIVERED`);
+        } else {
+          failedCount++;
+          console.warn(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: FAILED`);
+        }
       }
     }
 
@@ -6407,7 +6415,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     source: string;
     status: "Live" | "Delayed" | "Stale" | "Degraded";
     feedStatus: "LIVE" | "DEGRADED" | "STALE" | "ERROR";
-    provider: "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK";
+    provider: "BIQUOTE" | "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK";
     activeProvider: string;
     verificationPrice: number | null;
     verificationSource: string | null;
@@ -6533,73 +6541,40 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         let primaryChange: number | null = null;
         let primaryChangePct: number | null = null;
         let primaryTimestamp: number = now;
-        let primaryProvider: "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK" = "GOLD_API";
+        let primaryProvider: "BIQUOTE" | "TWELVE_DATA" | "GOLD_API" | "ALPHA_VANTAGE" | "FALLBACK" = "BIQUOTE";
         let activeProviderName = "Gold-API Spot Gold";
         let verificationPrice: number | null = null;
         let verificationSource = "Twelve Data Spot Gold";
 
-        // 1. FAST REAL-TIME LIVE SPOT SOURCE: Gold-API Realtime Spot (Zero rate limits, real-time institutional tick)
+        // 1. EXCLUSIVE INSTITUTIONAL SOURCE FOR XAUUSD: BiQuote.io MetaTrader 5 Feed (http://biquote.io/)
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch("https://api.gold-api.com/price/XAU", {
-            headers: { "User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache" },
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-
-          if (res.ok) {
-            const data = await res.json();
-            const rawPrice = parseFloat(data?.price);
-            if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
-              primaryPrice = Number(rawPrice.toFixed(2));
-              primaryHigh = Number((primaryPrice * 1.004).toFixed(2));
-              primaryLow = Number((primaryPrice * 0.996).toFixed(2));
-              primaryChange = 0;
-              primaryChangePct = 0;
-              primaryTimestamp = now;
-              primaryProvider = "GOLD_API";
-              activeProviderName = "Gold-API Spot Gold";
-            }
+          const bqTick = await biquoteMarketService.fetchLiveTick("XAUUSD");
+          if (bqTick && bqTick.price > 1800 && bqTick.price < 8000) {
+            primaryPrice = Number(bqTick.price.toFixed(2));
+            primaryHigh = bqTick.high24h ? Number(bqTick.high24h.toFixed(2)) : Number((primaryPrice * 1.004).toFixed(2));
+            primaryLow = bqTick.low24h ? Number(bqTick.low24h.toFixed(2)) : Number((primaryPrice * 0.996).toFixed(2));
+            primaryChange = bqTick.change24h || 0;
+            primaryChangePct = bqTick.changePercent24h || 0;
+            primaryTimestamp = bqTick.timestamp || now;
+            primaryProvider = "BIQUOTE";
+            activeProviderName = "BiQuote.io MT5 Institutional (http://biquote.io/)";
           }
         } catch (err) {
           // Fallback below
         }
 
-        // 2. SECONDARY / BENCHMARK PROVIDER FETCH: Twelve Data Realtime Quote
-        if (primaryPrice === null || now - this.lastCandleFetchMs > 20000) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 3500);
-            const res = await fetch(`https://api.twelvedata.com/quote?symbol=XAU/USD&apikey=${twelveDataKey}`, {
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-
-            if (res.ok) {
-              const data = await res.json();
-              this.currentTick.requestsCount++;
-
-              const rawPrice = parseFloat(data?.close || data?.price);
-              if (!isNaN(rawPrice) && rawPrice > 1800 && rawPrice < 8000) {
-                const tdPrice = Number(rawPrice.toFixed(2));
-                if (primaryPrice === null) {
-                  primaryPrice = tdPrice;
-                  primaryHigh = data?.high ? Number(parseFloat(data.high).toFixed(2)) : primaryPrice * 1.005;
-                  primaryLow = data?.low ? Number(parseFloat(data.low).toFixed(2)) : primaryPrice * 0.995;
-                  primaryChange = data?.change ? Number(parseFloat(data.change).toFixed(2)) : 0;
-                  primaryChangePct = data?.percent_change ? Number(parseFloat(data.percent_change).toFixed(2)) : 0;
-                  primaryTimestamp = now;
-                  primaryProvider = "TWELVE_DATA";
-                  activeProviderName = "Twelve Data Spot Gold";
-                } else {
-                  verificationPrice = tdPrice;
-                  verificationSource = "Twelve Data Benchmark";
-                }
-              }
-            }
-          } catch (err) {
-            // Fallback below
+        // 2. Fallback only if BiQuote is temporarily unreachable
+        if (primaryPrice === null) {
+          const cachedBq = biquoteMarketService.getLiveTick("XAUUSD");
+          if (cachedBq && cachedBq.price > 1800) {
+            primaryPrice = cachedBq.price;
+            primaryHigh = cachedBq.high24h;
+            primaryLow = cachedBq.low24h;
+            primaryChange = cachedBq.change24h;
+            primaryChangePct = cachedBq.changePercent24h;
+            primaryTimestamp = cachedBq.timestamp;
+            primaryProvider = "BIQUOTE";
+            activeProviderName = "BiQuote.io MT5 Institutional (http://biquote.io/)";
           }
         }
 
@@ -6752,6 +6727,32 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     public async pollCandles(): Promise<GoldCandle[]> {
       try {
+        const bqCandles = await biquoteMarketService.fetchCandles("XAUUSD", "1H", 48);
+        if (bqCandles && bqCandles.length > 0) {
+          const formatted: GoldCandle[] = bqCandles.map((c) => ({
+            datetime: c.datetime,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+          }));
+
+          this.cachedH1Candles = formatted;
+          this.lastCandleFetchMs = Date.now();
+
+          if (formatted.length >= 6) {
+            const latest = formatted[formatted.length - 1].close;
+            const past = formatted[formatted.length - 6].close;
+            this.currentTick.h1Trend = latest >= past ? "BULLISH" : "BEARISH";
+          }
+
+          return this.cachedH1Candles;
+        }
+      } catch (err) {
+        // Fallback
+      }
+
+      try {
         const fcsCandles = fcsMarketService.getCandles("XAUUSD", "1H");
         if (fcsCandles && fcsCandles.length > 0) {
           const formatted: GoldCandle[] = fcsCandles.map((c) => ({
@@ -6888,6 +6889,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   }
 
   const serverKhatarnakLifecycleEvents: Set<string> = new Set();
+  const entryDispatchAttemptMap = new Map<string, { attempts: number; lastAttempt: number }>();
+  const khatarnakDispatchAttemptMap = new Map<string, { attempts: number; lastAttempt: number }>();
 
   async function ensureTradeSignalDispatched(trade: any): Promise<boolean> {
     if (!trade) return false;
@@ -6903,10 +6906,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     if (hasSignalDispatched) {
       if (!trade.entryDispatched) trade.entryDispatched = true;
       if (!trade.dispatchedOutcomes.includes("SIGNAL")) trade.dispatchedOutcomes.push("SIGNAL");
+      entryDispatchAttemptMap.delete(signalId);
       return true;
     }
 
     if (!mt5Config.telegramSignalsEnabled) return false;
+
+    // Check throttle to prevent rapid retry loops during Telegram rate limits
+    const lastAttemptInfo = entryDispatchAttemptMap.get(signalId);
+    if (lastAttemptInfo && Date.now() - lastAttemptInfo.lastAttempt < 15000) {
+      return false;
+    }
+
     const direction = trade.direction || "BUY";
     const entry = trade.entry || trade.entryPrice || 4350.0;
     const entryLow = Array.isArray(trade.entryZone) ? trade.entryZone[0] : Number((entry - 0.5).toFixed(2));
@@ -6967,8 +6978,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
       trade.entryDispatched = true;
       tradeStateManager.markSignalDispatched(signalId);
+      entryDispatchAttemptMap.delete(signalId);
     } else {
-      console.warn(`[ENTRY SIGNAL GUARD]: Initial entry signal #${signalId} dispatch returned false. Will retry on next tick.`);
+      const attempts = (lastAttemptInfo?.attempts || 0) + 1;
+      entryDispatchAttemptMap.set(signalId, { attempts, lastAttempt: Date.now() });
+      if (attempts >= 3) {
+        console.log(`[ENTRY SIGNAL GUARD]: Initial signal #${signalId} marked processed after ${attempts} attempts to allow engine management to proceed.`);
+        trade.entryDispatched = true;
+        tradeStateManager.markSignalDispatched(signalId);
+        return true;
+      }
     }
     return ok;
   }
@@ -6979,11 +6998,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     if (serverKhatarnakLifecycleEvents.has(setupEventKey)) return true;
     if (!mt5Config.telegramSignalsEnabled) return false;
 
+    const lastAttemptInfo = khatarnakDispatchAttemptMap.get(setup.id);
+    if (lastAttemptInfo && Date.now() - lastAttemptInfo.lastAttempt < 15000) {
+      return false;
+    }
+
     const kjMsg = formatNewSetupTelegramMessage(setup);
     console.log(`[KHATARNAK GUARD]: Initial Khatarnak setup #${setup.id} missing from Telegram! Dispatching initial setup FIRST.`);
     const ok = await sendServerTelegramMessage(kjMsg, undefined, undefined, setupEventKey, true);
     if (ok) {
       serverKhatarnakLifecycleEvents.add(setupEventKey);
+      khatarnakDispatchAttemptMap.delete(setup.id);
+    } else {
+      const attempts = (lastAttemptInfo?.attempts || 0) + 1;
+      khatarnakDispatchAttemptMap.set(setup.id, { attempts, lastAttempt: Date.now() });
+      if (attempts >= 3) {
+        serverKhatarnakLifecycleEvents.add(setupEventKey);
+        return true;
+      }
     }
     return ok;
   }
@@ -7031,10 +7063,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // Synchronize active trade from tradeStateManager if serverActiveTrade is null
     if (!serverActiveTrade && tradeStateManager.hasActiveTrade()) {
       serverActiveTrade = tradeStateManager.getActiveTrade() as any;
-    } else if (!serverActiveTrade && !tradeStateManager.hasActiveTrade()) {
-      if (centralSignalManager.getActiveSetup()) {
-        centralSignalManager.clearActiveSetup();
-      }
     }
 
     // Strict Rule 1 & 3: Active trade stays active until TP or SL is reached.
@@ -7591,8 +7619,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           tradeStateManager.closeActiveTrade("EXPIRED", tick.price, 0, 0, 0);
           centralSignalManager.clearActiveSetup();
-          moduleSignalGatekeeper.startGlobalCooldown(1, "EXPIRED", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(1);
+          moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(30);
+          tradeStateManager.startCooldown(30, "EXPIRED", trade.signalId || trade.id);
 
           serverTradeHistory.unshift({
             id: trade.id,
@@ -7734,9 +7763,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           centralSignalManager.clearActiveSetup();
           moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isProfit ? "TP" : "SL", trade.id);
-          moduleSignalGatekeeper.startGlobalCooldown(1, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(1);
-          tradeStateManager.startCooldown(1, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
+          moduleSignalGatekeeper.startGlobalCooldown(30, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(30);
+          tradeStateManager.startCooldown(30, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
@@ -7821,9 +7850,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 });
                 centralSignalManager.clearActiveSetup();
                 moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-                moduleSignalGatekeeper.startGlobalCooldown(1, "TP_HIT", trade.signalId || trade.id);
-                centralSignalManager.startCooldown(1);
-                tradeStateManager.startCooldown(1, "TP_HIT", trade.signalId || trade.id);
+                moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+                centralSignalManager.startCooldown(30);
+                tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
                 return;
@@ -7970,9 +7999,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(1, "TP_HIT", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(1);
-              tradeStateManager.startCooldown(1, "TP_HIT", trade.signalId || trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -8053,9 +8082,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(1, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(1);
-              tradeStateManager.startCooldown(1, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8163,9 +8192,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 });
                 centralSignalManager.clearActiveSetup();
                 moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-                moduleSignalGatekeeper.startGlobalCooldown(1, "TP_HIT", trade.signalId || trade.id);
-                centralSignalManager.startCooldown(1);
-                tradeStateManager.startCooldown(1, "TP_HIT", trade.signalId || trade.id);
+                moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+                centralSignalManager.startCooldown(30);
+                tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
                 return;
@@ -8312,9 +8341,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(1, "TP_HIT", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(1);
-              tradeStateManager.startCooldown(1, "TP_HIT", trade.signalId || trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -8395,9 +8424,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(1, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(1);
-              tradeStateManager.startCooldown(1, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(30);
+              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8461,6 +8490,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             message = formatHaramiAiTelegramMessage(setup);
           } else if (setup.brainSource === "WAR_ROOM") {
             message = formatWarRoomTelegramMessage(setup);
+          } else if (setup.brainSource === "PRECISION_HUNTER") {
+            message = formatPrecisionHunterTelegramMessage(setup);
           }
           if (message) {
             await sendServerTelegramMessage(message, undefined, undefined, `${setup.setupId}_NEW_SETUP`, true);
@@ -8519,6 +8550,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           ].join("\n");
 
           await sendServerTelegramMessage(msg, undefined, undefined, eventKey);
+
+          // Synchronize post-trade cooldown across all system managers upon trade closure
+          if (
+            event === "FINAL_TP_HIT" ||
+            event === "SL_HIT" ||
+            event === "TP_THEN_SL_HIT" ||
+            event === "EXPIRED"
+          ) {
+            serverLastClosedTime = Date.now();
+            tradeStateManager.startCooldown(30, event, setup.setupId);
+            moduleSignalGatekeeper.startGlobalCooldown(30, event, setup.setupId);
+            serverTelegramIdempotency.recordTradeClosed(setup.setupId, event, 30);
+            console.log(`[LIFECYCLE EVENT]: Trade #${setup.setupId} closed (${event}). Global 30-minute cooldown active across all engines.`);
+          }
         }
       } catch (err) {
         console.error("[SERVER CENTRAL LIFECYCLE BROADCAST ERROR]:", err);
@@ -8544,13 +8589,28 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         });
 
         if (goldTick?.price) {
+          const anyTradeActiveGlobally =
+            !!serverActiveTrade ||
+            tradeStateManager.hasActiveTrade() ||
+            !!centralSignalManager.getActiveSetup() ||
+            serverTelegramIdempotency.isTradeActive() ||
+            !!warRoomServerService.getActiveSetup() ||
+            !!serverActiveKhatarnakSetup;
+
+          const isSystemInCooldown =
+            tradeStateManager.checkCooldown().inCooldown ||
+            centralSignalManager.isCooldownActive() ||
+            serverTelegramIdempotency.checkCooldown().inCooldown ||
+            moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown ||
+            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000);
+
           // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated)
           if (centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
-            if (!warRoomServerService.getActiveSetup()) {
+            if (!warRoomServerService.getActiveSetup() && !anyTradeActiveGlobally && !isSystemInCooldown) {
               await warRoomServerService.generateWarRoomState().catch(() => null);
             }
-            await warRoomServerService.tickMonitoring(goldTick.price, async (msg) => {
-              return await sendServerTelegramMessage(msg);
+            await warRoomServerService.tickMonitoring(goldTick.price, async (msg, customAlertId) => {
+              return await sendServerTelegramMessage(msg, undefined, undefined, customAlertId);
             });
           }
 

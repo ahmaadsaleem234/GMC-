@@ -374,6 +374,13 @@ let setupCounterKJ = 101;
 let setupCounterWR = 101;
 let setupCounterPH = 101;
 
+function peekCandidateSetupId(source: AiBrainSource): string {
+  if (source === "HARAMI_AI") return `HA-${setupCounterHA}`;
+  if (source === "KHATARNAK_JUGAAD") return `KJ-${setupCounterKJ}`;
+  if (source === "PRECISION_HUNTER") return `PH-${setupCounterPH}`;
+  return `WR-${setupCounterWR}`;
+}
+
 function getNextSetupId(source: AiBrainSource): string {
   if (source === "HARAMI_AI") return `HA-${setupCounterHA++}`;
   if (source === "KHATARNAK_JUGAAD") return `KJ-${setupCounterKJ++}`;
@@ -498,7 +505,7 @@ export class CentralSignalManagerEngine {
   private auditLogs: DecisionAuditLogEntry[] = [];
   private aiStats: Record<AiBrainSource, AiBrainHistoricalStats> = INITIAL_STATS;
   private minScoreThreshold: number = 70;
-  private cooldownMinutesConfig: CooldownDurationMinutes = 1;
+  private cooldownMinutesConfig: CooldownDurationMinutes = 30;
   private autoBroadcastToTelegram: boolean = true;
 
   // Independent AI Source ON/OFF Controls (Synchronized with Telegram Super Admin)
@@ -768,7 +775,7 @@ export class CentralSignalManagerEngine {
    * Start the strict cooldown window after a trade closes
    */
   public startCooldown(customMinutes?: CooldownDurationMinutes) {
-    const mins = customMinutes || this.cooldownMinutesConfig || 1;
+    const mins = customMinutes || this.cooldownMinutesConfig || 30;
     const now = Date.now();
     const expiresAt = now + mins * 60 * 1000;
     const expDate = new Date(expiresAt);
@@ -1615,7 +1622,7 @@ export class CentralSignalManagerEngine {
         brainSource: "PRECISION_HUNTER",
         brainName: "Precision Hunter AI",
         brainEmoji: "🎯",
-        setupId: getNextSetupId("PRECISION_HUNTER"),
+        setupId: peekCandidateSetupId("PRECISION_HUNTER"),
         timeframe: "15M",
         assetKey,
         direction: "WAIT",
@@ -1696,7 +1703,7 @@ export class CentralSignalManagerEngine {
       brainSource: "PRECISION_HUNTER",
       brainName: "Precision Hunter AI",
       brainEmoji: "🎯",
-      setupId: rawSetup.id || getNextSetupId("PRECISION_HUNTER"),
+      setupId: rawSetup.id || peekCandidateSetupId("PRECISION_HUNTER"),
       timeframe: "15M",
       assetKey,
       direction: rawSetup.direction,
@@ -1785,7 +1792,7 @@ export class CentralSignalManagerEngine {
       brainSource: "KHATARNAK_JUGAAD",
       brainName: "Khatarnak Jugaad 💀",
       brainEmoji: "💀",
-      setupId: getNextSetupId("KHATARNAK_JUGAAD"),
+      setupId: peekCandidateSetupId("KHATARNAK_JUGAAD"),
       timeframe: "1M",
       assetKey,
       direction: dir,
@@ -1887,7 +1894,7 @@ export class CentralSignalManagerEngine {
       brainSource: "WAR_ROOM",
       brainName: "War Room Supreme",
       brainEmoji: "🛡️",
-      setupId: getNextSetupId("WAR_ROOM"),
+      setupId: peekCandidateSetupId("WAR_ROOM"),
       timeframe: candles5m.length > 0 && Math.random() > 0.5 ? "5M" : "15M",
       assetKey,
       direction: dir,
@@ -1979,7 +1986,7 @@ export class CentralSignalManagerEngine {
       brainSource: "HARAMI_AI",
       brainName: "Harami AI",
       brainEmoji: "🤖",
-      setupId: setup.id || getNextSetupId("HARAMI_AI"),
+      setupId: setup.id || peekCandidateSetupId("HARAMI_AI"),
       timeframe: "15M",
       assetKey,
       direction: dir,
@@ -2192,6 +2199,9 @@ export class CentralSignalManagerEngine {
     }
 
     // Promote the winner to SINGLE ACTIVE SETUP!
+    if (!winner.setupId || winner.setupId.startsWith("HA-") || winner.setupId.startsWith("KJ-") || winner.setupId.startsWith("WR-") || winner.setupId.startsWith("PH-")) {
+      winner.setupId = getNextSetupId(winner.brainSource);
+    }
     winner.competitionStatus = "SELECTED_ACTIVE";
     winner.selectionRank = 1;
 

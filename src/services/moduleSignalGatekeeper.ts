@@ -42,15 +42,15 @@ export class ModuleSignalGatekeeper {
     startedAt: number;
   } | null = null;
 
-  // 1 Minute standard cooldown for nimble execution
-  public readonly COOLDOWN_DURATION_MS = 60 * 1000;
+  // 30 Minutes standard cooldown after trade completion
+  public readonly COOLDOWN_DURATION_MS = 30 * 60 * 1000;
 
   /**
    * Start a global cooldown across the entire system.
-   * Prevents conflicting signals while allowing fast follow-up trades.
+   * Prevents conflicting signals while allowing high quality setups after cooldown.
    */
   public startGlobalCooldown(
-    durationMinutes: number = 1,
+    durationMinutes: number = 30,
     outcome: string = "TRADE_CLOSED",
     tradeId?: string
   ): void {

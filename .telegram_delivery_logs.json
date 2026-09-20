@@ -1,6 +1,86 @@
 {
   "logs": [
     {
+      "id": "DELIV-1789923615315",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:00:15.178Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923473406",
+      "signalId": "WR-102::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T16:57:53.332Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923143219",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T16:52:23.148Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923140634",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T16:52:20.139Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789922752026",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T16:45:51.934Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789922748552",
+      "signalId": "HRM-8544::ENTRY_HIT",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-20T16:45:48.451Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789922748370",
+      "signalId": "HRM-8544_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-20T16:45:47.771Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789922747989",
+      "signalId": "HRM-8544_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-20T16:45:47.666Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
       "id": "DELIV-1789340113786",
       "signalId": "HRM-6466_NEW_SETUP",
       "engine": "HARAMI_AI",
