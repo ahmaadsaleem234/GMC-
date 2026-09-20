@@ -25,9 +25,9 @@ export function getTelegramConfig(): TelegramConfig {
       parsed.botToken = cleanTelegramInput(parsed.botToken);
       parsed.chatId = cleanTelegramInput(parsed.chatId);
 
-      // Auto upgrade old expired tokens to current active bot token
-      if (!parsed.botToken || parsed.botToken === "" || parsed.botToken.includes("8995493734")) {
-        parsed.botToken = "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28";
+      // Keep user or server synced token; avoid falling back to expired token
+      if (parsed.botToken && (parsed.botToken.includes("8995493734") || parsed.botToken.includes("8935835253"))) {
+        parsed.botToken = "";
       }
       if (!parsed.chatId || parsed.chatId === "") {
         parsed.chatId = "5218548758";
@@ -39,7 +39,7 @@ export function getTelegramConfig(): TelegramConfig {
     // Graceful fallback without crashing
   }
   const defaultConfig: TelegramConfig = {
-    botToken: "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
+    botToken: "",
     chatId: "5218548758",
     enabled: true,
     sendEntries: true,

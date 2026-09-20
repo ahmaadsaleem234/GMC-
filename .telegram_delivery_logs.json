@@ -1,6 +1,136 @@
 {
   "logs": [
     {
+      "id": "DELIV-1789925935726",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:38:55.723Z",
+      "recipientsCount": 2,
+      "successCount": 0,
+      "failedCount": 2,
+      "status": "FAILED"
+    },
+    {
+      "id": "DELIV-1789925708892",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:35:08.891Z",
+      "recipientsCount": 2,
+      "successCount": 0,
+      "failedCount": 2,
+      "status": "FAILED"
+    },
+    {
+      "id": "DELIV-1789925705886",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:35:05.884Z",
+      "recipientsCount": 2,
+      "successCount": 0,
+      "failedCount": 2,
+      "status": "FAILED"
+    },
+    {
+      "id": "DELIV-1789925699900",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:34:59.899Z",
+      "recipientsCount": 2,
+      "successCount": 0,
+      "failedCount": 2,
+      "status": "FAILED"
+    },
+    {
+      "id": "DELIV-1789924229326",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:10:29.241Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789924226605",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:10:26.220Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923829794",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:03:49.724Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923827297",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:03:46.716Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923803293",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:03:23.240Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923800590",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:03:20.213Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923650389",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:00:50.282Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923647596",
+      "signalId": "WR-101_NEW_SETUP",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:00:47.275Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 1,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "DELIV-1789923618298",
+      "signalId": "WR-101::ENTRY_HIT",
+      "engine": "WAR_ROOM",
+      "timestampUtc": "2026-09-20T17:00:18.186Z",
+      "recipientsCount": 2,
+      "successCount": 1,
+      "failedCount": 0,
+      "status": "PARTIAL"
+    },
+    {
       "id": "DELIV-1789923615315",
       "signalId": "WR-101_NEW_SETUP",
       "engine": "WAR_ROOM",
@@ -471,5 +601,26 @@
       "status": "DELIVERED"
     }
   ],
-  "failures": []
+  "failures": [
+    {
+      "timestampUtc": "2026-09-20T17:38:55.723Z",
+      "userId": "7124285012",
+      "reason": "HTTP/API Delivery Timeout or Chat Blocked"
+    },
+    {
+      "timestampUtc": "2026-09-20T17:35:08.891Z",
+      "userId": "7124285012",
+      "reason": "HTTP/API Delivery Timeout or Chat Blocked"
+    },
+    {
+      "timestampUtc": "2026-09-20T17:35:05.884Z",
+      "userId": "7124285012",
+      "reason": "HTTP/API Delivery Timeout or Chat Blocked"
+    },
+    {
+      "timestampUtc": "2026-09-20T17:34:59.899Z",
+      "userId": "7124285012",
+      "reason": "HTTP/API Delivery Timeout or Chat Blocked"
+    }
+  ]
 }

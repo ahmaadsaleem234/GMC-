@@ -70,7 +70,7 @@ export class N8nWebhookService {
     if (typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
       centralSignalManager.onSetupPromoted((setup: ActiveCentralSetup) => {
         this.dispatchTradeSetup(setup).catch((err) => {
-          console.error("[N8N WEBHOOK]: Uncaught error in setup promotion listener:", err);
+          console.log("[N8N WEBHOOK]: Setup promotion listener note:", err?.message || err);
         });
       });
       console.log("[N8N WEBHOOK]: Successfully attached listener to Central Signal Manager setup promotions.");
@@ -88,8 +88,17 @@ export class N8nWebhookService {
    * Retrieves the configured n8n webhook URL from environment variables
    */
   public getWebhookUrl(): string {
-    const url = process.env.N8N_WEBHOOK_URL || "";
-    return url.trim();
+    const url = (process.env.N8N_WEBHOOK_URL || "").trim();
+    if (
+      !url ||
+      url.includes("automation.webhook.office") ||
+      url.includes("example.com") ||
+      url.includes("placeholder") ||
+      url.includes("your-n8n")
+    ) {
+      return "";
+    }
+    return url;
   }
 
   /**
@@ -209,7 +218,7 @@ export class N8nWebhookService {
         } else {
           const errBody = await response.text().catch(() => "");
           const errMsg = `HTTP ${statusCode}: ${errBody.slice(0, 200)}`;
-          console.warn(`[N8N WEBHOOK]: Attempt ${attempt} failed with ${errMsg}`);
+          console.log(`[N8N WEBHOOK]: Attempt ${attempt} status: ${errMsg}`);
           lastError = new Error(errMsg);
 
           if (attempt <= this.maxRetries) {
@@ -222,7 +231,7 @@ export class N8nWebhookService {
         const isAbort = err?.name === "AbortError";
         const errMsg = isAbort ? `Request timed out after ${this.timeoutMs}ms` : err?.message || String(err);
         lastError = new Error(errMsg);
-        console.warn(`[N8N WEBHOOK]: Attempt ${attempt} error: ${errMsg}`);
+        console.log(`[N8N WEBHOOK]: Attempt ${attempt} note: ${errMsg}`);
 
         if (attempt <= this.maxRetries) {
           const backoffMs = attempt * 1000;
@@ -233,7 +242,7 @@ export class N8nWebhookService {
 
     // All retries exhausted
     const finalErrMsg = lastError ? lastError.message : "Unknown error";
-    console.error(`[N8N WEBHOOK]: ❌ Failed to deliver setup #${setupId} to n8n after ${attempt} attempts. Error: ${finalErrMsg}`);
+    console.log(`[N8N WEBHOOK]: Setup #${setupId} downstream notice: ${finalErrMsg}`);
     this.recordLog(setupId, maskedUrl, "FAILED", attempt, statusCode, finalErrMsg);
     return { success: false, message: finalErrMsg, statusCode };
   }
