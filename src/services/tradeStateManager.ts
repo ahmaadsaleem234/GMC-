@@ -895,26 +895,42 @@ export class MasterTradeStateManager {
     return advancedRiskManager.getTradeLockStatusReport(this.activeTrade, this.cooldownState);
   }
 
+  private dispatchedSignalIds: Set<string> = new Set();
+
   public markSignalDispatched(signalId: string): void {
-    if (this.activeTrade && (this.activeTrade.signalId === signalId || this.activeTrade.id === signalId)) {
-      if (!this.activeTrade.dispatchedOutcomes.includes("SIGNAL")) {
-        this.activeTrade.dispatchedOutcomes.push("SIGNAL");
+    if (!signalId) return;
+    const cleanId = signalId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+    this.dispatchedSignalIds.add(cleanId);
+    this.dispatchedSignalIds.add(signalId.trim().toUpperCase());
+
+    if (this.activeTrade) {
+      const activeClean = (this.activeTrade.signalId || this.activeTrade.id || "").replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+      if (activeClean === cleanId || activeClean.includes(cleanId) || cleanId.includes(activeClean)) {
+        if (!this.activeTrade.dispatchedOutcomes.includes("SIGNAL")) {
+          this.activeTrade.dispatchedOutcomes.push("SIGNAL");
+        }
+        this.activeTrade.entryDispatched = true;
+        this.persistState();
+        console.log(`[TRADE STATE MANAGER]: ✅ Marked active trade #${activeClean} as confirmed signal dispatched.`);
       }
-      this.activeTrade.entryDispatched = true;
-      this.persistState();
-      console.log(`[TRADE STATE MANAGER]: ✅ Marked trade #${signalId} as confirmed signal dispatched.`);
     }
   }
 
   public isSignalDispatched(signalId?: string): boolean {
-    if (!this.activeTrade) return false;
     if (signalId) {
-      const cleanTarget = signalId.replace("#", "").trim().toUpperCase();
-      const cleanActive = (this.activeTrade.signalId || this.activeTrade.id || "").replace("#", "").trim().toUpperCase();
-      if (cleanTarget !== cleanActive && !cleanTarget.includes(cleanActive) && !cleanActive.includes(cleanTarget)) {
-        return false;
+      const cleanTarget = signalId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+      if (this.dispatchedSignalIds.has(cleanTarget) || this.dispatchedSignalIds.has(signalId.trim().toUpperCase())) {
+        return true;
       }
+      if (this.activeTrade) {
+        const cleanActive = (this.activeTrade.signalId || this.activeTrade.id || "").replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+        if (cleanTarget === cleanActive || cleanTarget.includes(cleanActive) || cleanActive.includes(cleanTarget)) {
+          return Boolean(this.activeTrade.entryDispatched || this.activeTrade.dispatchedOutcomes?.includes("SIGNAL"));
+        }
+      }
+      return false;
     }
+    if (!this.activeTrade) return false;
     return Boolean(
       this.activeTrade.entryDispatched ||
       this.activeTrade.dispatchedOutcomes?.includes("SIGNAL")

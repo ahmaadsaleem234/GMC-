@@ -479,7 +479,7 @@ export function calculateHaramiAiSetup(
 
   // 8. DYNAMIC SL RULE — XAU/USD:
   // SL: $7 minimum → $10 maximum ($7.00 to $10.00 / 70 to 100 pips)
-  const isGold = spec.symbol === "XAUUSD" || cleanAsset === "XAUUSD";
+  const isGold = spec.symbol === "XAUUSD" || assetKey.includes("XAU");
   const minSlFloor = isGold ? 7.00 : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
   const maxSlCap = isGold ? 10.00 : spec.baseMaxSlCap;
 

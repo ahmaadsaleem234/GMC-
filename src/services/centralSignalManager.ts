@@ -13,6 +13,17 @@
  * All competing setups remain in ⏳ WAITING / QUEUED state.
  */
 
+let fsModule: any = null;
+let pathModule: any = null;
+try {
+  if (typeof process !== "undefined" && process.versions && process.versions.node) {
+    fsModule = eval('require("fs")');
+    pathModule = eval('require("path")');
+  }
+} catch (e) {
+  // Edge / browser runtime
+}
+
 import { Candle, LivePrice } from "../types";
 import {
   calculateKhatarnakJugaadSetup,
@@ -244,12 +255,15 @@ export interface ActiveCentralSetup {
   pnlPips: number;
   pnlUSD: number;
   
-  // Timestamps
+  // Timestamps & Delivery Flags
   activatedAt: number;
   activatedTimeUtc: string;
   closedAt: number | null;
   closedTimeUtc: string | null;
   finalOutcome: string | null;
+  entryDispatched?: boolean;
+  telegramDispatched?: boolean;
+  dispatchedOutcomes?: string[];
 }
 
 export interface AiConsensusState {
@@ -369,10 +383,10 @@ const STORAGE_KEY_STATS = "central_signal_manager_stats_v1";
 const STORAGE_KEY_CONFIG = "central_signal_manager_config_v1";
 
 // ID Counters for Unique Sequential Setup IDs
-let setupCounterHA = 101;
-let setupCounterKJ = 101;
-let setupCounterWR = 101;
-let setupCounterPH = 101;
+let setupCounterHA = 104;
+let setupCounterKJ = 104;
+let setupCounterWR = 104;
+let setupCounterPH = 104;
 
 function peekCandidateSetupId(source: AiBrainSource): string {
   if (source === "HARAMI_AI") return `HA-${setupCounterHA}`;
@@ -540,6 +554,14 @@ export class CentralSignalManagerEngine {
   }
 
   private notifyLifecycleEvent(setup: ActiveCentralSetup, event: string, currentPx: number) {
+    if (!setup.dispatchedOutcomes) setup.dispatchedOutcomes = [];
+    if (setup.dispatchedOutcomes.includes(event)) {
+      console.log(`[CENTRAL SIGNAL MANAGER]: 🛡️ Blocked duplicate lifecycle event ${event} for #${setup.setupId}`);
+      return;
+    }
+    setup.dispatchedOutcomes.push(event);
+    this.saveToStorage();
+
     this.onLifecycleEventListeners.forEach((listener) => {
       try {
         listener(setup, event, currentPx);
@@ -612,6 +634,23 @@ export class CentralSignalManagerEngine {
         }
       }
 
+      // Safe Node.js Disk Persistence
+      if (fsModule && pathModule) {
+        const filePath = pathModule.join(process.cwd(), "data", "central_signal_manager_state.json");
+        if (fsModule.existsSync(filePath)) {
+          const raw = fsModule.readFileSync(filePath, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (parsed.activeSetup) this.activeSetup = parsed.activeSetup;
+          if (parsed.cooldown) this.cooldown = parsed.cooldown;
+          if (parsed.setupCounterHA && parsed.setupCounterHA > setupCounterHA) setupCounterHA = parsed.setupCounterHA;
+          if (parsed.setupCounterKJ && parsed.setupCounterKJ > setupCounterKJ) setupCounterKJ = parsed.setupCounterKJ;
+          if (parsed.setupCounterWR && parsed.setupCounterWR > setupCounterWR) setupCounterWR = parsed.setupCounterWR;
+          if (parsed.setupCounterPH && parsed.setupCounterPH > setupCounterPH) setupCounterPH = parsed.setupCounterPH;
+          if (parsed.auditLogs && Array.isArray(parsed.auditLogs)) this.auditLogs = parsed.auditLogs;
+          console.log(`[CENTRAL SIGNAL MANAGER]: Restored state from disk (Setup counter HA: ${setupCounterHA}, Active: ${this.activeSetup?.setupId || "None"}).`);
+        }
+      }
+
       this.isInitialized = true;
     } catch (e) {
       console.error("CentralSignalManagerEngine restore error", e);
@@ -643,9 +682,70 @@ export class CentralSignalManagerEngine {
           })
         );
       }
+
+      // Safe Node.js Disk Persistence
+      if (fsModule && pathModule) {
+        const dataDir = pathModule.join(process.cwd(), "data");
+        if (!fsModule.existsSync(dataDir)) {
+          fsModule.mkdirSync(dataDir, { recursive: true });
+        }
+        const filePath = pathModule.join(dataDir, "central_signal_manager_state.json");
+        fsModule.writeFileSync(
+          filePath,
+          JSON.stringify(
+            {
+              activeSetup: this.activeSetup,
+              cooldown: this.cooldown,
+              setupCounterHA,
+              setupCounterKJ,
+              setupCounterWR,
+              setupCounterPH,
+              auditLogs: this.auditLogs.slice(0, 100),
+              updatedAt: Date.now(),
+            },
+            null,
+            2
+          ),
+          "utf-8"
+        );
+      }
     } catch (e) {
       console.error("CentralSignalManagerEngine save error", e);
     }
+  }
+
+  public markSetupDispatched(setupId: string) {
+    if (!setupId) return;
+    const clean = setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+    if (this.activeSetup) {
+      const activeClean = this.activeSetup.setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+      if (activeClean === clean || activeClean.includes(clean) || clean.includes(activeClean)) {
+        this.activeSetup.entryDispatched = true;
+        this.activeSetup.telegramDispatched = true;
+        if (!this.activeSetup.dispatchedOutcomes) this.activeSetup.dispatchedOutcomes = [];
+        if (!this.activeSetup.dispatchedOutcomes.includes("SIGNAL")) {
+          this.activeSetup.dispatchedOutcomes.push("SIGNAL");
+        }
+        this.saveToStorage();
+        console.log(`[CENTRAL SIGNAL MANAGER]: ✅ Confirmed setup #${activeClean} entry signal dispatched to Telegram.`);
+      }
+    }
+  }
+
+  public isSetupDispatched(setupId?: string): boolean {
+    if (!this.activeSetup) return false;
+    if (setupId) {
+      const clean = setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+      const activeClean = this.activeSetup.setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
+      if (activeClean !== clean && !activeClean.includes(clean) && !clean.includes(activeClean)) {
+        return false;
+      }
+    }
+    return Boolean(
+      this.activeSetup.entryDispatched ||
+      this.activeSetup.telegramDispatched ||
+      this.activeSetup.dispatchedOutcomes?.includes("SIGNAL")
+    );
   }
 
   public setConfig(
@@ -1173,6 +1273,9 @@ export class CentralSignalManagerEngine {
       closedAt: null,
       closedTimeUtc: null,
       finalOutcome: null,
+      entryDispatched: false,
+      telegramDispatched: false,
+      dispatchedOutcomes: [],
     };
 
     this.activeSetup = newActive;
@@ -1986,6 +2089,27 @@ export class CentralSignalManagerEngine {
         : "🔴 Harami AI disabled by Admin (OFF)",
     };
 
+    const isGold = assetKey.includes("XAU") || assetKey.includes("GOLD");
+    const bestEntry = setup.bestEntry || currentPx;
+    let finalSl = setup.stopLoss;
+    let finalTp1 = setup.tp1;
+    let finalTp2 = setup.tp2;
+    let finalTp3 = setup.tp3;
+    let finalTp4 = setup.tp4;
+
+    if (isGold) {
+      const isBuy = dir === "BUY";
+      // Strict Gold SL: $7.00 - $10.00 max range
+      const rawSlDist = Math.abs(bestEntry - finalSl);
+      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawSlDist > 0 ? rawSlDist : 8.00)).toFixed(2));
+      finalSl = isBuy ? Number((bestEntry - goldSlDist).toFixed(2)) : Number((bestEntry + goldSlDist).toFixed(2));
+      // Strict Gold TPs: TP1=50 pips ($5), TP2=100 pips ($10), TP3=120 pips ($12), TP4=150 pips ($15)
+      finalTp1 = isBuy ? Number((bestEntry + 5.00).toFixed(2)) : Number((bestEntry - 5.00).toFixed(2));
+      finalTp2 = isBuy ? Number((bestEntry + 10.00).toFixed(2)) : Number((bestEntry - 10.00).toFixed(2));
+      finalTp3 = isBuy ? Number((bestEntry + 12.00).toFixed(2)) : Number((bestEntry - 12.00).toFixed(2));
+      finalTp4 = isBuy ? Number((bestEntry + 15.00).toFixed(2)) : Number((bestEntry - 15.00).toFixed(2));
+    }
+
     return {
       brainSource: "HARAMI_AI",
       brainName: "Harami AI",
@@ -2002,12 +2126,12 @@ export class CentralSignalManagerEngine {
       entryZoneLow: setup.entryZoneLow,
       entryZoneHigh: setup.entryZoneHigh,
       entryRangeFormatted: setup.entryZoneFormatted,
-      preferredEntry: setup.bestEntry,
-      stopLoss: setup.stopLoss,
-      tp1: setup.tp1,
-      tp2: setup.tp2,
-      tp3: setup.tp3,
-      finalTp: setup.tp4,
+      preferredEntry: bestEntry,
+      stopLoss: finalSl,
+      tp1: finalTp1,
+      tp2: finalTp2,
+      tp3: finalTp3,
+      finalTp: finalTp4,
       rrRatio: setup.rrRatio,
       rrRatioString: setup.rrRatioString,
       signatureLine: getRandomSignatureLine("HARAMI_AI"),
@@ -2275,6 +2399,9 @@ export class CentralSignalManagerEngine {
       closedAt: null,
       closedTimeUtc: null,
       finalOutcome: null,
+      entryDispatched: false,
+      telegramDispatched: false,
+      dispatchedOutcomes: [],
     };
 
     this.addAuditLog(
@@ -2362,6 +2489,7 @@ export class CentralSignalManagerEngine {
       this.notifyLifecycleEvent(s, "EXPIRED", currentPx);
       this.resetCooldownManually();
       this.activeSetup = null;
+      this.saveToStorage();
       return;
     }
 
@@ -2391,6 +2519,7 @@ export class CentralSignalManagerEngine {
       this.notifyLifecycleEvent(s, wasTp1Hit ? "TP_THEN_SL_HIT" : "SL_HIT", currentPx);
       this.startCooldown();
       this.activeSetup = null;
+      this.saveToStorage();
       return;
     }
 
@@ -2474,6 +2603,7 @@ export class CentralSignalManagerEngine {
       this.notifyLifecycleEvent(s, "FINAL_TP_HIT", currentPx);
       this.startCooldown();
       this.activeSetup = null;
+      this.saveToStorage();
     }
   }
 

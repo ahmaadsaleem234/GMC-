@@ -474,7 +474,7 @@ class TelegramIdempotencyRegistry {
    */
   public hasInitialSignalBeenDispatched(tradeId?: string): boolean {
     if (!tradeId) return false;
-    const cleanId = tradeId.replace("#", "").trim().toUpperCase();
+    const cleanId = tradeId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase();
     for (const key of this.dispatchedKeys) {
       if (key.includes(cleanId) && (key.includes("NEW_SETUP") || key.includes("SIGNAL"))) {
         return true;
