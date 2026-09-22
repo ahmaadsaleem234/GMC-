@@ -1139,13 +1139,17 @@ class WarRoomServerService {
       // Dynamic ATR-based Stop Loss: SL = structuralLevel - (0.5 * ATR) for BUY, + (0.5 * ATR) for SELL
       const atr15M = mtfAnalysis["15M"]?.atr || 3.50;
       const slBuffer = Number((0.5 * atr15M).toFixed(2));
+      const minFloor = Number(Math.max(5.00, Math.min(7.00, atr15M * 1.5)).toFixed(2));
       const structuralLevel = isCandidateBuy
-        ? (mtfAnalysis["15M"]?.demandZone?.low || Number((px - 2.50).toFixed(2)))
-        : (mtfAnalysis["15M"]?.supplyZone?.high || Number((px + 2.50).toFixed(2)));
-      const sl = isCandidateBuy ? Number((structuralLevel - slBuffer).toFixed(2)) : Number((structuralLevel + slBuffer).toFixed(2));
+        ? (mtfAnalysis["15M"]?.demandZone?.low || Number((px - minFloor * 0.8).toFixed(2)))
+        : (mtfAnalysis["15M"]?.supplyZone?.high || Number((px + minFloor * 0.8).toFixed(2)));
+      let sl = isCandidateBuy ? Number((structuralLevel - slBuffer).toFixed(2)) : Number((structuralLevel + slBuffer).toFixed(2));
+      if (Math.abs(bestEntry - sl) < minFloor) {
+        sl = isCandidateBuy ? Number((bestEntry - minFloor).toFixed(2)) : Number((bestEntry + minFloor).toFixed(2));
+      }
       const invalidation = isCandidateBuy ? Number((sl - slBuffer).toFixed(2)) : Number((sl + slBuffer).toFixed(2));
 
-      const risk = Number(Math.max(2.0, Math.abs(bestEntry - sl)).toFixed(2));
+      const risk = Number(Math.max(minFloor, Math.abs(bestEntry - sl)).toFixed(2));
 
       // Empirical Backtest Validated TP Levels: TP1 (2R), TP2 (3.8R), TP3 (5.0R), TP4 (8.0R)
       const tp1 = isCandidateBuy ? Number((bestEntry + 2.0 * risk).toFixed(2)) : Number((bestEntry - 2.0 * risk).toFixed(2));
@@ -1693,13 +1697,14 @@ class WarRoomServerService {
       const candles15M = fcsMarketService.getCandles("XAUUSD", "15m");
       const atr15M = calculateATR(candles15M, 14, 3.50);
       const slBuffer = Number((0.5 * atr15M).toFixed(2));
+      const minFloor = Number(Math.max(5.00, Math.min(7.00, atr15M * 1.5)).toFixed(2));
       bestEntry = Number(px.toFixed(2));
       entryZone = isBuy
         ? [Number((px - 0.75).toFixed(2)), Number((px + 0.25).toFixed(2))]
         : [Number((px - 0.25).toFixed(2)), Number((px + 0.75).toFixed(2))];
-      stopLoss = isBuy ? Number((px - (2.5 + slBuffer)).toFixed(2)) : Number((px + (2.5 + slBuffer)).toFixed(2));
+      stopLoss = isBuy ? Number((px - (minFloor + slBuffer)).toFixed(2)) : Number((px + (minFloor + slBuffer)).toFixed(2));
       invalidationLevel = isBuy ? Number((stopLoss - slBuffer).toFixed(2)) : Number((stopLoss + slBuffer).toFixed(2));
-      const risk = Number(Math.max(2.0, Math.abs(bestEntry - stopLoss)).toFixed(2));
+      const risk = Number(Math.max(minFloor, Math.abs(bestEntry - stopLoss)).toFixed(2));
       tp1 = isBuy ? Number((bestEntry + 2.0 * risk).toFixed(2)) : Number((bestEntry - 2.0 * risk).toFixed(2));
       tp2 = isBuy ? Number((bestEntry + 3.8 * risk).toFixed(2)) : Number((bestEntry - 3.8 * risk).toFixed(2));
       tp3 = isBuy ? Number((bestEntry + 5.0 * risk).toFixed(2)) : Number((bestEntry - 5.0 * risk).toFixed(2));

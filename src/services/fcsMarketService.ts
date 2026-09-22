@@ -202,7 +202,18 @@ export class FCSMarketService {
     }
   }
 
-  public updateLiveTick(sym: string, tick: FCSLiveTick) {
+  public updateLiveTick(symOrTick: string | FCSLiveTick, tickObj?: FCSLiveTick) {
+    let sym: string;
+    let tick: FCSLiveTick;
+    if (typeof symOrTick === "object" && symOrTick !== null) {
+      tick = symOrTick;
+      sym = tick.symbol || "XAUUSD";
+    } else {
+      sym = (symOrTick as string) || "XAUUSD";
+      tick = tickObj!;
+    }
+    if (!tick) return;
+
     const cleanSym = this.normalizeSymbol(sym);
     const prevTick = this.liveTicks.get(cleanSym);
     this.liveTicks.set(cleanSym, tick);
@@ -215,9 +226,13 @@ export class FCSMarketService {
     this.notifyTick(tick);
   }
 
-  public normalizeSymbol(sym: string): string {
+  public normalizeSymbol(sym: any): string {
     if (!sym) return "XAUUSD";
-    let clean = sym.toUpperCase().replace("FX:", "").replace("BINANCE:", "").replace("FOREX:", "").replace("/", "");
+    if (typeof sym === "object") {
+      sym = sym.symbol || sym.sym || "XAUUSD";
+    }
+    const str = String(sym || "XAUUSD");
+    let clean = str.toUpperCase().replace("FX:", "").replace("BINANCE:", "").replace("FOREX:", "").replace("/", "");
     if (clean === "BTCUSDT") return "BTCUSD";
     if (clean === "ETHUSDT") return "ETHUSD";
     if (clean === "SOLUSDT") return "SOLUSD";

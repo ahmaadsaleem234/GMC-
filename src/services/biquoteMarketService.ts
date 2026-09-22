@@ -100,9 +100,13 @@ export class BiQuoteMarketService {
     }
   }
 
-  public normalizeSymbol(sym: string): string {
+  public normalizeSymbol(sym: any): string {
     if (!sym) return "XAUUSD";
-    const clean = sym.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (typeof sym === "object") {
+      sym = sym.symbol || sym.sym || "XAUUSD";
+    }
+    const str = String(sym || "XAUUSD");
+    const clean = str.toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (clean === "BTCUSDT") return "BTCUSD";
     if (clean === "ETHUSDT") return "ETHUSD";
     if (clean === "GOLD" || clean === "XAU") return "XAUUSD";

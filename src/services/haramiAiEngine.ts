@@ -475,60 +475,75 @@ export function calculateHaramiAiSetup(
   // Entry Quality Check: Price must not be overextended (> 1.4x ATR away from best entry)
   const isOverextended = Math.abs(px - bestEntry) > atr15m * 1.4;
 
-  // 8. MAXIMUM SL CAP (Instrument & Volatility-Adjusted)
-  const maxSlCap = Number(Math.min(spec.baseMaxSlCap * 1.35, Math.max(spec.baseMaxSlCap * 0.75, atr15m * 2.3)).toFixed(2));
-  const minSlFloor = Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
+  // 8. DYNAMIC SL RULE — XAU/USD:
+  // Strictly calculated from Market Structure + Liquidity POI + 15M ATR (0.5x buffer).
+  // Minimum SL is $5–$7. The $9–$12 range is preferred, not a fixed cap.
+  // SL may exceed $12 only when required by valid market structure; never force a tight SL.
+  const isGold = spec.symbol === "XAUUSD" || cleanAsset === "XAUUSD";
+  const minSlFloor = isGold
+    ? Number(Math.max(5.00, Math.min(7.00, atr15m * 1.5)).toFixed(2)) // Minimum $5–$7 floor for XAU/USD
+    : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
+  const maxSlCap = isGold ? 12.00 : spec.baseMaxSlCap; // Preferred upper bound ($9–$12 range)
 
-  // 9. DYNAMIC STOP LOSS CALCULATION (Using Shared POI Structure + Dynamic ATR Buffer)
-  const volatilityBuffer = Number((atr15m * volatilityMultiplier * 0.50).toFixed(2)); // Dynamic 0.5 ATR buffer
+  // 9. DYNAMIC STOP LOSS CALCULATION (Using Shared POI Structure + 0.5x Dynamic 15M ATR Buffer)
+  const volatilityBuffer = Number((atr15m * 0.50).toFixed(2)); // Strict 0.5x 15M ATR buffer
 
   let stopLoss: number;
   let slRationale: string;
   let slExceedsCap = false;
+
+  // Absolute safety ceiling (e.g., corrupted tick protection: max $35.00 or 2.5% move)
+  const maxSanityCeiling = isGold ? 35.00 : spec.baseMaxSlCap * 3.0;
 
   if (direction === "BUY") {
     const structuralLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < bestEntry
       ? sharedLiquidity.demandZone.low
       : sharedLiquidity.ssl > 0 && sharedLiquidity.ssl < bestEntry
       ? sharedLiquidity.ssl
-      : entryZoneLow - (minSlFloor * 0.7);
+      : entryZoneLow - minSlFloor;
 
-    // Initial Structural SL with dynamic ATR buffer
+    // Proposed SL strictly from Structure Low minus 0.5x 15M ATR buffer
     const proposedSl = Number((structuralLow - volatilityBuffer).toFixed(2));
     const rawDist = bestEntry - proposedSl;
 
-    if (rawDist > maxSlCap) {
-      stopLoss = Number((bestEntry - maxSlCap).toFixed(2));
-      slExceedsCap = true;
-      slRationale = `Structural SL ($${rawDist.toFixed(2)}) exceeds Max Volatility Cap ($${maxSlCap.toFixed(2)}). Awaiting deeper pullback.`;
-    } else if (rawDist < minSlFloor) {
+    if (rawDist < minSlFloor) {
+      // Never force a tight SL under the $5–$7 minimum floor
       stopLoss = Number((bestEntry - minSlFloor).toFixed(2));
-      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
+      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied (avoiding tight SL)`;
+    } else if (rawDist > maxSanityCeiling) {
+      stopLoss = Number((bestEntry - maxSanityCeiling).toFixed(2));
+      slExceedsCap = true;
+      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} sanity ceiling`;
     } else {
+      // Valid market structure SL respected (preferred $9–$12, allows > $12 when required by structure)
       stopLoss = proposedSl;
-      slRationale = `Placed $${(bestEntry - stopLoss).toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
+      const rangeTag = (rawDist >= 9.0 && rawDist <= 12.0) ? " (Ideal $9–$12 Range)" : rawDist > 12.0 ? " (Extended Structural Range)" : "";
+      slRationale = `Placed $${rawDist.toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} (0.5× 15M ATR Buffer)${rangeTag}`;
     }
   } else {
     const structuralHigh = sharedLiquidity.supplyZone.high > 0 && sharedLiquidity.supplyZone.high > bestEntry
       ? sharedLiquidity.supplyZone.high
       : sharedLiquidity.bsl > 0 && sharedLiquidity.bsl > bestEntry
       ? sharedLiquidity.bsl
-      : entryZoneHigh + (minSlFloor * 0.7);
+      : entryZoneHigh + minSlFloor;
 
-    // Initial Structural SL with dynamic ATR buffer
+    // Proposed SL strictly from Structure High plus 0.5x 15M ATR buffer
     const proposedSl = Number((structuralHigh + volatilityBuffer).toFixed(2));
     const rawDist = proposedSl - bestEntry;
 
-    if (rawDist > maxSlCap) {
-      stopLoss = Number((bestEntry + maxSlCap).toFixed(2));
-      slExceedsCap = true;
-      slRationale = `Structural SL ($${rawDist.toFixed(2)}) exceeds Max Volatility Cap ($${maxSlCap.toFixed(2)}). Awaiting deeper pullback.`;
-    } else if (rawDist < minSlFloor) {
+    if (rawDist < minSlFloor) {
+      // Never force a tight SL under the $5–$7 minimum floor
       stopLoss = Number((bestEntry + minSlFloor).toFixed(2));
-      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
+      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied (avoiding tight SL)`;
+    } else if (rawDist > maxSanityCeiling) {
+      stopLoss = Number((bestEntry + maxSanityCeiling).toFixed(2));
+      slExceedsCap = true;
+      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} sanity ceiling`;
     } else {
+      // Valid market structure SL respected (preferred $9–$12, allows > $12 when required by structure)
       stopLoss = proposedSl;
-      slRationale = `Placed $${(stopLoss - bestEntry).toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Dynamic ATR Buffer`;
+      const rangeTag = (rawDist >= 9.0 && rawDist <= 12.0) ? " (Ideal $9–$12 Range)" : rawDist > 12.0 ? " (Extended Structural Range)" : "";
+      slRationale = `Placed $${rawDist.toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} (0.5× 15M ATR Buffer)${rangeTag}`;
     }
   }
 
@@ -606,7 +621,7 @@ export function calculateHaramiAiSetup(
     entryQualityValid: entryZoneLow < entryZoneHigh && !isOverextended,
     bestEntryAvailable: Math.abs(px - bestEntry) <= slDistance * 0.9,
     slBeyondStructure: slDistance >= minSlFloor * 0.95,
-    slWithinMaxCap: !slExceedsCap && slDistance <= maxSlCap,
+    slWithinMaxCap: !slExceedsCap && slDistance <= maxSanityCeiling,
     expectedMoveValid: Math.abs(tp2 - bestEntry) >= atr15m * 1.5,
     riskRewardValid: rrRatio >= 2.0,
     tpLevelsRealistic: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,

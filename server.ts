@@ -5999,6 +5999,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
   }
 
+  const serverInFlightTelegramDispatches = new Set<string>();
+
   async function sendServerTelegramMessage(
     text: string,
     overrideChatId?: string,
@@ -6015,6 +6017,30 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       return true; // Return true so upstream caller treats it as safely processed
     }
 
+    // 1B. In-flight Concurrency Lock (Prevents asynchronous parallel race conditions from sending duplicate broadcasts)
+    const inFlightKey = serverTelegramIdempotency.resolveCompositeKey(customAlertId, text);
+    if (serverInFlightTelegramDispatches.has(inFlightKey)) {
+      console.log(`[SERVER IN-FLIGHT GUARD]: Suppressed parallel race broadcast for key [${inFlightKey}]. Already in transit.`);
+      serverTelegramDeliveryStatus = "Sent";
+      serverTelegramStatus = "Connected";
+      return true;
+    }
+    serverInFlightTelegramDispatches.add(inFlightKey);
+
+    try {
+      return await sendServerTelegramMessageInternal(text, overrideChatId, customPhotoBuffer, customAlertId, isEntryDispatch);
+    } finally {
+      serverInFlightTelegramDispatches.delete(inFlightKey);
+    }
+  }
+
+  async function sendServerTelegramMessageInternal(
+    text: string,
+    overrideChatId?: string,
+    customPhotoBuffer?: Buffer,
+    customAlertId?: string,
+    isEntryDispatch?: boolean
+  ): Promise<boolean> {
     if (overrideChatId) {
       const ok = await sendSingleTelegramMessage(overrideChatId, text, customPhotoBuffer);
       serverTelegramDeliveryStatus = ok ? "Sent" : "Failed";
@@ -6274,34 +6300,25 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const currentSigId = String(signalIdExtracted || customAlertId || "").replace("_NEW_SETUP", "").replace("#", "").trim().toUpperCase();
 
       // Check if currentActive or system state matches the trade being dispatched
+      // A signal is the SAME trade ONLY if an active trade exists AND its ID strictly matches
       const isSameTrade = Boolean(
-        isEntryDispatchFinal ||
-        (activeId && currentSigId && (
+        activeId && currentSigId && (
           activeId === currentSigId ||
           currentSigId.includes(activeId) ||
           activeId.includes(currentSigId) ||
           (customAlertId && customAlertId.toUpperCase().includes(activeId)) ||
           text.toUpperCase().includes(activeId)
-        ))
+        )
       );
 
-      // RULE 1: Only 1 active trade at a time (block DIFFERENT active trades).
-      // RULE 3: Do not send opposite signals while a DIFFERENT trade is active.
+      // RULE 1: ONLY 1 ACTIVE TRADE AT A TIME ("ek time py sirf ek trade")
+      // If ANY trade is currently active anywhere in the system, and this incoming signal is NOT the same trade:
+      // DROP IT WITH ZERO EXCEPTIONS!
       if (currentActive && !isSameTrade) {
-        const activeDir = ((currentActive as any).direction || "SELL").toUpperCase();
-
-        const dirMatch = text.match(/\b(BUY|SELL)\b/i);
-        const incomingDir = dirMatch ? dirMatch[1].toUpperCase() : undefined;
-
-        if (incomingDir && incomingDir !== activeDir) {
-          console.warn(
-            `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Opposite signal rejected (${incomingDir} vs active ${activeDir}). Cannot send opposite signals while trade #${activeId} is active.`
-          );
-        } else {
-          console.warn(
-            `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Dropped trade alert (#${signalIdExtracted}). An active trade (#${activeId}, ${activeDir}) is currently running. Only 1 active trade allowed at a time.`
-          );
-        }
+        const activeDir = ((currentActive as any).direction || "").toUpperCase();
+        console.warn(
+          `[TELEGRAM GATEWAY STRICT BLOCK]: 🛑 Rejected trade alert (#${currentSigId || signalIdExtracted}). An active trade (#${activeId}${activeDir ? ", " + activeDir : ""}) is already running. Rule: Only 1 active trade allowed at a time.`
+        );
         serverTelegramDeliveryStatus = "Idle";
         return false;
       }
@@ -6312,7 +6329,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       const priceMatch = text.match(/(?:Entry|Price|at|Zone)\s*[:$]?\s*([0-9]{4}(?:\.[0-9]{1,2})?)/i);
       const incomingPrice = priceMatch ? parseFloat(priceMatch[1]) : undefined;
 
-      if (incomingDir && incomingPrice && !isSameTrade && !isEntryDispatchFinal) {
+      if (incomingDir && incomingPrice && !isSameTrade) {
         if (checkSignalDuplicate(signalEngine, incomingDir, incomingPrice, activeId || currentSigId)) {
           console.warn(
             `[TELEGRAM GATEWAY DEDUP BLOCK]: 🛑 Blocked duplicate trade alert (${incomingDir} near $${incomingPrice}, ID: #${signalIdExtracted}).`
@@ -6322,8 +6339,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         }
       }
 
-      // RULE 4 & 5: Cooldown and Risk enforcement (only applies when launching a DIFFERENT new trade)
-      if (!isSameTrade && !isEntryDispatchFinal) {
+      // RULE 4 & 5: Cooldown and Risk enforcement (applies whenever launching a new trade)
+      if (!isSameTrade) {
         const cooldown = tradeStateManager.checkCooldown();
         if (cooldown.inCooldown) {
           console.warn(
@@ -8867,11 +8884,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (setup.brainSource === "KHATARNAK_JUGAAD") {
             message = formatKhatarnakJugaadTelegramMessage(setup);
           } else if (setup.brainSource === "HARAMI_AI") {
-            message = formatHaramiAiTelegramMessage(setup);
+            // Harami AI setups are formatted with customized charts and dispatched directly by executeServerSignalEngineTick.
+            // Do NOT re-dispatch here to prevent duplicate signals!
+            message = "";
           } else if (setup.brainSource === "WAR_ROOM") {
             message = formatWarRoomTelegramMessage(setup);
           } else if (setup.brainSource === "PRECISION_HUNTER") {
-            message = formatPrecisionHunterTelegramMessage(setup);
+            message = "";
           }
           if (message) {
             await sendServerTelegramMessage(message, undefined, undefined, `${setup.setupId}_NEW_SETUP`, true);
@@ -8960,15 +8979,29 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     while (true) {
       try {
         await executeServerSignalEngineTick();
-        const goldTick = fcsMarketService.getLiveTick("XAUUSD");
-        const livePx = goldTick?.price || 2945.80;
+        const tick = await fetchLiveServerGoldTick();
+        const livePx = tick.price;
+        if (fcsMarketService) {
+          fcsMarketService.updateLiveTick("XAUUSD", {
+            symbol: "XAUUSD",
+            price: tick.price,
+            bid: tick.bid,
+            ask: tick.ask,
+            spread: tick.spread,
+            timestamp: tick.timestamp,
+            change: 0,
+            changePct: 0,
+            status: "Live",
+          });
+        }
+        const goldTick = fcsMarketService.getLiveTick("XAUUSD") || { price: livePx, symbol: "XAUUSD" };
 
         // 🧠 Autonomous 24/7 Central Signal Manager Tick Cycle
         await centralSignalManager.evaluateCycles(livePx, 0.20, "XAUUSD").catch((e) => {
           console.warn("[CENTRAL SIGNAL MANAGER TICK ERROR]:", e);
         });
 
-        if (goldTick?.price) {
+        if (livePx) {
           const anyTradeActiveGlobally =
             !!serverActiveTrade ||
             tradeStateManager.hasActiveTrade() ||
@@ -10975,8 +11008,8 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
   // 1. Get Live State & AI Candidates & Active Setup
   app.get("/api/central-signal-manager/state", async (req, res) => {
     try {
-      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
-      const currentPrice = goldTick && goldTick.price > 0 ? goldTick.price : 2945.80;
+      const goldTick = await fetchLiveServerGoldTick().catch(() => null);
+      const currentPrice = goldTick?.price || 4322.00;
       const state = await centralSignalManager.evaluateCycles(currentPrice, 0.20, "XAUUSD");
       res.json({ ok: true, state });
     } catch (err: any) {
@@ -11052,8 +11085,8 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
   app.post("/api/central-signal-manager/force-close", async (req, res) => {
     try {
       const { reason } = req.body || {};
-      const goldTick = fcsMarketService.getLiveTick("XAUUSD");
-      const currentPrice = goldTick && goldTick.price > 0 ? goldTick.price : 2945.80;
+      const goldTick = await fetchLiveServerGoldTick().catch(() => null);
+      const currentPrice = goldTick?.price || 4322.00;
       
       const closed = await centralSignalManager.forceCloseActiveSetup(
         reason || "Manual override via Central Signal Manager Dashboard",
