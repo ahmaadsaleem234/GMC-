@@ -7600,18 +7600,17 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
 
-          // DYNAMIC SL & TP RULE FOR XAU/USD (Market Structure + Liquidity POI + 15M ATR 0.5x Buffer)
+          // DYNAMIC SL & TP RULE FOR XAU/USD (Strict $7–$10 SL, TP1=50, TP2=100, TP3=120, TP4=150 pips)
           const candles15m = fcsMarketService.getCandles("XAUUSD", "15m");
           const atr15m = calculateATR(candles15m, 14, 3.80);
           const volatilityBuffer = Number((atr15m * 0.50).toFixed(2));
-          const minSlFloor = Number(Math.max(5.00, Math.min(7.00, atr15m * 1.5)).toFixed(2));
-          const dynamicSlDistance = Number(Math.max(minSlFloor, 9.50 + volatilityBuffer).toFixed(2));
+          const dynamicSlDistance = Number(Math.max(7.00, Math.min(10.00, 7.00 + volatilityBuffer)).toFixed(2));
 
           const sl = isBuy ? Number((entry - dynamicSlDistance).toFixed(2)) : Number((entry + dynamicSlDistance).toFixed(2));
-          const tp1 = isBuy ? Number((entry + dynamicSlDistance * 1.5).toFixed(2)) : Number((entry - dynamicSlDistance * 1.5).toFixed(2));
-          const tp2 = isBuy ? Number((entry + dynamicSlDistance * 2.5).toFixed(2)) : Number((entry - dynamicSlDistance * 2.5).toFixed(2));
-          const tp3 = isBuy ? Number((entry + dynamicSlDistance * 3.6).toFixed(2)) : Number((entry - dynamicSlDistance * 3.6).toFixed(2));
-          const tp4 = isBuy ? Number((entry + dynamicSlDistance * 4.8).toFixed(2)) : Number((entry - dynamicSlDistance * 4.8).toFixed(2));
+          const tp1 = isBuy ? Number((entry + 5.00).toFixed(2)) : Number((entry - 5.00).toFixed(2));
+          const tp2 = isBuy ? Number((entry + 10.00).toFixed(2)) : Number((entry - 10.00).toFixed(2));
+          const tp3 = isBuy ? Number((entry + 12.00).toFixed(2)) : Number((entry - 12.00).toFixed(2));
+          const tp4 = isBuy ? Number((entry + 15.00).toFixed(2)) : Number((entry - 15.00).toFixed(2));
 
           console.log(`[SIGNAL PIPELINE: 3. SIGNAL GENERATED] ${direction} at $${entry} | Dynamic SL: $${sl} (Dist: $${dynamicSlDistance}) | TP1: $${tp1} | Confidence: ${confidence}%`);
 
@@ -7834,23 +7833,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             console.warn("[HARAMI AI ENGINE]: Chart generation failed:", chartErr);
           }
 
-          let dispatched = false;
-          // INSTANT TELEGRAM DISPATCH: Valid setup finalizes -> Automatically dispatch immediately
-          if (mt5Config.telegramSignalsEnabled) {
-            dispatched = await sendServerTelegramMessage(signalText, undefined, chartBuffer, `${signalId}_NEW_SETUP`, true);
-            if (dispatched) {
-              if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
-                serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
-              }
-              serverActiveTrade.entryDispatched = true;
-              tradeStateManager.markSignalDispatched(signalId);
-              superAdminService.logAction(
-                "TRADE_AUTO_DISPATCHED",
-                `Setup #${signalId} (${direction} $${entry}) automatically dispatched to Telegram subscribers with zero delay.`,
-                "SYSTEM"
-              );
-            }
+          // Sync state & mark signal registered
+          if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
+            serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
           }
+          serverActiveTrade.entryDispatched = true;
+          tradeStateManager.markSignalDispatched(signalId);
 
           // Trigger secure n8n webhook integration for Central Signal Manager approved setup
           if (gatekeeperCheck.activeSetup) {
@@ -8896,6 +8884,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         console.log(`[SERVER CENTRAL DISPATCHER]: 🏆 Winning AI Setup Promoted: #${setup.setupId} (${setup.brainSource} ${setup.direction} @ $${setup.preferredEntry})`);
         if (mt5Config.telegramSignalsEnabled) {
           let message = "";
+          let chartBuffer: Buffer | undefined;
+
           if (setup.brainSource === "KHATARNAK_JUGAAD") {
             message = formatKhatarnakJugaadTelegramMessage(setup);
           } else if (setup.brainSource === "HARAMI_AI") {
@@ -8917,13 +8907,34 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               reason: setup.rationale || generateDynamicReason(setup.direction),
               isAlreadyInZone: setup.lifecycleStatus === "IN_ZONE" || setup.lifecycleStatus === "ACTIVE",
             });
+
+            try {
+              chartBuffer = await generateSignalChartBuffer({
+                symbol: "FOREXCOM:XAUUSD (Gold Spot)",
+                direction: setup.direction,
+                entryZone: [setup.entryZoneLow, setup.entryZoneHigh],
+                bestEntry: setup.preferredEntry,
+                sl: setup.stopLoss,
+                tp1: setup.tp1,
+                tp2: setup.tp2,
+                tp3: setup.tp3,
+                tp4: setup.finalTp || setup.tp3,
+                currentPrice: setup.preferredEntry,
+                confidence: setup.marketConfidence || setup.setupScore || 94,
+                reason: setup.rationale || generateDynamicReason(setup.direction),
+                timestamp: new Date().toISOString(),
+              });
+            } catch (chartErr) {
+              console.warn("[SERVER CENTRAL DISPATCHER]: Chart generation note:", chartErr);
+            }
           } else if (setup.brainSource === "WAR_ROOM") {
             message = formatWarRoomTelegramMessage(setup);
           } else if (setup.brainSource === "PRECISION_HUNTER") {
             message = "";
           }
+
           if (message) {
-            await sendServerTelegramMessage(message, undefined, undefined, `${setup.setupId}_NEW_SETUP`, true);
+            await sendServerTelegramMessage(message, undefined, chartBuffer, `${setup.setupId}_NEW_SETUP`, true);
             superAdminService.logAction(
               "CENTRAL_AI_AUTO_DISPATCH",
               `${setup.brainName} Setup #${setup.setupId} (${setup.direction} @ $${setup.preferredEntry.toFixed(2)}) dispatched to Telegram.`,

@@ -68,13 +68,31 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
   const symbolShort = (params.symbolShort || "XAUUSD").replace("FOREXCOM:", "");
   const bestEntry = params.bestEntry ?? 2885.0;
   const isBuy = params.direction === "BUY";
+  const isGold = symbolShort.includes("XAU") || symbolShort.includes("GOLD");
+
+  let sl = params.sl;
+  let tp1 = params.tp1;
+  let tp2 = params.tp2;
+  let tp3 = params.tp3;
+  let tp4 = params.tp4;
+
+  if (isGold) {
+    const slDist = sl ? Math.max(7.0, Math.min(10.0, Math.abs(bestEntry - sl))) : 8.00;
+    sl = isBuy ? Number((bestEntry - slDist).toFixed(2)) : Number((bestEntry + slDist).toFixed(2));
+    tp1 = isBuy ? Number((bestEntry + 5.00).toFixed(2)) : Number((bestEntry - 5.00).toFixed(2));
+    tp2 = isBuy ? Number((bestEntry + 10.00).toFixed(2)) : Number((bestEntry - 10.00).toFixed(2));
+    tp3 = isBuy ? Number((bestEntry + 12.00).toFixed(2)) : Number((bestEntry - 12.00).toFixed(2));
+    tp4 = isBuy ? Number((bestEntry + 15.00).toFixed(2)) : Number((bestEntry - 15.00).toFixed(2));
+  } else {
+    sl = sl ?? (isBuy ? bestEntry - 3.0 : bestEntry + 3.0);
+    tp1 = tp1 ?? (isBuy ? bestEntry + 4.5 : bestEntry - 4.5);
+    tp2 = tp2 ?? (isBuy ? bestEntry + 7.5 : bestEntry - 7.5);
+    tp3 = tp3 ?? (isBuy ? bestEntry + 11.0 : bestEntry - 11.0);
+    tp4 = tp4 ?? (isBuy ? bestEntry + 16.0 : bestEntry - 16.0);
+  }
+
   const entryLow = params.entryLow ?? (isBuy ? bestEntry - 1.5 : bestEntry - 0.5);
   const entryHigh = params.entryHigh ?? (isBuy ? bestEntry + 0.5 : bestEntry + 1.5);
-  const sl = params.sl ?? (isBuy ? bestEntry - 3.0 : bestEntry + 3.0);
-  const tp1 = params.tp1 ?? (isBuy ? bestEntry + 4.5 : bestEntry - 4.5);
-  const tp2 = params.tp2 ?? (isBuy ? bestEntry + 7.5 : bestEntry - 7.5);
-  const tp3 = params.tp3 ?? (isBuy ? bestEntry + 11.0 : bestEntry - 11.0);
-  const tp4 = params.tp4 ?? (isBuy ? bestEntry + 16.0 : bestEntry - 16.0);
 
   // Exact pips distance
   const riskPips = Math.max(1, Math.round(Math.abs(bestEntry - sl) * 10));

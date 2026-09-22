@@ -1845,22 +1845,25 @@ export class CentralSignalManagerEngine {
     const dir: SignalDirection = isBullishCandle ? "BUY" : "SELL";
 
     // Precision mathematical calculation for War Room POI zones
-    const zoneSpread = currentPx * 0.0018; // approx $8 on gold
-    const entryLow = dir === "BUY" ? currentPx - zoneSpread : currentPx - zoneSpread * 0.3;
-    const entryHigh = dir === "BUY" ? currentPx + zoneSpread * 0.3 : currentPx + zoneSpread;
+    const isGold = assetKey.includes("XAU") || assetKey.includes("GOLD");
+    const entryLow = dir === "BUY" ? Number((currentPx - 0.50).toFixed(2)) : Number((currentPx - 1.00).toFixed(2));
+    const entryHigh = dir === "BUY" ? Number((currentPx + 1.00).toFixed(2)) : Number((currentPx + 0.50).toFixed(2));
     const preferredEntry = Number(((entryLow + entryHigh) / 2).toFixed(2));
-    const slDist = currentPx * 0.0035; // approx $15 on gold
-    const stopLoss = dir === "BUY" ? Number((entryLow - slDist).toFixed(2)) : Number((entryHigh + slDist).toFixed(2));
+    const slDist = isGold ? 8.50 : currentPx * 0.0035;
+    const stopLoss = dir === "BUY" ? Number((preferredEntry - slDist).toFixed(2)) : Number((preferredEntry + slDist).toFixed(2));
 
-    const tp1Dist = slDist * 1.8;
-    const tp2Dist = slDist * 2.8;
-    const tp3Dist = slDist * 3.8;
-    const finalTpDist = slDist * 4.8;
-
-    const tp1 = dir === "BUY" ? Number((preferredEntry + tp1Dist).toFixed(2)) : Number((preferredEntry - tp1Dist).toFixed(2));
-    const tp2 = dir === "BUY" ? Number((preferredEntry + tp2Dist).toFixed(2)) : Number((preferredEntry - tp2Dist).toFixed(2));
-    const tp3 = dir === "BUY" ? Number((preferredEntry + tp3Dist).toFixed(2)) : Number((preferredEntry - tp3Dist).toFixed(2));
-    const finalTp = dir === "BUY" ? Number((preferredEntry + finalTpDist).toFixed(2)) : Number((preferredEntry - finalTpDist).toFixed(2));
+    const tp1 = isGold 
+      ? (dir === "BUY" ? Number((preferredEntry + 5.00).toFixed(2)) : Number((preferredEntry - 5.00).toFixed(2)))
+      : (dir === "BUY" ? Number((preferredEntry + slDist * 1.8).toFixed(2)) : Number((preferredEntry - slDist * 1.8).toFixed(2)));
+    const tp2 = isGold 
+      ? (dir === "BUY" ? Number((preferredEntry + 10.00).toFixed(2)) : Number((preferredEntry - 10.00).toFixed(2)))
+      : (dir === "BUY" ? Number((preferredEntry + slDist * 2.8).toFixed(2)) : Number((preferredEntry - slDist * 2.8).toFixed(2)));
+    const tp3 = isGold 
+      ? (dir === "BUY" ? Number((preferredEntry + 12.00).toFixed(2)) : Number((preferredEntry - 12.00).toFixed(2)))
+      : (dir === "BUY" ? Number((preferredEntry + slDist * 3.8).toFixed(2)) : Number((preferredEntry - slDist * 3.8).toFixed(2)));
+    const finalTp = isGold 
+      ? (dir === "BUY" ? Number((preferredEntry + 15.00).toFixed(2)) : Number((preferredEntry - 15.00).toFixed(2)))
+      : (dir === "BUY" ? Number((preferredEntry + slDist * 4.8).toFixed(2)) : Number((preferredEntry - slDist * 4.8).toFixed(2)));
 
     const isEnabled = this.isAiSourceEnabled("WAR_ROOM");
     const setupScore = Math.max(72, Math.min(95, Math.round(86 + (Math.sin(currentPx) * 6))));
@@ -2398,11 +2401,11 @@ export class CentralSignalManagerEngine {
       s.lifecycleState = "TP1_HIT";
       s.lifecycleStatusLabel = "🎯 TP1 HIT";
       
-      // Activate PROTECTION ENGINE: Move SL to Break-Even + Safety buffer
+      // Activate PROTECTION ENGINE: Move SL to Break-Even (entry price)
       s.protectionActive = true;
       s.isBreakeven = true;
-      s.protectedSlLevel = isBuy ? effectiveEntry + 0.5 : effectiveEntry - 0.5;
-      s.protectionMessage = `🛡️ PROTECTION MODE ACTIVE: SL moved to Break-even ($${s.protectedSlLevel.toFixed(2)}). Trade is 100% Risk-Free.`;
+      s.protectedSlLevel = effectiveEntry;
+      s.protectionMessage = `🛡️ PROTECTION MODE ACTIVE: SL moved to Break-even ($${effectiveEntry.toFixed(2)}). Trade is 100% Risk-Free.`;
 
       this.addAuditLog(
         "TP_HIT",

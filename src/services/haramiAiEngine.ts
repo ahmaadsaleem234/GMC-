@@ -478,14 +478,10 @@ export function calculateHaramiAiSetup(
   const isOverextended = Math.abs(px - bestEntry) > Math.max(atr15m * 2.0, 10.0);
 
   // 8. DYNAMIC SL RULE — XAU/USD:
-  // Strictly calculated from Market Structure + Liquidity POI + 15M ATR (0.5x buffer).
-  // Minimum SL is $5–$7. The $9–$12 range is preferred, not a fixed cap.
-  // SL may exceed $12 only when required by valid market structure; never force a tight SL.
+  // SL: $7 minimum → $10 maximum ($7.00 to $10.00 / 70 to 100 pips)
   const isGold = spec.symbol === "XAUUSD" || cleanAsset === "XAUUSD";
-  const minSlFloor = isGold
-    ? Number(Math.max(5.00, Math.min(7.00, atr15m * 1.5)).toFixed(2)) // Minimum $5–$7 floor for XAU/USD
-    : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
-  const maxSlCap = isGold ? 12.00 : spec.baseMaxSlCap; // Preferred upper bound ($9–$12 range)
+  const minSlFloor = isGold ? 7.00 : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
+  const maxSlCap = isGold ? 10.00 : spec.baseMaxSlCap;
 
   // 9. DYNAMIC STOP LOSS CALCULATION (Using Shared POI Structure + 0.5x Dynamic 15M ATR Buffer)
   const volatilityBuffer = Number((atr15m * 0.50).toFixed(2)); // Strict 0.5x 15M ATR buffer
@@ -494,8 +490,7 @@ export function calculateHaramiAiSetup(
   let slRationale: string;
   let slExceedsCap = false;
 
-  // Absolute safety ceiling (e.g., corrupted tick protection: max $35.00 or 2.5% move)
-  const maxSanityCeiling = isGold ? 35.00 : spec.baseMaxSlCap * 3.0;
+  const maxSanityCeiling = isGold ? 10.00 : spec.baseMaxSlCap * 3.0;
 
   if (direction === "BUY") {
     const structuralLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < bestEntry
@@ -504,23 +499,23 @@ export function calculateHaramiAiSetup(
       ? sharedLiquidity.ssl
       : entryZoneLow - minSlFloor;
 
-    // Proposed SL strictly from Structure Low minus 0.5x 15M ATR buffer
     const proposedSl = Number((structuralLow - volatilityBuffer).toFixed(2));
     const rawDist = bestEntry - proposedSl;
 
-    if (rawDist < minSlFloor) {
-      // Never force a tight SL under the $5–$7 minimum floor
+    if (isGold) {
+      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawDist)).toFixed(2));
+      stopLoss = Number((bestEntry - goldSlDist).toFixed(2));
+      slRationale = `XAU/USD Rule: $${goldSlDist.toFixed(2)} (${(goldSlDist * 10).toFixed(0)} Pips) Stop Loss ($7.00–$10.00 Strict Range)`;
+    } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry - minSlFloor).toFixed(2));
-      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied (avoiding tight SL)`;
+      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied`;
     } else if (rawDist > maxSanityCeiling) {
       stopLoss = Number((bestEntry - maxSanityCeiling).toFixed(2));
       slExceedsCap = true;
-      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} sanity ceiling`;
+      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} ceiling`;
     } else {
-      // Valid market structure SL respected (preferred $9–$12, allows > $12 when required by structure)
       stopLoss = proposedSl;
-      const rangeTag = (rawDist >= 9.0 && rawDist <= 12.0) ? " (Ideal $9–$12 Range)" : rawDist > 12.0 ? " (Extended Structural Range)" : "";
-      slRationale = `Placed $${rawDist.toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} (0.5× 15M ATR Buffer)${rangeTag}`;
+      slRationale = `Placed $${rawDist.toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Buffer`;
     }
   } else {
     const structuralHigh = sharedLiquidity.supplyZone.high > 0 && sharedLiquidity.supplyZone.high > bestEntry
@@ -529,49 +524,60 @@ export function calculateHaramiAiSetup(
       ? sharedLiquidity.bsl
       : entryZoneHigh + minSlFloor;
 
-    // Proposed SL strictly from Structure High plus 0.5x 15M ATR buffer
     const proposedSl = Number((structuralHigh + volatilityBuffer).toFixed(2));
     const rawDist = proposedSl - bestEntry;
 
-    if (rawDist < minSlFloor) {
-      // Never force a tight SL under the $5–$7 minimum floor
+    if (isGold) {
+      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawDist)).toFixed(2));
+      stopLoss = Number((bestEntry + goldSlDist).toFixed(2));
+      slRationale = `XAU/USD Rule: $${goldSlDist.toFixed(2)} (${(goldSlDist * 10).toFixed(0)} Pips) Stop Loss ($7.00–$10.00 Strict Range)`;
+    } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry + minSlFloor).toFixed(2));
-      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied (avoiding tight SL)`;
+      slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied`;
     } else if (rawDist > maxSanityCeiling) {
       stopLoss = Number((bestEntry + maxSanityCeiling).toFixed(2));
       slExceedsCap = true;
-      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} sanity ceiling`;
+      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} ceiling`;
     } else {
-      // Valid market structure SL respected (preferred $9–$12, allows > $12 when required by structure)
       stopLoss = proposedSl;
-      const rangeTag = (rawDist >= 9.0 && rawDist <= 12.0) ? " (Ideal $9–$12 Range)" : rawDist > 12.0 ? " (Extended Structural Range)" : "";
-      slRationale = `Placed $${rawDist.toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} (0.5× 15M ATR Buffer)${rangeTag}`;
+      slRationale = `Placed $${rawDist.toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Buffer`;
     }
   }
 
   const slDistance = Number(Math.abs(bestEntry - stopLoss).toFixed(2));
   const slDistanceFormatted = `$${slDistance.toFixed(2)} (${(slDistance * 10).toFixed(0)} Pips)`;
 
-  // 8. SMART MULTI-TARGET TAKE PROFITS (Realistic & Mathematical)
-  // TP1: Liquidity target (1.5x SL dist) — fast initial risk mitigation & Breakeven catalyst
-  // TP2: Main structural target (2.5x SL dist) — Minimum R:R >= 1:2.0 verified
-  // TP3: Major swing liquidity target (3.6x SL dist)
-  // TP4: Macro Fibonacci expansion (4.8x SL dist)
+  // 8. SMART MULTI-TARGET TAKE PROFITS
+  // XAU/USD Rule: TP1 = +50 pips ($5.00), TP2 = +100 pips ($10.00), TP3 = +120 pips ($12.00), TP4 = +150 pips ($15.00)
   let tp1: number;
   let tp2: number;
   let tp3: number;
   let tp4: number;
 
-  if (direction === "BUY") {
-    tp1 = Number((bestEntry + slDistance * 1.5).toFixed(2));
-    tp2 = Number((bestEntry + slDistance * 2.5).toFixed(2));
-    tp3 = Number((bestEntry + slDistance * 3.6).toFixed(2));
-    tp4 = Number((bestEntry + slDistance * 4.8).toFixed(2));
+  if (isGold) {
+    if (direction === "BUY") {
+      tp1 = Number((bestEntry + 5.00).toFixed(2));
+      tp2 = Number((bestEntry + 10.00).toFixed(2));
+      tp3 = Number((bestEntry + 12.00).toFixed(2));
+      tp4 = Number((bestEntry + 15.00).toFixed(2));
+    } else {
+      tp1 = Number((bestEntry - 5.00).toFixed(2));
+      tp2 = Number((bestEntry - 10.00).toFixed(2));
+      tp3 = Number((bestEntry - 12.00).toFixed(2));
+      tp4 = Number((bestEntry - 15.00).toFixed(2));
+    }
   } else {
-    tp1 = Number((bestEntry - slDistance * 1.5).toFixed(2));
-    tp2 = Number((bestEntry - slDistance * 2.5).toFixed(2));
-    tp3 = Number((bestEntry - slDistance * 3.6).toFixed(2));
-    tp4 = Number((bestEntry - slDistance * 4.8).toFixed(2));
+    if (direction === "BUY") {
+      tp1 = Number((bestEntry + slDistance * 1.5).toFixed(2));
+      tp2 = Number((bestEntry + slDistance * 2.5).toFixed(2));
+      tp3 = Number((bestEntry + slDistance * 3.6).toFixed(2));
+      tp4 = Number((bestEntry + slDistance * 4.8).toFixed(2));
+    } else {
+      tp1 = Number((bestEntry - slDistance * 1.5).toFixed(2));
+      tp2 = Number((bestEntry - slDistance * 2.5).toFixed(2));
+      tp3 = Number((bestEntry - slDistance * 3.6).toFixed(2));
+      tp4 = Number((bestEntry - slDistance * 4.8).toFixed(2));
+    }
   }
 
   // 9. RISK-TO-REWARD (R:R) CALCULATIONS
