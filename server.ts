@@ -8899,9 +8899,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (setup.brainSource === "KHATARNAK_JUGAAD") {
             message = formatKhatarnakJugaadTelegramMessage(setup);
           } else if (setup.brainSource === "HARAMI_AI") {
-            // Harami AI setups are formatted with customized charts and dispatched directly by executeServerSignalEngineTick.
-            // Do NOT re-dispatch here to prevent duplicate signals!
-            message = "";
+            message = formatHaramiSignalMessage({
+              signalId: setup.setupId,
+              direction: setup.direction,
+              symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
+              entryLow: setup.entryZoneLow,
+              entryHigh: setup.entryZoneHigh,
+              bestEntry: setup.preferredEntry,
+              currentPrice: setup.currentPrice,
+              sl: setup.stopLoss,
+              tp1: setup.tp1,
+              tp2: setup.tp2,
+              tp3: setup.tp3,
+              tp4: setup.finalTp,
+              rr: setup.rrRatioString || (setup.rrRatio ? `1:${setup.rrRatio.toFixed(1)}` : "1:2.8"),
+              confidence: setup.marketConfidence || setup.setupScore || 94,
+              reason: setup.rationale || generateDynamicReason(setup.direction),
+              isAlreadyInZone: setup.lifecycleStatus === "IN_ZONE" || setup.lifecycleStatus === "ACTIVE",
+            });
           } else if (setup.brainSource === "WAR_ROOM") {
             message = formatWarRoomTelegramMessage(setup);
           } else if (setup.brainSource === "PRECISION_HUNTER") {
