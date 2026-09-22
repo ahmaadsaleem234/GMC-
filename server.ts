@@ -21,7 +21,7 @@ import {
 import { fcsMarketService } from "./src/services/fcsMarketService.js";
 import { biquoteMarketService } from "./src/services/biquoteMarketService.js";
 import { warRoomServerService } from "./src/services/warRoomServerService.js";
-import { formatWarRoomTelegramSignal } from "./src/services/warRoomEngine.js";
+import { formatWarRoomTelegramSignal, calculateATR } from "./src/services/warRoomEngine.js";
 import {
   calculateKhatarnakJugaadSetup,
   KhatarnakJugaadSetup,

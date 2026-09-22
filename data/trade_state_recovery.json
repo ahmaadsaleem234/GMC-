@@ -1,16 +1,60 @@
 {
-  "activeTrade": null,
+  "activeTrade": {
+    "id": "trd-HRM-1075-1790083856174",
+    "signalId": "HRM-1075",
+    "strategyName": "Harami AI",
+    "strategyVersion": "Harami AI v2.4",
+    "setupType": "BEARISH_HARAMI_EXPANSION",
+    "symbol": "XAUUSD (Gold Spot)",
+    "direction": "SELL",
+    "entryZone": [
+      4437.87,
+      4438.87
+    ],
+    "entry": 4438.37,
+    "actualExecutedEntryPrice": 4438.27,
+    "sl": 4448.59,
+    "tp1": 4423.04,
+    "tp2": 4412.82,
+    "tp3": 4401.58,
+    "tp4": 4389.31,
+    "confidence": 96.9,
+    "grade": "A+",
+    "reason": "H1 bearish structure + M15 BSL raid + bearish Order Block rejection + M5 CHOCH confirmation",
+    "status": "ENTRY_CONFIRMED",
+    "mode": "LIVE",
+    "isShadow": false,
+    "currentPrice": 4438.37,
+    "currentFloatingPnL": 0,
+    "pnlPips": 0,
+    "tp1Hit": false,
+    "tp2Hit": false,
+    "tp3Hit": false,
+    "tp4Hit": false,
+    "slHit": false,
+    "dispatchedOutcomes": [
+      "SIGNAL"
+    ],
+    "entryDispatched": true,
+    "createdAt": 1790083856174,
+    "signalGeneratedAt": "2026-09-22 13:30 UTC",
+    "entryTriggeredAt": "2026-09-22 13:30 UTC",
+    "auditLogs": [
+      {
+        "timestamp": "2026-09-22 13:30 UTC",
+        "event": "SIGNAL_CREATED",
+        "price": 4438.37,
+        "note": "Harami AI (Harami AI v2.4) created SELL setup at $4438.37. Mode: LIVE. Status: ENTRY_CONFIRMED"
+      }
+    ]
+  },
   "cooldownState": {
     "inCooldown": true,
-    "cooldownUntil": 1790079330857,
+    "cooldownUntil": 1790085658010,
     "remainingMinutes": 30,
-    "reason": "Trade #WR-101 concluded with SL_HIT. 30-Minute Cooldown active to ensure high-quality non-conflicting setups.",
-    "lastSlHitTimestamp": 1790076802606,
-    "lastFailedSetupZone": {
-      "low": 4318.05,
-      "high": 4319.05,
-      "direction": "BUY"
-    }
+    "reason": "Trade #HRM-1075 concluded with FINAL_TP_HIT. 30-Minute Cooldown active to ensure high-quality non-conflicting setups.",
+    "lastSlHitTimestamp": 0,
+    "lastFailedSetupZone": null
   },
   "tradingMode": "LIVE",
   "arbitrationState": {
@@ -22,5 +66,5 @@
     "lastConflictResolvedAt": null,
     "adminNotified": false
   },
-  "lastPersistedAt": "2026-09-22T11:45:30.858Z"
+  "lastPersistedAt": "2026-09-22T13:30:58.011Z"
 }

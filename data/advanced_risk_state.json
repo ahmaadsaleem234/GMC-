@@ -1,10 +1,10 @@
 {
-  "currentDayUtc": "2026-09-13",
+  "currentDayUtc": "2026-09-22",
   "dailyTradesCount": 2,
   "consecutiveLossCount": 0,
   "consecutiveLossPauseUntil": 0,
   "consecutiveLossMode": "NORMAL",
-  "fastTpCooldownUntil": 0,
-  "fastTpLastTradeId": "",
+  "fastTpCooldownUntil": 1790083787917,
+  "fastTpLastTradeId": "HRM-2647",
   "autoRiskMode": "NORMAL"
 }

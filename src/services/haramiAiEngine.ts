@@ -457,23 +457,25 @@ export function calculateHaramiAiSetup(
   let bestEntry: number;
 
   if (direction === "BUY") {
-    // Buy Entry: Pullback into Shared 15M Demand Zone / Bullish OB / FVG
-    const baseLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < px ? sharedLiquidity.demandZone.low : px - entrySpan * 1.2;
-    const baseHigh = sharedLiquidity.demandZone.high > 0 && sharedLiquidity.demandZone.high < px + entrySpan ? sharedLiquidity.demandZone.high : px + entrySpan * 0.3;
+    // Buy Entry: Pullback into Shared 15M Demand Zone / Bullish OB / FVG or Immediate Discount Pocket
+    const hasCloseDemand = sharedLiquidity.demandZone.low > 0 && Math.abs(px - sharedLiquidity.demandZone.low) <= atr15m * 2.5;
+    const baseLow = hasCloseDemand ? sharedLiquidity.demandZone.low : px - entrySpan * 1.2;
+    const baseHigh = hasCloseDemand && sharedLiquidity.demandZone.high < px + entrySpan ? sharedLiquidity.demandZone.high : px + entrySpan * 0.3;
     entryZoneLow = Number(Math.min(baseLow, px - 0.2).toFixed(2));
     entryZoneHigh = Number(Math.max(baseHigh, entryZoneLow + entrySpan).toFixed(2));
     bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
   } else {
-    // Sell Entry: Pullback into Shared 15M Supply Zone / Bearish OB / FVG
-    const baseHigh = sharedLiquidity.supplyZone.high > 0 && sharedLiquidity.supplyZone.high > px ? sharedLiquidity.supplyZone.high : px + entrySpan * 1.2;
-    const baseLow = sharedLiquidity.supplyZone.low > 0 && sharedLiquidity.supplyZone.low > px - entrySpan ? sharedLiquidity.supplyZone.low : px - entrySpan * 0.3;
+    // Sell Entry: Pullback into Shared 15M Supply Zone / Bearish OB / FVG or Immediate Premium Pocket
+    const hasCloseSupply = sharedLiquidity.supplyZone.high > 0 && Math.abs(px - sharedLiquidity.supplyZone.high) <= atr15m * 2.5;
+    const baseHigh = hasCloseSupply ? sharedLiquidity.supplyZone.high : px + entrySpan * 1.2;
+    const baseLow = hasCloseSupply && sharedLiquidity.supplyZone.low > px - entrySpan ? sharedLiquidity.supplyZone.low : px - entrySpan * 0.3;
     entryZoneHigh = Number(Math.max(baseHigh, px + 0.2).toFixed(2));
     entryZoneLow = Number(Math.min(baseLow, entryZoneHigh - entrySpan).toFixed(2));
     bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
   }
 
-  // Entry Quality Check: Price must not be overextended (> 1.4x ATR away from best entry)
-  const isOverextended = Math.abs(px - bestEntry) > atr15m * 1.4;
+  // Entry Quality Check: Price must not be overextended (> 2.0x ATR away from best entry)
+  const isOverextended = Math.abs(px - bestEntry) > Math.max(atr15m * 2.0, 10.0);
 
   // 8. DYNAMIC SL RULE — XAU/USD:
   // Strictly calculated from Market Structure + Liquidity POI + 15M ATR (0.5x buffer).
@@ -619,14 +621,14 @@ export function calculateHaramiAiSetup(
   const verificationAudit: Harami14PointVerification = {
     marketStructureValid: regime !== "UNCLEAR_CONSOLIDATION" && (sharedStructure.trend !== "RANGING" || sharedStructure.bos.detected || sharedStructure.choch.detected),
     entryQualityValid: entryZoneLow < entryZoneHigh && !isOverextended,
-    bestEntryAvailable: Math.abs(px - bestEntry) <= slDistance * 0.9,
+    bestEntryAvailable: Math.abs(px - bestEntry) <= Math.max(slDistance * 1.5, 8.0),
     slBeyondStructure: slDistance >= minSlFloor * 0.95,
     slWithinMaxCap: !slExceedsCap && slDistance <= maxSanityCeiling,
-    expectedMoveValid: Math.abs(tp2 - bestEntry) >= atr15m * 1.5,
-    riskRewardValid: rrRatio >= 2.0,
+    expectedMoveValid: Math.abs(tp2 - bestEntry) >= atr15m * 1.2,
+    riskRewardValid: rrRatio >= 1.8,
     tpLevelsRealistic: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,
-    volatilityAcceptable: atr15m >= spec.tickSize * 5 && atr15m <= spec.baseAtr * 5.0,
-    spreadAcceptable: sharedPreTrade.passed && spreadPips <= spec.defaultSpreadPips * 3.5,
+    volatilityAcceptable: atr15m >= spec.tickSize * 2 && atr15m <= spec.baseAtr * 8.0,
+    spreadAcceptable: spreadPips <= spec.defaultSpreadPips * 5.0,
     confirmationStrong: setupScore >= 70,
     setupFresh: true,
     noRecentFailedZone: !recentFailedZone,
@@ -644,7 +646,7 @@ export function calculateHaramiAiSetup(
     0
   );
   verificationAudit.allPassed =
-    verificationAudit.passedCount === 14 && !recentFailedZone && !slExceedsCap && !isOverextended;
+    verificationAudit.passedCount >= 12 && !recentFailedZone && !slExceedsCap && !isOverextended;
 
   const isValidTrade = verificationAudit.allPassed && setupScore >= 70;
   const waitingReason = !isValidTrade
