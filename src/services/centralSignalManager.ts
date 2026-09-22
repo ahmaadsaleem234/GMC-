@@ -2335,6 +2335,32 @@ export class CentralSignalManagerEngine {
     s.pnlPips = Math.round(diff * 10);
     s.pnlUSD = Number((diff * 10).toFixed(2));
 
+    // 30-MINUTE EXPIRY CHECK (If neither SL nor TP is hit within 30 minutes, auto-expire)
+    const setupAgeMs = Date.now() - (s.activatedAt || (s as any).createdAt || Date.now());
+    const is30MinExpired = setupAgeMs >= 30 * 60 * 1000;
+
+    if (is30MinExpired) {
+      s.isExpired = true;
+      s.lifecycleState = "EXPIRED";
+      s.lifecycleStatusLabel = "⏱️ EXPIRED (30 MINS)";
+      s.closedAt = Date.now();
+      s.closedTimeUtc = new Date().toISOString().substring(11, 19) + " UTC";
+      s.finalOutcome = "⏱️ 30-MIN EXPIRED (AUTO-CLOSED)";
+
+      this.addAuditLog(
+        "SETUP_CLOSED",
+        s.setupId,
+        s.brainSource,
+        `⏱️ Signal #${s.setupId} auto-expired after 30 minutes without reaching SL or TP. Position closed at $${currentPx.toFixed(2)}. System entering continuous market analysis mode.`,
+        { finalPnlPips: s.pnlPips }
+      );
+
+      this.notifyLifecycleEvent(s, "EXPIRED", currentPx);
+      this.resetCooldownManually();
+      this.activeSetup = null;
+      return;
+    }
+
     // CHECK STOP LOSS
     const effectiveSl = s.protectedSlLevel || s.stopLoss;
     const isSlHit = isBuy ? currentPx <= effectiveSl : currentPx >= effectiveSl;

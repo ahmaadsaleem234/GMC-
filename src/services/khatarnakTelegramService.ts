@@ -134,27 +134,32 @@ export function getConfirmationStatusText(setup: KhatarnakJugaadSetup): string {
 export function formatNewSetupTelegramMessage(setup: KhatarnakJugaadSetup): string {
   const asset = setup.assetKey || "XAUUSD";
   const rr = setup.rrRatioString ? setup.rrRatioString.replace(/^R:R:\s*/i, "").trim() : "1:2.5";
-  const entryZone = `${setup.sellZoneLow.toFixed(2)} – ${setup.sellZoneHigh.toFixed(2)}`;
+  const entryZone = `<code>${setup.sellZoneLow.toFixed(2)} – ${setup.sellZoneHigh.toFixed(2)}</code>`;
   const confirmation = getConfirmationStatusText(setup);
 
+  const riskPips = Math.max(1, Math.round(Math.abs(setup.stopLoss - setup.bestSellEntry) * 10));
+  const tp1Pips = Math.max(1, Math.round(Math.abs(setup.bestSellEntry - setup.tp1) * 10));
+  const tp2Pips = Math.max(1, Math.round(Math.abs(setup.bestSellEntry - setup.tp2) * 10));
+  const tp3Pips = Math.max(1, Math.round(Math.abs(setup.bestSellEntry - setup.tp3) * 10));
+
   const message = [
-    `💀 KHATARNAK JUGAAD | 1M SELL`,
+    `💀 <b>KHATARNAK JUGAAD | 1M SELL 🔴</b>`,
+    `━━━━━━━━━━━━━━━━━━━`,
+    `<b>#${setup.id} • ${asset} (GOLD)</b>`,
+    `📍 <b>Entry Zone:</b> ${entryZone}`,
+    `⚡ <b>Best Entry:</b> <code>${setup.bestSellEntry.toFixed(2)}</code>`,
     ``,
-    `${asset} • SELL ONLY 🔴`,
+    `🛑 <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code> (-${riskPips} pips)`,
+    `🎯 <b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code> (+${tp1Pips} pips)`,
+    `🎯 <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code> (+${tp2Pips} pips)`,
+    `🎯 <b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code> (+${tp3Pips} pips)`,
     ``,
-    `🎯 ENTRY: ${entryZone}`,
-    `📍 Best Entry: ${setup.bestSellEntry.toFixed(2)}`,
-    `🛑 SL: ${setup.stopLoss.toFixed(2)}`,
-    ``,
-    `💰 TP1: ${setup.tp1.toFixed(2)}`,
-    `💰 TP2: ${setup.tp2.toFixed(2)}`,
-    `💰 TP3: ${setup.tp3.toFixed(2)}`,
-    ``,
-    `📊 R:R: ${rr}`,
-    `🔥 Score: ${setup.score}/100`,
-    `⚡ Confirmation: ${confirmation}`,
-    ``,
-    `KJ • 1M Institutional Setup`,
+    `📊 <b>R:R:</b> <code>${rr}</code>`,
+    `🔥 <b>Score:</b> <code>${setup.score}/100</code>`,
+    `⚡ <b>Confirmation:</b> ${confirmation}`,
+    `⏱️ <b>Expiry:</b> <code>30 Minutes (Auto-Close if no TP/SL)</code>`,
+    `━━━━━━━━━━━━━━━━━━━`,
+    `<i>💡 Tip: Tap any price number to copy directly to MT5.</i>`,
   ].join("\n");
 
   return message;
@@ -165,7 +170,7 @@ export function formatNewSetupTelegramMessage(setup: KhatarnakJugaadSetup): stri
  */
 export function formatStatusUpdateTelegramMessage(
   setup: KhatarnakJugaadSetup,
-  event: JugaadTelegramEventType,
+  event: JugaadTelegramEventType | "EXPIRED",
   currentPrice: number
 ): string {
   const asset = setup.assetKey || "XAUUSD";
@@ -174,6 +179,10 @@ export function formatStatusUpdateTelegramMessage(
   let statusDetail = "";
 
   switch (event) {
+    case "EXPIRED":
+      statusHeader = `⏱️ SIGNAL EXPIRED (30 MIN LIMIT)`;
+      statusDetail = `30-minute validity limit reached without SL or TP hit. Position auto-expired at $${currentPrice.toFixed(2)}. Market analysis mode active.`;
+      break;
     case "ENTRY_HIT":
       statusHeader = `🔴 ENTRY TRIGGERED`;
       statusDetail = `⚡ Price tapped into 1M Sell Zone (${setup.bestSellEntry.toFixed(2)}). Trade active.`;

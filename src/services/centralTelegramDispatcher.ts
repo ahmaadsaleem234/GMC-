@@ -98,6 +98,7 @@ export function formatKhatarnakJugaadTelegramMessage(setup: ActiveCentralSetup):
     ``,
     `R:R: <code>${rr}</code>`,
     `Score: <code>${setup.setupScore}/100</code>`,
+    `Expiry: <code>30 Minutes (Auto-Close if no TP/SL)</code>`,
     ``,
     `Status: <b>ACTIVE</b>`,
     ``,
@@ -176,6 +177,7 @@ export function formatHaramiAiTelegramMessage(setup: ActiveCentralSetup): string
     `R:R: <code>${rr}</code>`,
     `Score: <code>${setup.setupScore}/100</code>`,
     `Confirmation: <code>14/14</code>`,
+    `Expiry: <code>30 Minutes (Auto-Close if no TP/SL)</code>`,
     `Status: ${statusEmoji} <b>ACTIVE</b>`,
   ].join("\n");
 }
@@ -224,6 +226,7 @@ export function formatWarRoomTelegramMessage(setup: ActiveCentralSetup): string 
     ``,
     `R:R: <code>${rr}</code>`,
     `Setup Score: <code>${setup.setupScore}/100</code>`,
+    `Expiry: <code>30 Minutes (Auto-Close if no TP/SL)</code>`,
     ``,
     `Status: <b>ACTIVE</b>`,
     ``,
@@ -277,6 +280,7 @@ export function formatPrecisionHunterTelegramMessage(setup: ActiveCentralSetup):
     ``,
     `R:R: <code>${rr}</code>`,
     `Score: <code>${setup.setupScore}/100 (9/9 Confluence Verified)</code>`,
+    `Expiry: <code>30 Minutes (Auto-Close if no TP/SL)</code>`,
     ``,
     `Status: <b>ACTIVE</b>`,
     ``,
@@ -517,18 +521,20 @@ export async function dispatchCentralLifecycleEventToTelegram(
       break;
 
     case "EXPIRED":
-      statusHeader = "⏳ <b>EXPIRED</b>";
+      statusHeader = "⏱️ <b>SIGNAL EXPIRED (30 MIN LIMIT)</b>";
       bodyLines = [
         `<b>${brainHeader}</b>`,
         `<b>${setup.assetKey} • ${setup.timeframe} • ${setup.direction}</b>`,
         `Setup ID: <code>${setup.setupId}</code>`,
         ``,
-        `Status: <b>CLOSED ⚠️</b>`,
+        `Status: <b>CLOSED (AUTO-EXPIRED)</b>`,
+        `Closed Price: <code>$${currentPrice.toFixed(2)}</code>`,
         ``,
-        `Reason: <b>Setup validity window expired without entry fill</b>`,
+        `Reason: <b>30-Minute validity limit reached without SL or TP hit</b>`,
+        `Capital Protection: <b>Preserved</b>`,
         ``,
-        `⏳ <b>30-MINUTE COOLDOWN ACTIVE</b>`,
-        `Next setup available after: <code>${cdTime}</code>`,
+        `🔍 <b>WAITING / ANALYSIS MODE ACTIVE</b>`,
+        `Continuous market scanning active — fresh signal dispatches automatically when next A+ setup confirms.`,
       ];
       break;
 

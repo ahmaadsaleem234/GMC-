@@ -1919,8 +1919,8 @@ class WarRoomServerService {
       setup.maeR = Number((setup.maePoints / risk).toFixed(2));
     }
 
-    // 1. Check Setup Expiry before entry
-    if (((setup.status as string) === "WAITING" || (setup.status as string) === "WAITING_ENTRY") && setup.expiresAt && nowMs > setup.expiresAt) {
+    // 1. Check Setup Expiry before entry (30-Minute window)
+    if (((setup.status as string) === "WAITING" || (setup.status as string) === "WAITING_ENTRY") && (nowMs - setup.createdAt >= 30 * 60 * 1000 || (setup.expiresAt && nowMs > setup.expiresAt))) {
       setup.status = "EXPIRED";
       setup.closedAt = nowMs;
       setup.finalOutcome = "EXPIRED";
@@ -1937,10 +1937,10 @@ class WarRoomServerService {
       setupLifecycleStorage.saveSetup(setup as any);
       this.database.unshift({ ...setup });
       this.lastTradeClosedAt = nowMs;
-      moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", setup.setupId);
-      centralSignalManager.startCooldown(30);
-      tradeStateManager.startCooldown(30, "EXPIRED", setup.setupId);
-      this.addAuditLog("LIFECYCLE", "SETUP_EXPIRED", `Setup ${setup.setupId} expired after ${setup.currentAgeMinutes} minutes.`, px, 98, "OK");
+      moduleSignalGatekeeper.clearGlobalCooldown();
+      centralSignalManager.resetCooldownManually();
+      tradeStateManager.clearCooldown();
+      this.addAuditLog("LIFECYCLE", "SETUP_EXPIRED", `Setup ${setup.setupId} expired after ${setup.currentAgeMinutes} minutes. Entering waiting/analysis mode.`, px, 98, "OK");
 
       await this.emitLifecycleAlert(
         setup,
@@ -2132,6 +2132,41 @@ class WarRoomServerService {
           isBE ? `Stop hit at Break-Even. Zero risk was realized.` : `Stop loss triggered at ${px.toFixed(2)}. Risk strictly managed.`,
           px,
           isBE ? "INFO" : "CRITICAL",
+          sendFn
+        );
+
+        this.activeSetup = null;
+        return;
+      }
+
+      // 30-MINUTE EXPIRY CHECK (If neither SL nor TP4 reached within 30 minutes, auto-expire)
+      const setupAgeMs = nowMs - setup.createdAt;
+      if (setupAgeMs >= 30 * 60 * 1000) {
+        setup.status = "EXPIRED";
+        setup.closedAt = nowMs;
+        setup.finalOutcome = "EXPIRED";
+        const risk = Math.abs(setup.bestEntry - setup.stopLoss) || 4.5;
+        const diff = isBuy ? px - setup.bestEntry : setup.bestEntry - px;
+        setup.finalPnlPts = Number(diff.toFixed(2));
+        setup.finalPnlR = Number((diff / risk).toFixed(2));
+
+        setupLifecycleStorage.saveSetup(setup as any);
+        this.database.unshift({ ...setup });
+        this.lastTradeClosedAt = nowMs;
+
+        moduleSignalGatekeeper.clearGlobalCooldown();
+        centralSignalManager.resetCooldownManually();
+        tradeStateManager.clearCooldown();
+
+        this.addAuditLog("LIFECYCLE", "SETUP_EXPIRED", `War Room Setup ${setup.setupId} auto-expired after 30 minutes without reaching SL or TP targets. Entering analysis mode.`, px, 98, "OK");
+
+        await this.emitLifecycleAlert(
+          setup,
+          "SETUP_EXPIRED",
+          `⏱️ SIGNAL EXPIRED (30 MIN LIMIT): ${setup.setupId}`,
+          `30 minutes elapsed without hitting SL or TP targets. Closed at $${px.toFixed(2)}. Entering waiting/analysis mode.`,
+          px,
+          "INFO",
           sendFn
         );
 

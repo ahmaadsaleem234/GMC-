@@ -45,6 +45,12 @@ export class ModuleSignalGatekeeper {
   // 30 Minutes standard cooldown after trade completion
   public readonly COOLDOWN_DURATION_MS = 30 * 60 * 1000;
 
+  public clearGlobalCooldown(): void {
+    this.globalCooldown = null;
+    this.moduleCooldowns.clear();
+    console.log(`[GLOBAL COOLDOWN CLEARED] ✨ System entered waiting & market analysis mode.`);
+  }
+
   /**
    * Start a global cooldown across the entire system.
    * Prevents conflicting signals while allowing high quality setups after cooldown.
@@ -54,6 +60,11 @@ export class ModuleSignalGatekeeper {
     outcome: string = "TRADE_CLOSED",
     tradeId?: string
   ): void {
+    if (outcome === "EXPIRED") {
+      this.clearGlobalCooldown();
+      return;
+    }
+
     const now = Date.now();
     const durationMs = durationMinutes * 60 * 1000;
     this.globalCooldown = {

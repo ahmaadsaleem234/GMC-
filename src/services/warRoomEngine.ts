@@ -2637,23 +2637,36 @@ export function calculateSetupGrade(
 
 export function formatWarRoomTelegramSignal(setup: LockedWarRoomSetup): string {
   const isBuy = setup.direction === "BUY";
-  const icon = isBuy ? "🟢" : "🔻";
+  const dirBadge = isBuy ? "BUY 🟢" : "SELL 🔴";
   const symbol = (setup.symbol || "XAUUSD").replace("FOREXCOM:", "").split(" ")[0];
   const confidence = Math.max(setup.setupScore, 90);
   const grade = setup.grade || "A+";
   const signalId = setup.setupId.startsWith("#") ? setup.setupId : `#${setup.setupId}`;
 
-  return `
-⚔️ WAR ROOM — ELITE TRADE
-${signalId} | ${icon} ${symbol} | ${setup.direction}
+  const entryAvg = (setup.entryZone[0] + setup.entryZone[1]) / 2;
+  const riskPips = Math.max(1, Math.round(Math.abs(entryAvg - setup.stopLoss) * 10));
+  const tp1Pips = Math.max(1, Math.round(Math.abs(setup.tp1 - entryAvg) * 10));
+  const tp2Pips = Math.max(1, Math.round(Math.abs(setup.tp2 - entryAvg) * 10));
+  const tp3Pips = Math.max(1, Math.round(Math.abs(setup.tp3 - entryAvg) * 10));
+  const tp4Pips = Math.max(1, Math.round(Math.abs(setup.tp4 - entryAvg) * 10));
 
-📍 Entry: ${setup.entryZone[0].toFixed(2)}–${setup.entryZone[1].toFixed(2)}
-🛡 SL: ${setup.stopLoss.toFixed(2)}
-🎯 TP: ${setup.tp1.toFixed(2)} | ${setup.tp2.toFixed(2)} | ${setup.tp3.toFixed(2)} | ${setup.tp4.toFixed(2)}
+  return `⚔️ <b>WAR ROOM — ELITE TRADE</b>
+━━━━━━━━━━━━━━━━━━━
+<b>${signalId} • ${symbol} (GOLD) • ${dirBadge}</b>
+📍 <b>Entry Zone:</b> <code>${setup.entryZone[0].toFixed(2)} – ${setup.entryZone[1].toFixed(2)}</code>
+🛑 <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code> (-${riskPips} pips)
 
-🔥 Confidence: ${confidence}% | ${grade}
-⚡ HIGH CONVICTION
-`.trim();
+🎯 <b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code> (+${tp1Pips} pips)
+🎯 <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code> (+${tp2Pips} pips)
+🎯 <b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code> (+${tp3Pips} pips)
+🎯 <b>TP4:</b> <code>${setup.tp4.toFixed(2)}</code> (+${tp4Pips} pips)
+
+📊 <b>R:R:</b> <code>${setup.riskRewardRatio || "1:2.8"}</code>
+🔥 <b>Confidence:</b> <code>${confidence}% | ${grade}</code>
+⚡ <b>Institutional Confluence:</b> 14/14
+⏱️ <b>Expiry:</b> <code>30 Minutes (Auto-Close if no TP/SL)</code>
+━━━━━━━━━━━━━━━━━━━
+<i>💡 Tip: Tap any price number to copy directly to MT5.</i>`;
 }
 
 export function formatWarRoomTelegramUpdate(
@@ -2760,11 +2773,13 @@ ${signalId} | ${symbol} | ${setup.direction}
 
     case "EXPIRED":
       return `
-🚫 SIGNAL EXPIRED
+⏱️ SIGNAL EXPIRED (30 MIN LIMIT)
 ${signalId} | ${symbol} | ${setup.direction}
 
-⏳ Price did not tap entry zone in validity window.
-🛡 Risk Capital 100% Preserved.
+⏳ 30 minutes reached without hitting SL or TP targets.
+🛡 Position closed at market price. Capital protected.
+🔍 Entering Market Waiting & Analysis Mode.
+✨ Fresh market scanning active for next high-conviction setup.
 `.trim();
 
     case "CLOSED":

@@ -347,11 +347,31 @@ export class MasterTradeStateManager {
     this.persistState();
   }
 
+  public clearCooldown() {
+    this.cooldownState = {
+      inCooldown: false,
+      cooldownUntil: 0,
+      remainingMinutes: 0,
+      reason: "WAITING_ANALYSIS_MODE",
+      lastSlHitTimestamp: null,
+      lastFailedSetupZone: null,
+    };
+    this.persistState();
+  }
+
   public triggerTradeClosedCooldown(
     trade: UnifiedActiveTrade,
     outcome: string,
     customDurationMinutes: number = 30
   ) {
+    if (outcome === "EXPIRED") {
+      this.clearCooldown();
+      console.log(
+        `[TRADE STATE MANAGER]: ⏱️ Trade #${trade?.signalId || "N/A"} EXPIRED after 30 minutes. Entering continuous waiting & analysis mode.`
+      );
+      return;
+    }
+
     const now = Date.now();
     const durationMinutes = customDurationMinutes || 30;
     const durationMs = durationMinutes * 60 * 1000;
@@ -383,6 +403,14 @@ export class MasterTradeStateManager {
     signalId?: string,
     zone?: { low: number; high: number; direction: "BUY" | "SELL" }
   ) {
+    if (outcome === "EXPIRED") {
+      this.clearCooldown();
+      console.log(
+        `[TRADE STATE MANAGER]: ⏱️ Trade #${signalId || "N/A"} EXPIRED after 30 minutes. Entering continuous waiting & analysis mode.`
+      );
+      return;
+    }
+
     const now = Date.now();
     const durationMinutes = customDurationMinutes !== undefined ? customDurationMinutes : 30;
     const durationMs = durationMinutes * 60 * 1000;

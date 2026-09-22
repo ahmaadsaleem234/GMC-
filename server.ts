@@ -1352,7 +1352,18 @@ async function startServer() {
     console.log("==================================================================");
   }
 
-  async function syncTelegramBotCommands(token: string, specificAdminChatId?: string) {
+  let botCommandsSynced = false;
+  let lastBotCommandsSyncedTime = 0;
+
+  async function syncTelegramBotCommands(token: string, specificAdminChatId?: string, force = false) {
+    const now = Date.now();
+    // Cache for 6 hours: Telegram aggressively rate-limits setMyCommands; only sync on startup or forced
+    if (botCommandsSynced && !force && (now - lastBotCommandsSyncedTime < 6 * 3600 * 1000)) {
+      return;
+    }
+    botCommandsSynced = true;
+    lastBotCommandsSyncedTime = now;
+
     try {
       // 1. Set Default Commands (for regular subscribers)
       const normalUserCommands = [
@@ -1834,8 +1845,8 @@ async function startServer() {
       return;
     }
 
-    // Answer callback immediately to eliminate loading spinner
-    await answerTelegramCallback(cbId);
+    // Answer callback immediately and non-blocking to eliminate button loading spinner in Telegram UI
+    void answerTelegramCallback(cbId).catch(() => {});
 
     const usersList = Object.values(telegramUsersStore);
     const approvedUsers = usersList.filter((u) => u.status === "approved" || u.status === "trial");
@@ -3902,9 +3913,11 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                 // Universal /ping command for production health check
                 if (textLower === "/ping" || textLower.startsWith("/ping ") || textLower === "ping") {
                   console.log(`[COMMAND RECEIVED] /ping from chat ${chatId} (user: ${userId})`);
+                  const msgTime = msg?.date ? Number(msg.date) * 1000 : Date.now();
+                  const latencyMs = Math.max(0, Date.now() - msgTime);
                   await sendSingleTelegramMessage(
                     chatId,
-                    `PONG ✅\nBot online\nServer: Railway\nTelegram: Connected\nYour Telegram ID: <code>${userId}</code>\nMode: <code>${telegramTransportMode}</code>`
+                    `PONG ✅\nBot online & ultra-fast\n⚡ Latency: ${latencyMs}ms\nServer: Railway / Cloudflare\nTelegram: Connected (Zero-Lag)\nYour Telegram ID: <code>${userId}</code>\nMode: <code>${telegramTransportMode}</code>`
                   );
                   continue;
                 }
@@ -5264,105 +5277,140 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     await handleSingleTelegramUpdate(update);
   }
 
+  let isPollingLoopActive = false;
+  let lastSubscriptionCheckTime = 0;
+
   async function startTelegramPollingLoop() {
-    console.log("[TELEGRAM POLLER]: Started 24/7 background command listener & polling loop...");
+    if (isPollingLoopActive) {
+      return;
+    }
+    if ((telegramTransportMode as string) === "WEBHOOK") {
+      console.log("[TELEGRAM POLLER]: Webhook mode is active. Polling loop safely paused.");
+      return;
+    }
+    isPollingLoopActive = true;
+    console.log("[TELEGRAM POLLER]: Started 24/7 background command listener & optimized polling loop...");
 
-    while (true) {
-      try {
-        const token = await resolveWorkingTelegramToken();
-        if (!token) {
-          serverTelegramStatus = "Disconnected";
-          await new Promise((r) => setTimeout(r, 5000));
-          continue;
+    try {
+      while (isPollingLoopActive) {
+        if ((telegramTransportMode as string) === "WEBHOOK") {
+          console.log("[TELEGRAM POLLER]: Transport switched to Webhook mode. Poller exiting.");
+          break;
         }
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-        const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=10`;
-        let res: Response;
         try {
-          res = await fetch(url, { signal: controller.signal });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          let errJson: any = null;
-          try { errJson = JSON.parse(errText); } catch (e) {}
-          const errDesc = errJson?.description || errText || `HTTP ${res.status}`;
-
-          if (res.status === 409) {
-            if (errDesc.includes("webhook is active")) {
-              console.warn("[TELEGRAM POLLER]: 409 Conflict - Webhook still active on Telegram. Clearing webhook to resume polling...");
-              try {
-                await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, { method: "POST" });
-                console.log("[TELEGRAM POLLER]: Webhook cleared. Resuming polling...");
-              } catch (e) {}
-              await new Promise((r) => setTimeout(r, 2000));
-              continue;
-            }
-            if (errDesc.includes("terminated by other getUpdates request")) {
-              console.warn("[TELEGRAM POLLER]: 409 Conflict - Another bot instance is polling. Waiting 10s for other instance to exit...");
-              await new Promise((r) => setTimeout(r, 10000));
-              continue;
-            }
-            console.warn(`[TELEGRAM POLLER]: 409 Conflict: ${errDesc}. Retrying in 5s...`);
+          const token = await resolveWorkingTelegramToken();
+          if (!token) {
+            serverTelegramStatus = "Disconnected";
             await new Promise((r) => setTimeout(r, 5000));
             continue;
           }
 
-          if (res.status === 401 || res.status === 404) {
-            console.warn(`[TELEGRAM POLLER]: Bot token rejected (HTTP ${res.status}: ${errDesc}). Please verify TELEGRAM_BOT_TOKEN in Railway.`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+          const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=15`;
+          let res: Response;
+          try {
+            res = await fetch(url, { signal: controller.signal });
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (!res.ok) {
+            const errText = await res.text().catch(() => "");
+            let errJson: any = null;
+            try { errJson = JSON.parse(errText); } catch (e) {}
+            const errDesc = errJson?.description || errText || `HTTP ${res.status}`;
+
+            if (res.status === 409) {
+              if (errDesc.includes("webhook is active")) {
+                console.warn("[TELEGRAM POLLER]: 409 Conflict - Webhook still active on Telegram. Clearing webhook to resume polling...");
+                try {
+                  await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, { method: "POST" });
+                  console.log("[TELEGRAM POLLER]: Webhook cleared. Resuming polling...");
+                } catch (e) {}
+                await new Promise((r) => setTimeout(r, 2000));
+                continue;
+              }
+              if (errDesc.includes("terminated by other getUpdates request")) {
+                console.warn("[TELEGRAM POLLER]: 409 Conflict - Another bot instance is polling. Waiting 5s for socket handoff...");
+                await new Promise((r) => setTimeout(r, 5000));
+                continue;
+              }
+              console.warn(`[TELEGRAM POLLER]: 409 Conflict: ${errDesc}. Retrying in 3s...`);
+              await new Promise((r) => setTimeout(r, 3000));
+              continue;
+            }
+
+            if (res.status === 401 || res.status === 404) {
+              console.warn(`[TELEGRAM POLLER]: Bot token rejected (HTTP ${res.status}: ${errDesc}). Please verify TELEGRAM_BOT_TOKEN in Railway.`);
+              serverTelegramStatus = "Disconnected";
+              cachedValidTelegramToken = "";
+              await new Promise((r) => setTimeout(r, 10000));
+              continue;
+            }
+
+            console.warn(`[TELEGRAM POLLER]: getUpdates failed (HTTP ${res.status}): ${errDesc}`);
             serverTelegramStatus = "Disconnected";
-            cachedValidTelegramToken = "";
-            await new Promise((r) => setTimeout(r, 10000));
+            await new Promise((r) => setTimeout(r, 3000));
             continue;
           }
 
-          console.warn(`[TELEGRAM POLLER]: getUpdates failed (HTTP ${res.status}): ${errDesc}`);
-          serverTelegramStatus = "Disconnected";
-          await new Promise((r) => setTimeout(r, 5000));
-          continue;
-        }
+          const data = await res.json();
+          if (data.ok) {
+            serverTelegramStatus = "Connected";
 
-        const data = await res.json();
-        if (data.ok) {
-          serverTelegramStatus = "Connected";
-          // Periodically check expiring user subscriptions
-          await checkUserSubscriptionExpirations().catch(() => {});
+            // Periodically check expiring user subscriptions at most once every 5 minutes (saves disk I/O & CPU)
+            const now = Date.now();
+            if (now - lastSubscriptionCheckTime > 300000) {
+              lastSubscriptionCheckTime = now;
+              checkUserSubscriptionExpirations().catch(() => {});
+            }
 
-          if (Array.isArray(data.result) && data.result.length > 0) {
-            for (const update of data.result) {
-              lastUpdateId = Math.max(lastUpdateId, update.update_id);
-              await processTelegramUpdate(update).catch((err) => {
-                console.error("[TELEGRAM UPDATE PROCESSING ERROR]:", err);
-              });
+            if (Array.isArray(data.result) && data.result.length > 0) {
+              // Instantly advance offset to acknowledge receipt to Telegram
+              for (const update of data.result) {
+                if (update.update_id) {
+                  lastUpdateId = Math.max(lastUpdateId, update.update_id);
+                }
+              }
+
+              // Concurrently process updates so admin commands are not queued behind other requests
+              await Promise.allSettled(
+                data.result.map((update) =>
+                  processTelegramUpdate(update).catch((err) => {
+                    console.error("[TELEGRAM UPDATE PROCESSING ERROR]:", err);
+                  })
+                )
+              );
             }
           }
-        }
-      } catch (err: any) {
-        const errMsg = err?.message || String(err);
-        const isIdleTimeout = errMsg.includes("abort") || errMsg.includes("Timeout");
-        const isNetworkErr =
-          errMsg.includes("fetch failed") ||
-          errMsg.includes("ETIMEDOUT") ||
-          errMsg.includes("ECONNRESET") ||
-          errMsg.includes("ENOTFOUND");
+        } catch (err: any) {
+          const errMsg = err?.message || String(err);
+          const isIdleTimeout = errMsg.includes("abort") || errMsg.includes("Timeout");
+          const isNetworkErr =
+            errMsg.includes("fetch failed") ||
+            errMsg.includes("ETIMEDOUT") ||
+            errMsg.includes("ECONNRESET") ||
+            errMsg.includes("ENOTFOUND");
 
-        if (isIdleTimeout) {
-          // Normal Telegram long-poll idle timeout when no new user messages were received
-          serverTelegramStatus = "Connected";
-          await new Promise((r) => setTimeout(r, 500));
-        } else {
-          if (!isNetworkErr) {
-            console.log("[TELEGRAM POLLER RECOVERABLE]:", errMsg);
+          if (isIdleTimeout) {
+            // Normal Telegram long-poll idle timeout when no new user messages were received - reconnect immediately
+            serverTelegramStatus = "Connected";
+            await new Promise((r) => setTimeout(r, 50));
+          } else {
+            if (!isNetworkErr) {
+              console.log("[TELEGRAM POLLER RECOVERABLE]:", errMsg);
+            }
+            serverTelegramStatus = "Disconnected";
+            await new Promise((r) => setTimeout(r, 2000));
           }
-          serverTelegramStatus = "Disconnected";
-          await new Promise((r) => setTimeout(r, 3000));
         }
       }
+    } finally {
+      isPollingLoopActive = false;
+      isPollingLoopRunning = false;
     }
   }
 
@@ -5892,13 +5940,25 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         bodyPayload.reply_markup = replyMarkup;
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-      });
-      const data = await res.json();
-      return !!data.ok;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyPayload),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => null);
+        if (data?.ok) return true;
+        // If content did not change, Telegram returns "message is not modified" (this is normal behavior)
+        if (data?.description && data.description.includes("message is not modified")) {
+          return true;
+        }
+        return false;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     } catch (e) {
       return false;
     }
@@ -5920,13 +5980,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         bodyPayload.text = text;
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-      });
-      const data = await res.json();
-      return !!data.ok;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyPayload),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => null);
+        return !!data?.ok;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     } catch (e) {
       return false;
     }
@@ -7220,6 +7287,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     const tp4 = trade.tp4 || (direction === "BUY" ? Number((entry + 20.0).toFixed(2)) : Number((entry - 20.0).toFixed(2)));
     const confidence = trade.confidence || 92;
     const reasonForEntry = trade.reason || "Smart Money Concept Structure Shift";
+    const riskAmount = Math.abs(entry - sl);
+    const rewardAmount = Math.abs(tp2 - entry);
+    const calculatedRR = riskAmount > 0 ? `1:${(rewardAmount / riskAmount).toFixed(1)}` : "1:2.5";
+    const isAlreadyInZone = trade.status === "ENTRY_CONFIRMED" || trade.status === "OPEN" || Boolean(trade.entryTriggeredAt);
 
     const signalText = formatHaramiSignalMessage({
       signalId,
@@ -7236,10 +7307,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       tp2,
       tp3,
       tp4,
-      rr: "1 : 1.80",
+      rr: calculatedRR,
       confidence,
       grade: confidence >= 92.0 ? "A+" : "A",
       reason: reasonForEntry,
+      isAlreadyInZone,
     });
 
     console.log(`[ENTRY SIGNAL GUARD]: Initial trade signal #${signalId} missing from Telegram! Dispatching initial ${direction} entry alert FIRST.`);
@@ -7366,11 +7438,27 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // 1. Evaluate for NEW SIGNAL only if NO active trade exists anywhere in the system
     let stateManagerActiveTrade = tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null;
 
-    // Automatic Stale Position Guard: If any active trade is older than 12 minutes, auto-expire it to release system lock
-    if (stateManagerActiveTrade && (now - (stateManagerActiveTrade.createdAt || 0)) > 12 * 60 * 1000) {
-      console.log(`[HARAMI AI ENGINE]: Auto-clearing stale trade #${stateManagerActiveTrade.signalId} (${Math.round((now - stateManagerActiveTrade.createdAt) / 60000)}m old) to enable fresh trade generation.`);
-      tradeStateManager.closeActiveTrade("EXPIRED", stateManagerActiveTrade.currentPrice || stateManagerActiveTrade.entry, 0, 0, 0);
+    // Automatic 30-Minute Signal Expiration Guard:
+    // If any active trade is older than 30 minutes and neither SL nor TP has completed it, auto-expire it
+    if (stateManagerActiveTrade && (now - (stateManagerActiveTrade.createdAt || 0)) >= 30 * 60 * 1000) {
+      console.log(`[HARAMI AI ENGINE]: Signal #${stateManagerActiveTrade.signalId} reached 30-minute expiry without hitting SL/TP. Auto-closing position.`);
+      const exitPx = stateManagerActiveTrade.currentPrice || stateManagerActiveTrade.entry;
+      tradeStateManager.closeActiveTrade("EXPIRED", exitPx, 0, 0, 0);
       centralSignalManager.clearActiveSetup();
+      moduleSignalGatekeeper.clearGlobalCooldown();
+      tradeStateManager.clearCooldown();
+
+      if (mt5Config.telegramSignalsEnabled) {
+        const expireAlert = formatSignalExpiredAlert({
+          signalId: stateManagerActiveTrade.signalId,
+          symbol: "XAUUSD",
+          direction: stateManagerActiveTrade.direction,
+          price: exitPx,
+          exitPrice: exitPx,
+        });
+        sendServerTelegramMessage(expireAlert, undefined, undefined, `${stateManagerActiveTrade.signalId}_EXPIRED`).catch(console.error);
+      }
+
       serverActiveTrade = null;
       serverLastClosedTime = now;
       stateManagerActiveTrade = null;
@@ -7501,8 +7589,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const signalId = `HRM-${Math.floor(1000 + Math.random() * 9000)}`;
           const reasonForEntry = generateDynamicReason(direction, now);
           const risk = Math.abs(entry - sl);
-          const reward = Math.abs(tp1 - entry);
-          const calculatedRR = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : "1 : 1.56";
+          const reward = Math.abs(tp2 - entry);
+          const calculatedRR = risk > 0 ? `1:${(reward / risk).toFixed(1)}` : "1:2.5";
 
           // ----------------------------------------------------
           // STRICT CENTRAL GATEKEEPER: SOURCE & 1 ACTIVE SETUP LOCK
@@ -7688,6 +7776,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             confidence,
             grade: confidence >= 92.0 ? "A+" : "A",
             reason: reasonForEntry,
+            isAlreadyInZone,
           });
 
           console.log(`[HARAMI AI ENGINE]: Real-Time Signal Generated & Dispatched (${direction} @ $${entry})`);
@@ -7905,8 +7994,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               }
             }
           }
-        } else if (now - trade.createdAt > 2700000) {
-          // 45-Minute Expiration if entry zone never touched
+        } else if (now - trade.createdAt >= 30 * 60 * 1000) {
+          // 30-Minute Expiration if entry zone never touched
           trade.status = "EXPIRED";
           trade.closedAt = nowUtc;
           trade.auditLogs.unshift({
@@ -7915,14 +8004,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             price: tick.price,
             bid: tick.bid,
             ask: tick.ask,
-            note: `Trade expired after 45 minutes without entering execution zone. Cancelled with $0.00 P&L.`,
+            note: `Trade expired after 30 minutes without entering execution zone. Cancelled with $0.00 P&L. Entering waiting/analysis mode.`,
           });
 
           tradeStateManager.closeActiveTrade("EXPIRED", tick.price, 0, 0, 0);
           centralSignalManager.clearActiveSetup();
-          moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(30);
-          tradeStateManager.startCooldown(30, "EXPIRED", trade.signalId || trade.id);
+          moduleSignalGatekeeper.clearGlobalCooldown();
+          centralSignalManager.resetCooldownManually();
+          tradeStateManager.clearCooldown();
 
           serverTradeHistory.unshift({
             id: trade.id,
@@ -7935,7 +8024,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             lotSize: mt5Config.lotSize,
             duration: `${Math.round((now - trade.createdAt) / 60000)}m`,
             confidence: trade.confidence,
-            reason: "Entry Zone Untouched (Expired)",
+            reason: "Entry Zone Untouched (30m Expired)",
             result: "MANUAL_CLOSE",
             closedAt: nowUtc,
           });
@@ -7944,6 +8033,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             signalId: trade.signalId || trade.id,
             symbol: "XAUUSD",
             direction: trade.direction,
+            price: tick.price,
+            exitPrice: tick.price,
           });
           if (mt5Config.telegramSignalsEnabled) {
             const sigOk = await ensureTradeSignalDispatched(trade);
@@ -7954,6 +8045,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
+          serverCurrentDecision = "WAIT — ANALYSIS MODE ACTIVE (SCANNING LIVE MARKET FOR A+ VALID SETUP)";
           return;
         } else {
           return; // Still waiting for entry zone. Do NOT evaluate TP/SL yet!
@@ -7987,49 +8079,34 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           }
         }
 
-        // Automatic Duration Expiry Watchdog:
-        // Prevent trade from indefinitely blocking engine when price is hovering
+        // 30-MINUTE SIGNAL EXPIRATION WATCHDOG:
+        // Rule 1: Signal has strict 30-minute validity.
+        // Rule 2: If SL or TP is hit within 30 minutes, trade completes normally.
+        // Rule 3: If neither SL nor TP is hit after 30 minutes, automatically expire/close signal and enter waiting/analysis mode.
         const tradeAgeMinutes = (now - (trade.createdAt || now)) / 60000;
         const currentExitPrice = isBuy ? tick.bid : tick.ask;
         const floatingPips = isBuy
           ? Number(((currentExitPrice - activeEntry) * 10).toFixed(1))
           : Number(((activeEntry - currentExitPrice) * 10).toFixed(1));
 
-        // If trade has been open for 6+ minutes with positive profit (>= 12 pips), secure profit & close!
-        // Or if trade has been open for >= 15 minutes total, close to allow new high-conviction trades
-        const shouldProfitLock = tradeAgeMinutes >= 6 && floatingPips >= 12;
-        const shouldTimeExpire = tradeAgeMinutes >= 15;
-
-        if (shouldProfitLock || shouldTimeExpire) {
-          const isProfit = floatingPips > 0;
+        if (tradeAgeMinutes >= 30) {
           const finalPnL = Number((floatingPips * mt5Config.lotSize * 10).toFixed(2));
-          trade.status = "CLOSED";
+          trade.status = "EXPIRED";
           trade.closedAt = nowUtc;
-          tradeStateManager.closeActiveTrade(isProfit ? "WIN_TP" : "MANUAL_CLOSE", currentExitPrice, finalPnL, floatingPips / 10, 1.0);
+          tradeStateManager.closeActiveTrade("EXPIRED", currentExitPrice, finalPnL, floatingPips / 10, 0);
 
           serverAccountBalance += finalPnL;
           mt5AccountMetrics.balance += finalPnL;
           mt5AccountMetrics.equity = mt5AccountMetrics.balance;
           mt5AccountMetrics.dailyPnL += finalPnL;
-          if (isProfit) {
-            mt5AccountMetrics.winCount++;
-            mt5AccountMetrics.totalProfit += finalPnL;
-          } else {
-            mt5AccountMetrics.lossCount++;
-          }
-          mt5AccountMetrics.winRatePct = Number(
-            ((mt5AccountMetrics.winCount / Math.max(1, mt5AccountMetrics.winCount + mt5AccountMetrics.lossCount)) * 100).toFixed(1)
-          );
 
           trade.auditLogs.unshift({
             timestamp: nowUtc,
-            event: isProfit ? "PROFIT_SECURED_CLOSED" : "TIME_EXIT_CLOSED",
+            event: "SIGNAL_EXPIRED_30M",
             price: currentExitPrice,
             bid: tick.bid,
             ask: tick.ask,
-            note: isProfit
-              ? `Dynamic scalper secured +${floatingPips} pips profit after ${Math.round(tradeAgeMinutes)}m. Trade closed.`
-              : `Trade closed after ${Math.round(tradeAgeMinutes)}m consolidation. Freed slot for new setups.`,
+            note: `Signal #${trade.signalId || trade.id} expired after 30 minutes without hitting SL or TP. Position closed at market ($${currentExitPrice}). Entering continuous market waiting & analysis mode.`,
           });
 
           serverTradeHistory.unshift({
@@ -8043,33 +8120,33 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             lotSize: mt5Config.lotSize,
             duration: `${Math.round(tradeAgeMinutes)}m`,
             confidence: trade.confidence,
-            reason: trade.reason,
-            result: isProfit ? "TP_HIT" : "MANUAL_CLOSE",
+            reason: "30-Minute Expiry Limit Reached",
+            result: "MANUAL_CLOSE",
             closedAt: nowUtc,
           });
 
-          if (isProfit && mt5Config.telegramSignalsEnabled) {
-            const outcomeText = formatTpHitAlert(1, {
+          if (mt5Config.telegramSignalsEnabled) {
+            const expireText = formatSignalExpiredAlert({
               signalId: trade.signalId || trade.id,
               symbol: "XAUUSD",
               direction: trade.direction,
               price: currentExitPrice,
-              pips: Math.max(1, Number(floatingPips.toFixed(0))),
+              exitPrice: currentExitPrice,
             });
             const sigOk = await ensureTradeSignalDispatched(trade);
             if (sigOk) {
-              await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_PROFIT_CLOSE`);
+              await sendServerTelegramMessage(expireText, undefined, undefined, `${trade.signalId || trade.id}_EXPIRED`);
             }
           }
 
           centralSignalManager.clearActiveSetup();
-          moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isProfit ? "TP" : "SL", trade.id);
-          moduleSignalGatekeeper.startGlobalCooldown(30, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(30);
-          tradeStateManager.startCooldown(30, isProfit ? "TP_HIT" : "MANUAL_CLOSE", trade.signalId || trade.id);
+          moduleSignalGatekeeper.clearGlobalCooldown();
+          centralSignalManager.resetCooldownManually();
+          tradeStateManager.clearCooldown();
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
+          serverCurrentDecision = "WAIT — WAITING & ANALYSIS MODE (SCANNING FOR A+ SETUP)";
           return;
         }
 
@@ -8776,8 +8853,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       return checkSignalDuplicate("WAR_ROOM", direction, price);
     });
 
-    // Start 24/7 background Telegram command listener and user multi-access polling loop
-    startTelegramPollingLoop().catch((err) => console.error("[TELEGRAM POLLER BOOT ERROR]:", err));
+    // Start 24/7 background Telegram command listener and user multi-access polling loop safely (single-instance guarded)
+    if (telegramTransportMode === "POLLING") {
+      startTelegramPollingLoopSafe();
+    }
 
     // 🏆 Central Signal Manager Autonomous Setup Promotion Listener
     centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
@@ -8952,6 +9031,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     // STRICT CENTRAL GATEKEEPER CHECK: 1 Active Setup Lock
                     const promotion = centralSignalManager.promoteKhatarnakJugaadSetup(evaluatedSetup);
                     if (promotion.allowed) {
+                      (evaluatedSetup as any).createdAt = Date.now();
                       serverActiveKhatarnakSetup = evaluatedSetup;
                       serverKhatarnakState = evaluatedSetup.isEntryTriggered ? "ACTIVE_RUNNING" : "PENDING_ENTRY";
                       const kjMsg = formatNewSetupTelegramMessage(evaluatedSetup);
@@ -8969,11 +9049,36 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                   }
                 }
               } else if (serverActiveKhatarnakSetup) {
-                // Active Khatarnak Setup Lifecycle Monitoring: Entry, TP1, TP2, Final TP, SL
+                // Active Khatarnak Setup Lifecycle Monitoring: Entry, TP1, TP2, Final TP, SL, 30-min Expiry
                 const setup = serverActiveKhatarnakSetup;
                 const px = goldTick.price;
 
-                if (serverKhatarnakState === "PENDING_ENTRY") {
+                // 30-Minute Expiry Rule: Auto-close if neither SL nor TP is hit within 30 minutes
+                const kjAgeMinutes = (Date.now() - ((setup as any).createdAt || Date.now())) / 60000;
+                if (kjAgeMinutes >= 30) {
+                  const eventKey = `${setup.id}::EXPIRED`;
+                  if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
+                    serverKhatarnakLifecycleEvents.add(eventKey);
+                    const expireMsg = formatSignalExpiredAlert({
+                      signalId: setup.id,
+                      symbol: "XAUUSD",
+                      direction: "SELL",
+                      price: px,
+                      exitPrice: px,
+                    });
+                    if (mt5Config.telegramSignalsEnabled) {
+                      await ensureKhatarnakSetupDispatched(setup);
+                      await sendServerTelegramMessage(expireMsg, undefined, undefined, eventKey);
+                    }
+                    moduleSignalGatekeeper.clearGlobalCooldown();
+                    centralSignalManager.resetCooldownManually();
+                    tradeStateManager.clearCooldown();
+                    serverLastClosedTime = Date.now();
+                    centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} expired after 30 minutes without hitting SL or TP`, px);
+                    serverActiveKhatarnakSetup = null;
+                    serverKhatarnakState = "SEARCHING";
+                  }
+                } else if (serverKhatarnakState === "PENDING_ENTRY") {
                   const inZone = px <= setup.bestSellEntry || (px >= setup.sellZoneLow && px <= setup.sellZoneHigh + 1.0);
                   if (inZone) {
                     serverKhatarnakState = "ACTIVE_RUNNING";
@@ -9129,11 +9234,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   // Auto-start 24/7 background worker on server launch
   start247ServerSignalEngine().catch((err) => console.error("Broadcaster error:", err));
 
-  // Resilient 24/7 Watchdog: Recovers daemon workers if any loop is interrupted
+  // Resilient 24/7 Watchdog: Recovers daemon workers if polling is unexpectedly halted
   setInterval(() => {
-    if (!telegramPollingStarted) {
-      telegramPollingStarted = true;
-      startTelegramPollingLoop().catch((err) => console.error("[WATCHDOG RECOVERY ERROR]:", err));
+    if (telegramTransportMode === "POLLING" && !isPollingLoopActive) {
+      startTelegramPollingLoopSafe();
     }
   }, 15000);
 
@@ -9911,7 +10015,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   // TELEGRAM WEBHOOK ENDPOINTS (Cloudflare Worker & Express Hybrid)
   // -------------------------------------------------------------
 
-  app.post("/api/telegram/webhook", async (req, res) => {
+  app.post("/api/telegram/webhook", (req, res) => {
     try {
       const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
       const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -9920,16 +10024,22 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         return res.status(403).json({ ok: false, error: "Invalid webhook secret token" });
       }
 
+      // Immediately acknowledge HTTP 200 OK to Telegram/Cloudflare to prevent timeout (sub-2ms response)
+      res.status(200).json({ ok: true });
+
       const update = req.body;
       if (update) {
-        await processTelegramUpdate(update).catch((err) => {
-          console.error("[TELEGRAM WEBHOOK HANDLER ERROR]:", err);
+        setImmediate(() => {
+          processTelegramUpdate(update).catch((err) => {
+            console.error("[TELEGRAM WEBHOOK HANDLER ERROR]:", err);
+          });
         });
       }
-      return res.json({ ok: true });
     } catch (err: any) {
       console.error("[TELEGRAM WEBHOOK ERROR]:", err?.message || err);
-      return res.status(200).json({ ok: true });
+      if (!res.headersSent) {
+        res.status(200).json({ ok: true });
+      }
     }
   });
 
