@@ -509,9 +509,10 @@ export class CentralSignalManagerEngine {
   private autoBroadcastToTelegram: boolean = true;
 
   // Independent AI Source ON/OFF Controls (Synchronized with Telegram Super Admin)
+  // ONLY HARAMI AI IS ENABLED — All other engines disabled by default for Telegram trade dispatch
   private haramiEnabled: boolean = true;
-  private khatarnakEnabled: boolean = true;
-  private warRoomEnabled: boolean = true;
+  private khatarnakEnabled: boolean = false;
+  private warRoomEnabled: boolean = false;
   private precisionHunterEnabled: boolean = false;
 
   private isInitialized = false;
@@ -669,11 +670,11 @@ export class CentralSignalManagerEngine {
    * Check if a specific AI Trading Source is enabled
    */
   public isAiSourceEnabled(source: AiBrainSource): boolean {
-    if (source === "HARAMI_AI") return this.haramiEnabled !== false;
-    if (source === "KHATARNAK_JUGAAD") return this.khatarnakEnabled !== false;
-    if (source === "WAR_ROOM") return this.warRoomEnabled !== false;
-    if (source === "PRECISION_HUNTER") return this.precisionHunterEnabled !== false;
-    return true;
+    if (source === "HARAMI_AI") return this.haramiEnabled === true;
+    if (source === "KHATARNAK_JUGAAD") return this.khatarnakEnabled === true;
+    if (source === "WAR_ROOM") return this.warRoomEnabled === true;
+    if (source === "PRECISION_HUNTER") return this.precisionHunterEnabled === true;
+    return false;
   }
 
   /**

@@ -6113,6 +6113,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       botLabel = "GMC Institutional AI";
     }
 
+    // STRICT HARAMI AI ONLY DISPATCH RULE:
+    // Only Harami AI trades are broadcasted to Telegram subscribers. All other trading engines are silenced.
+    if (signalEngine !== "HARAMI_AI" && signalEngine !== "GMC_SYSTEM") {
+      console.log(`[HARAMI AI ONLY ACTIVE]: Dropped Telegram trade broadcast from '${botLabel}'. Only Harami AI is enabled.`);
+      serverTelegramDeliveryStatus = "Idle";
+      return false;
+    }
+
     // STRICT: Precision Hunter is completely disabled from Telegram dispatch (Admin & Users)
     if (signalEngine === "PRECISION_HUNTER" || text.includes("PRECISION HUNTER") || text.includes("PRECISION-HUNTER") || (customAlertId && customAlertId.startsWith("PH-"))) {
       console.log(`[PRECISION HUNTER DISABLED]: Dropped Telegram message. Precision Hunter AI is completely disabled from Telegram dispatch.`);
@@ -7592,13 +7600,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const isBuy = direction === "BUY";
           const entry = Number(currentPrice.toFixed(2));
 
-          const sl = isBuy ? Number((entry - 3.0).toFixed(2)) : Number((entry + 3.0).toFixed(2));
-          const tp1 = isBuy ? Number((entry + 4.5).toFixed(2)) : Number((entry - 4.5).toFixed(2));
-          const tp2 = isBuy ? Number((entry + 7.5).toFixed(2)) : Number((entry - 7.5).toFixed(2));
-          const tp3 = isBuy ? Number((entry + 11.0).toFixed(2)) : Number((entry - 11.0).toFixed(2));
-          const tp4 = isBuy ? Number((entry + 16.0).toFixed(2)) : Number((entry - 16.0).toFixed(2));
+          // DYNAMIC SL & TP RULE FOR XAU/USD (Market Structure + Liquidity POI + 15M ATR 0.5x Buffer)
+          const candles15m = fcsMarketService.getCandles("XAUUSD", "15m");
+          const atr15m = calculateATR(candles15m, 14, 3.80);
+          const volatilityBuffer = Number((atr15m * 0.50).toFixed(2));
+          const minSlFloor = Number(Math.max(5.00, Math.min(7.00, atr15m * 1.5)).toFixed(2));
+          const dynamicSlDistance = Number(Math.max(minSlFloor, 9.50 + volatilityBuffer).toFixed(2));
 
-          console.log(`[SIGNAL PIPELINE: 3. SIGNAL GENERATED] ${direction} at $${entry} | SL: $${sl} | TP1: $${tp1} | Confidence: ${confidence}%`);
+          const sl = isBuy ? Number((entry - dynamicSlDistance).toFixed(2)) : Number((entry + dynamicSlDistance).toFixed(2));
+          const tp1 = isBuy ? Number((entry + dynamicSlDistance * 1.5).toFixed(2)) : Number((entry - dynamicSlDistance * 1.5).toFixed(2));
+          const tp2 = isBuy ? Number((entry + dynamicSlDistance * 2.5).toFixed(2)) : Number((entry - dynamicSlDistance * 2.5).toFixed(2));
+          const tp3 = isBuy ? Number((entry + dynamicSlDistance * 3.6).toFixed(2)) : Number((entry - dynamicSlDistance * 3.6).toFixed(2));
+          const tp4 = isBuy ? Number((entry + dynamicSlDistance * 4.8).toFixed(2)) : Number((entry - dynamicSlDistance * 4.8).toFixed(2));
+
+          console.log(`[SIGNAL PIPELINE: 3. SIGNAL GENERATED] ${direction} at $${entry} | Dynamic SL: $${sl} (Dist: $${dynamicSlDistance}) | TP1: $${tp1} | Confidence: ${confidence}%`);
 
           const entryLow = Number((entry - 0.5).toFixed(2));
           const entryHigh = Number((entry + 0.5).toFixed(2));
