@@ -2085,7 +2085,7 @@ export class CentralSignalManagerEngine {
       freshnessPassed: setup.verificationAudit.setupFresh,
       overallPassed: isEnabled && setup.isValidTrade && setupScore >= this.minScoreThreshold,
       verificationSummary: isEnabled
-        ? `${setup.verificationAudit.passedCount}/14 Institutional Matrix Checks Passed (${setup.slRationale})`
+        ? `${setup.verificationAudit.passedCount}/15 Institutional Matrix Checks Passed (${setup.slRationale})`
         : "🔴 Harami AI disabled by Admin (OFF)",
     };
 
@@ -2099,10 +2099,14 @@ export class CentralSignalManagerEngine {
 
     if (isGold) {
       const isBuy = dir === "BUY";
-      // Strict Gold SL: $7.00 - $10.00 max range
-      const rawSlDist = Math.abs(bestEntry - finalSl);
-      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawSlDist > 0 ? rawSlDist : 8.00)).toFixed(2));
-      finalSl = isBuy ? Number((bestEntry - goldSlDist).toFixed(2)) : Number((bestEntry + goldSlDist).toFixed(2));
+      // Strict Gold SL: $8.00 - $11.00 range (If setup.stopLoss was skipped/over limit, keep setup.stopLoss)
+      const rawSlDist = Math.abs(bestEntry - setup.stopLoss);
+      if (rawSlDist > 11.00) {
+        finalSl = setup.stopLoss; // Exceeds ceiling -> trade will be rejected by setup.isValidTrade
+      } else {
+        const goldSlDist = Number(Math.max(8.00, Math.min(11.00, rawSlDist > 0 ? rawSlDist : 8.00)).toFixed(2));
+        finalSl = isBuy ? Number((bestEntry - goldSlDist).toFixed(2)) : Number((bestEntry + goldSlDist).toFixed(2));
+      }
       // Strict Gold TPs: TP1=50 pips ($5), TP2=100 pips ($10), TP3=120 pips ($12), TP4=150 pips ($15)
       finalTp1 = isBuy ? Number((bestEntry + 5.00).toFixed(2)) : Number((bestEntry - 5.00).toFixed(2));
       finalTp2 = isBuy ? Number((bestEntry + 10.00).toFixed(2)) : Number((bestEntry - 10.00).toFixed(2));

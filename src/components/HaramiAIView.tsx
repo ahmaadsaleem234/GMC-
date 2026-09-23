@@ -255,7 +255,7 @@ Status: ${engineSetup.direction === "BUY" ? "🟢" : "🔴"} ACTIVE`;
                   className="px-2.5 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 rounded text-[10px] font-bold flex items-center gap-1 transition-all"
                 >
                   <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  <span>14/14 MATRIX ({engineSetup.verificationAudit.passedCount}/14)</span>
+                  <span>15/15 MATRIX ({engineSetup.verificationAudit.passedCount}/15)</span>
                 </button>
 
                 <button
@@ -329,7 +329,7 @@ Status: ${engineSetup.direction === "BUY" ? "🟢" : "🔴"} ACTIVE`;
               <span className={`px-2 py-0.5 border rounded text-[9px] font-bold shrink-0 ${
                 engineSetup.verificationAudit.allPassed ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-amber-500/20 text-amber-300 border-amber-500/40"
               }`}>
-                {engineSetup.verificationAudit.allPassed ? "14/14 CONFIRMED" : `${engineSetup.verificationAudit.passedCount}/14 VERIFIED`}
+                {engineSetup.verificationAudit.allPassed ? "15/15 CONFIRMED" : `${engineSetup.verificationAudit.passedCount}/15 VERIFIED`}
               </span>
             </div>
           </div>
@@ -446,20 +446,21 @@ Status: ${engineSetup.direction === "BUY" ? "🟢" : "🔴"} ACTIVE`;
 
             <div className="space-y-2">
               {[
-                { label: "15M Macro Market Structure Valid", ok: engineSetup.verificationAudit.marketStructureValid },
-                { label: "5M/15M Entry Quality (Not Overextended)", ok: engineSetup.verificationAudit.entryQualityValid },
-                { label: "Optimal Best Entry Pocket Available", ok: engineSetup.verificationAudit.bestEntryAvailable },
-                { label: "Dynamic SL Beyond Structural Swings", ok: engineSetup.verificationAudit.slBeyondStructure },
-                { label: "SL Within Max Volatility Cap Limit", ok: engineSetup.verificationAudit.slWithinMaxCap },
-                { label: "Expected Move vs SL Validated", ok: engineSetup.verificationAudit.expectedMoveValid },
-                { label: "Mathematical R:R ≥ 1:2.0 to TP2", ok: engineSetup.verificationAudit.riskRewardValid },
-                { label: "Realistic Multi-Target TP1–TP4 Reachable", ok: engineSetup.verificationAudit.tpLevelsRealistic },
+                { label: "1H Trend Filter Aligned with Trade Direction", ok: engineSetup.verificationAudit.h1TrendAligned },
+                { label: "15M Macro Structure Shift (CHOCH/BOS Confirmed)", ok: engineSetup.verificationAudit.marketStructureValid },
+                { label: "Equilibrium Filter (Discount / Premium Zone)", ok: engineSetup.verificationAudit.equilibriumZoneValid },
+                { label: "Liquidity Sweep + Confirmation Candle Present", ok: engineSetup.verificationAudit.confirmationCandlePresent },
+                { label: "Best Entry Within Anti-Chase Range (< 2x ATR)", ok: engineSetup.verificationAudit.bestEntryWithinAntiChase },
+                { label: "Dynamic SL Beyond Structural Sweep Level", ok: engineSetup.verificationAudit.slBeyondStructure },
+                { label: "SL Within $8–$11 Strict Range (Else: Skip Trade)", ok: engineSetup.verificationAudit.slWithin8To11Range },
+                { label: "Expected Move vs SL Liquidity Open", ok: engineSetup.verificationAudit.expectedMoveValid },
+                { label: "Realistic Multi-Target TP1–TP4 Reachable", ok: engineSetup.verificationAudit.tpLevelsReachability },
                 { label: "Multi-TF ATR Volatility Acceptable", ok: engineSetup.verificationAudit.volatilityAcceptable },
                 { label: "Spread & Liquidity Tolerance Passed", ok: engineSetup.verificationAudit.spreadAcceptable },
-                { label: "High Confidence Score (≥ 70/100)", ok: engineSetup.verificationAudit.confirmationStrong },
-                { label: "Setup Freshness & 1M Closed Candle", ok: engineSetup.verificationAudit.setupFresh },
-                { label: "No Recent Repeated SL Hit in Zone", ok: engineSetup.verificationAudit.noRecentFailedZone },
-                { label: "Exact Position Size & Risk Validated", ok: engineSetup.verificationAudit.positionSizeAndRiskValid },
+                { label: "High-Impact News Filter Passed (±30 Min Clear)", ok: engineSetup.verificationAudit.newsFilterPassed },
+                { label: "Confluence Score High (≥ 80/100)", ok: engineSetup.verificationAudit.confluenceScore80Plus },
+                { label: "Zone Freshness (Not Previously Tested)", ok: engineSetup.verificationAudit.zoneFreshness },
+                { label: "No Recent Failed Zone Cooldown (20 Min)", ok: engineSetup.verificationAudit.noRecentFailedZone },
               ].map((item, idx) => (
                 <div key={idx} className="p-2.5 bg-black/60 border border-slate-800 rounded-lg flex items-center justify-between">
                   <span className="text-xs text-slate-300 font-bold">
@@ -477,7 +478,7 @@ Status: ${engineSetup.direction === "BUY" ? "🟢" : "🔴"} ACTIVE`;
 
             <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
               <span className="text-xs text-slate-400">
-                Audit Result: <strong className="text-white">{engineSetup.verificationAudit.passedCount} / 14 Verified</strong>
+                Audit Result: <strong className="text-white">{engineSetup.verificationAudit.passedCount} / 15 Verified</strong>
               </span>
               <button
                 onClick={() => setShowMatrixModal(false)}

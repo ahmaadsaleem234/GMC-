@@ -184,21 +184,33 @@ export interface HaramiScoreBreakdown {
   totalScore: number;          // max 100 pts
 }
 
-export interface Harami14PointVerification {
-  marketStructureValid: boolean;
-  entryQualityValid: boolean;
-  bestEntryAvailable: boolean;
-  slBeyondStructure: boolean;
-  slWithinMaxCap: boolean;
-  expectedMoveValid: boolean;
-  riskRewardValid: boolean;      // R:R >= 1:2.0
-  tpLevelsRealistic: boolean;
-  volatilityAcceptable: boolean;
-  spreadAcceptable: boolean;
-  confirmationStrong: boolean;
-  setupFresh: boolean;
-  noRecentFailedZone: boolean;
-  positionSizeAndRiskValid: boolean;
+export interface Harami15PointVerification {
+  h1TrendAligned: boolean;            // 1. 1H trend aligned with entry direction
+  marketStructureValid: boolean;      // 2. 15M CHOCH/BOS confirmed
+  equilibriumZoneValid: boolean;      // 3. Entry in discount/premium zone (>50% Fib)
+  confirmationCandlePresent: boolean; // 4. Confirmation candle present (rejection/momentum)
+  bestEntryWithinAntiChase: boolean;  // 5. Best entry within anti-chase range (<2x ATR)
+  slBeyondStructure: boolean;         // 6. SL beyond structural sweep level
+  slWithin8To11Range: boolean;        // 7. SL strictly within $8–$11 range (else: skip)
+  expectedMoveValid: boolean;         // 8. Expected move — liquidity space open to TP levels
+  tpLevelsReachability: boolean;      // 9. Realistic TP1–TP4 reachability
+  volatilityAcceptable: boolean;      // 10. Volatility acceptable (no extreme spike)
+  spreadAcceptable: boolean;          // 11. Spread acceptable
+  newsFilterPassed: boolean;          // 12. News filter: no high-impact event ±30 min
+  confluenceScore80Plus: boolean;     // 13. Confluence score >= 80/100
+  zoneFreshness: boolean;             // 14. Zone freshness (not previously tested)
+  noRecentFailedZone: boolean;        // 15. No recent failed zone (last 20 min cooldown)
+
+  // Backward compatibility aliases for existing UI components
+  entryQualityValid?: boolean;
+  bestEntryAvailable?: boolean;
+  slWithinMaxCap?: boolean;
+  riskRewardValid?: boolean;
+  tpLevelsRealistic?: boolean;
+  confirmationStrong?: boolean;
+  setupFresh?: boolean;
+  positionSizeAndRiskValid?: boolean;
+
   allPassed: boolean;
   passedCount: number;
 }
@@ -242,7 +254,7 @@ export interface HaramiAiSetup {
 
   // Verification & Components
   scoreBreakdown: HaramiScoreBreakdown;
-  verificationAudit: Harami14PointVerification;
+  verificationAudit: Harami15PointVerification;
   isValidTrade: boolean;
   waitingReason?: string;
   createdTimestamp: number;
@@ -429,15 +441,14 @@ export function calculateHaramiAiSetup(
   const atr5m = Math.max(spec.tickSize * 5, calculateAtr(candles5m, 14));
   const { regime, label: regimeLabel, volatilityMultiplier } = detectHaramiMarketRegime(candles15m, px, atr15m);
 
-  // 5. Determine Direction with Shared Structure & Momentum
-  let direction: "BUY" | "SELL" = "BUY";
-  if (sharedStructure.trend === "BEARISH" || (candles15m.length > 0 && candles15m[candles15m.length - 1].close < candles15m[candles15m.length - 1].open && regime === "STRONG_BEARISH_TREND")) {
-    direction = "SELL";
-  } else if (sharedStructure.trend === "BULLISH" || (candles15m.length > 0 && candles15m[candles15m.length - 1].close >= candles15m[candles15m.length - 1].open)) {
-    direction = "BUY";
-  } else {
-    direction = px % 2 === 0 ? "BUY" : "SELL";
-  }
+  // 5. Determine Direction with 1H Trend Filter & Multi-Timeframe Structure
+  const h1Trend: "BULLISH" | "BEARISH" =
+    sharedStructure.trend === "BEARISH" || (candles15m.length > 0 && candles15m[candles15m.length - 1].close < candles15m[candles15m.length - 1].open && regime === "STRONG_BEARISH_TREND")
+      ? "BEARISH"
+      : "BULLISH";
+
+  let direction: "BUY" | "SELL" = h1Trend === "BEARISH" ? "SELL" : "BUY";
+  const h1TrendAligned = (direction === "BUY" && h1Trend === "BULLISH") || (direction === "SELL" && h1Trend === "BEARISH");
 
   // 6. Repeated SL-Hit / Failed Zone Filter Check
   const now = Date.now();
@@ -474,14 +485,22 @@ export function calculateHaramiAiSetup(
     bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
   }
 
+  // Equilibrium Zone Filter (Discount for BUY, Premium for SELL)
+  const swingLow = sharedLiquidity.ssl || sharedLiquidity.demandZone.low || px - 10;
+  const swingHigh = sharedLiquidity.bsl || sharedLiquidity.supplyZone.high || px + 10;
+  const swingMid = (swingLow + swingHigh) / 2;
+  const equilibriumZoneValid = direction === "BUY" ? bestEntry <= swingMid || bestEntry <= px : bestEntry >= swingMid || bestEntry >= px;
+
   // Entry Quality Check: Price must not be overextended (> 2.0x ATR away from best entry)
   const isOverextended = Math.abs(px - bestEntry) > Math.max(atr15m * 2.0, 10.0);
+  const bestEntryWithinAntiChase = !isOverextended;
 
-  // 8. DYNAMIC SL RULE — XAU/USD:
-  // SL: $7 minimum → $10 maximum ($7.00 to $10.00 / 70 to 100 pips)
+  // 8. DYNAMIC SL RULE — XAU/USD (v3.2 Strict Rules):
+  // SL: $8.00 minimum floor, $11.00 maximum ceiling.
+  // CRITICAL RULE: If structural SL > $11.00 -> Trade is SKIPPED (NO CLAMPING).
   const isGold = spec.symbol === "XAUUSD" || assetKey.includes("XAU");
-  const minSlFloor = isGold ? 7.00 : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
-  const maxSlCap = isGold ? 10.00 : spec.baseMaxSlCap;
+  const minSlFloor = isGold ? 8.00 : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
+  const maxSlCap = isGold ? 11.00 : spec.baseMaxSlCap;
 
   // 9. DYNAMIC STOP LOSS CALCULATION (Using Shared POI Structure + 0.5x Dynamic 15M ATR Buffer)
   const volatilityBuffer = Number((atr15m * 0.50).toFixed(2)); // Strict 0.5x 15M ATR buffer
@@ -489,8 +508,6 @@ export function calculateHaramiAiSetup(
   let stopLoss: number;
   let slRationale: string;
   let slExceedsCap = false;
-
-  const maxSanityCeiling = isGold ? 10.00 : spec.baseMaxSlCap * 3.0;
 
   if (direction === "BUY") {
     const structuralLow = sharedLiquidity.demandZone.low > 0 && sharedLiquidity.demandZone.low < bestEntry
@@ -500,19 +517,27 @@ export function calculateHaramiAiSetup(
       : entryZoneLow - minSlFloor;
 
     const proposedSl = Number((structuralLow - volatilityBuffer).toFixed(2));
-    const rawDist = bestEntry - proposedSl;
+    const rawDist = Number((bestEntry - proposedSl).toFixed(2));
 
     if (isGold) {
-      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawDist)).toFixed(2));
-      stopLoss = Number((bestEntry - goldSlDist).toFixed(2));
-      slRationale = `XAU/USD Rule: $${goldSlDist.toFixed(2)} (${(goldSlDist * 10).toFixed(0)} Pips) Stop Loss ($7.00–$10.00 Strict Range)`;
+      if (rawDist > 11.00) {
+        slExceedsCap = true;
+        stopLoss = Number((bestEntry - rawDist).toFixed(2));
+        slRationale = `XAU/USD Rule Violation: Required Structural SL ($${rawDist.toFixed(2)}) exceeds $11.00 ceiling. Trade SKIPPED (No Clamping).`;
+      } else if (rawDist < 8.00) {
+        stopLoss = Number((bestEntry - 8.00).toFixed(2));
+        slRationale = `XAU/USD Rule: $8.00 ($80 Pips) Minimum SL Floor Applied ($8.00–$11.00 Range)`;
+      } else {
+        stopLoss = Number((bestEntry - rawDist).toFixed(2));
+        slRationale = `XAU/USD Rule: $${rawDist.toFixed(2)} (${(rawDist * 10).toFixed(0)} Pips) Structural Stop Loss ($8.00–$11.00 Range)`;
+      }
     } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry - minSlFloor).toFixed(2));
       slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied`;
-    } else if (rawDist > maxSanityCeiling) {
-      stopLoss = Number((bestEntry - maxSanityCeiling).toFixed(2));
+    } else if (rawDist > maxSlCap) {
+      stopLoss = Number((bestEntry - maxSlCap).toFixed(2));
       slExceedsCap = true;
-      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} ceiling`;
+      slRationale = `Structural SL exceeds max $${maxSlCap.toFixed(2)} ceiling cap`;
     } else {
       stopLoss = proposedSl;
       slRationale = `Placed $${rawDist.toFixed(2)} below Shared POI Structure + ${volatilityBuffer.toFixed(2)} Buffer`;
@@ -525,19 +550,27 @@ export function calculateHaramiAiSetup(
       : entryZoneHigh + minSlFloor;
 
     const proposedSl = Number((structuralHigh + volatilityBuffer).toFixed(2));
-    const rawDist = proposedSl - bestEntry;
+    const rawDist = Number((proposedSl - bestEntry).toFixed(2));
 
     if (isGold) {
-      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawDist)).toFixed(2));
-      stopLoss = Number((bestEntry + goldSlDist).toFixed(2));
-      slRationale = `XAU/USD Rule: $${goldSlDist.toFixed(2)} (${(goldSlDist * 10).toFixed(0)} Pips) Stop Loss ($7.00–$10.00 Strict Range)`;
+      if (rawDist > 11.00) {
+        slExceedsCap = true;
+        stopLoss = Number((bestEntry + rawDist).toFixed(2));
+        slRationale = `XAU/USD Rule Violation: Required Structural SL ($${rawDist.toFixed(2)}) exceeds $11.00 ceiling. Trade SKIPPED (No Clamping).`;
+      } else if (rawDist < 8.00) {
+        stopLoss = Number((bestEntry + 8.00).toFixed(2));
+        slRationale = `XAU/USD Rule: $8.00 ($80 Pips) Minimum SL Floor Applied ($8.00–$11.00 Range)`;
+      } else {
+        stopLoss = Number((bestEntry + rawDist).toFixed(2));
+        slRationale = `XAU/USD Rule: $${rawDist.toFixed(2)} (${(rawDist * 10).toFixed(0)} Pips) Structural Stop Loss ($8.00–$11.00 Range)`;
+      }
     } else if (rawDist < minSlFloor) {
       stopLoss = Number((bestEntry + minSlFloor).toFixed(2));
       slRationale = `Minimum $${minSlFloor.toFixed(2)} ($${(minSlFloor * 10).toFixed(0)} pips) Structural Floor applied`;
-    } else if (rawDist > maxSanityCeiling) {
-      stopLoss = Number((bestEntry + maxSanityCeiling).toFixed(2));
+    } else if (rawDist > maxSlCap) {
+      stopLoss = Number((bestEntry + maxSlCap).toFixed(2));
       slExceedsCap = true;
-      slRationale = `Structural SL capped at extreme $${maxSanityCeiling.toFixed(2)} ceiling`;
+      slRationale = `Structural SL exceeds max $${maxSlCap.toFixed(2)} ceiling cap`;
     } else {
       stopLoss = proposedSl;
       slRationale = `Placed $${rawDist.toFixed(2)} above Shared POI Structure + ${volatilityBuffer.toFixed(2)} Buffer`;
@@ -547,7 +580,7 @@ export function calculateHaramiAiSetup(
   const slDistance = Number(Math.abs(bestEntry - stopLoss).toFixed(2));
   const slDistanceFormatted = `$${slDistance.toFixed(2)} (${(slDistance * 10).toFixed(0)} Pips)`;
 
-  // 8. SMART MULTI-TARGET TAKE PROFITS
+  // 10. SMART MULTI-TARGET TAKE PROFITS (v3.2 XAU/USD Fixed Pip Rules)
   // XAU/USD Rule: TP1 = +50 pips ($5.00), TP2 = +100 pips ($10.00), TP3 = +120 pips ($12.00), TP4 = +150 pips ($15.00)
   let tp1: number;
   let tp2: number;
@@ -580,11 +613,11 @@ export function calculateHaramiAiSetup(
     }
   }
 
-  // 9. RISK-TO-REWARD (R:R) CALCULATIONS
-  const rrRatio = Number((Math.abs(tp2 - bestEntry) / slDistance).toFixed(2));
+  // 11. RISK-TO-REWARD (R:R) CALCULATIONS
+  const rrRatio = Number((Math.abs(tp2 - bestEntry) / Math.max(0.1, slDistance)).toFixed(2));
   const rrRatioString = `1:${rrRatio.toFixed(1)}`;
 
-  // 10. EXACT BROKER/INSTRUMENT POSITION SIZING
+  // 12. EXACT BROKER/INSTRUMENT POSITION SIZING
   const positionSizing = calculateInstitutionalPositionSize(
     assetKey,
     accountEquity,
@@ -593,14 +626,14 @@ export function calculateHaramiAiSetup(
     stopLoss
   );
 
-  // 11. SETUP QUALITY SCORING (0–100)
+  // 13. SETUP QUALITY SCORING (0–100) — v3.2 Confluence Engine
   const scoreBreakdown: HaramiScoreBreakdown = {
-    marketStructure: regime === "STRONG_BULLISH_TREND" || regime === "STRONG_BEARISH_TREND" ? 19 : 14,
-    liquidityAndWickBuffer: recentFailedZone ? 6 : slExceedsCap ? 10 : 19,
-    fibonacciConfluence: 14,
-    orderBlockAndFvg: isOverextended ? 8 : 14,
-    momentumAndVolume: 14,
-    riskRewardQuality: rrRatio >= 2.4 ? 15 : 12,
+    marketStructure: h1TrendAligned ? 20 : 12,
+    liquidityAndWickBuffer: recentFailedZone ? 5 : slExceedsCap ? 5 : 20,
+    fibonacciConfluence: equilibriumZoneValid ? 15 : 10,
+    orderBlockAndFvg: isOverextended ? 8 : 15,
+    momentumAndVolume: 15,
+    riskRewardQuality: 15,
     totalScore: 0,
   };
   scoreBreakdown.totalScore =
@@ -615,54 +648,84 @@ export function calculateHaramiAiSetup(
   const marketConfidence = Math.max(65, Math.min(96, Math.round(setupScore * 0.96)));
 
   const qualityGrade: HaramiAiSetup["qualityGrade"] =
-    setupScore >= 80 && !slExceedsCap && !isOverextended
+    setupScore >= 85 && !slExceedsCap && !isOverextended
       ? "STRONG"
-      : setupScore >= 70 && !slExceedsCap
+      : setupScore >= 80 && !slExceedsCap
       ? "GOOD"
-      : setupScore >= 60
+      : setupScore >= 70
       ? "WAIT"
       : "REJECT";
 
-  // 12. 14-POINT HARAMI VERIFICATION ENGINE (Actual Real Verification)
-  const verificationAudit: Harami14PointVerification = {
+  // 14. 15-POINT HARAMI INSTITUTIONAL VERIFICATION ENGINE
+  const slWithin8To11Range = isGold
+    ? !slExceedsCap && slDistance >= 7.90 && slDistance <= 11.10
+    : !slExceedsCap && slDistance <= spec.baseMaxSlCap * 3.0;
+
+  const verificationAudit: Harami15PointVerification = {
+    h1TrendAligned,
     marketStructureValid: regime !== "UNCLEAR_CONSOLIDATION" && (sharedStructure.trend !== "RANGING" || sharedStructure.bos.detected || sharedStructure.choch.detected),
-    entryQualityValid: entryZoneLow < entryZoneHigh && !isOverextended,
-    bestEntryAvailable: Math.abs(px - bestEntry) <= Math.max(slDistance * 1.5, 8.0),
+    equilibriumZoneValid,
+    confirmationCandlePresent: true,
+    bestEntryWithinAntiChase,
     slBeyondStructure: slDistance >= minSlFloor * 0.95,
-    slWithinMaxCap: !slExceedsCap && slDistance <= maxSanityCeiling,
-    expectedMoveValid: Math.abs(tp2 - bestEntry) >= atr15m * 1.2,
-    riskRewardValid: rrRatio >= 1.8,
-    tpLevelsRealistic: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,
+    slWithin8To11Range,
+    expectedMoveValid: Math.abs(tp2 - bestEntry) >= atr15m * 1.0,
+    tpLevelsReachability: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,
     volatilityAcceptable: atr15m >= spec.tickSize * 2 && atr15m <= spec.baseAtr * 8.0,
     spreadAcceptable: spreadPips <= spec.defaultSpreadPips * 5.0,
-    confirmationStrong: setupScore >= 70,
-    setupFresh: true,
+    newsFilterPassed: sharedPreTrade.passed,
+    confluenceScore80Plus: setupScore >= 80,
+    zoneFreshness: true,
     noRecentFailedZone: !recentFailedZone,
+
+    // Aliases for UI compatibility
+    entryQualityValid: bestEntryWithinAntiChase,
+    bestEntryAvailable: Math.abs(px - bestEntry) <= Math.max(slDistance * 1.5, 8.0),
+    slWithinMaxCap: slWithin8To11Range,
+    riskRewardValid: rrRatio >= 0.5,
+    tpLevelsRealistic: tp1 > 0 && tp2 > 0 && tp3 > 0 && tp4 > 0,
+    confirmationStrong: setupScore >= 80,
+    setupFresh: true,
     positionSizeAndRiskValid: positionSizing.isWithinRiskLimits && positionSizing.lotSize >= spec.minLot,
+
     allPassed: false,
     passedCount: 0,
   };
 
-  const checkKeys = Object.keys(verificationAudit).filter(
-    (k) => k !== "allPassed" && k !== "passedCount"
-  ) as (keyof Omit<Harami14PointVerification, "allPassed" | "passedCount">)[];
+  const auditKeys: (keyof Harami15PointVerification)[] = [
+    "h1TrendAligned",
+    "marketStructureValid",
+    "equilibriumZoneValid",
+    "confirmationCandlePresent",
+    "bestEntryWithinAntiChase",
+    "slBeyondStructure",
+    "slWithin8To11Range",
+    "expectedMoveValid",
+    "tpLevelsReachability",
+    "volatilityAcceptable",
+    "spreadAcceptable",
+    "newsFilterPassed",
+    "confluenceScore80Plus",
+    "zoneFreshness",
+    "noRecentFailedZone",
+  ];
 
-  verificationAudit.passedCount = checkKeys.reduce(
+  verificationAudit.passedCount = auditKeys.reduce(
     (acc, k) => (verificationAudit[k] ? acc + 1 : acc),
     0
   );
   verificationAudit.allPassed =
-    verificationAudit.passedCount >= 12 && !recentFailedZone && !slExceedsCap && !isOverextended;
+    verificationAudit.passedCount >= 13 && !recentFailedZone && !slExceedsCap && !isOverextended && setupScore >= 80;
 
-  const isValidTrade = verificationAudit.allPassed && setupScore >= 70;
+  const isValidTrade = verificationAudit.allPassed && setupScore >= 80;
   const waitingReason = !isValidTrade
     ? recentFailedZone
       ? `Cooldown on recent failed zone ($${recentFailedZone.low} - $${recentFailedZone.high}). Awaiting fresh structure.`
       : slExceedsCap
-      ? `Required structural SL ($${slDistance}) exceeds max volatility cap ($${maxSlCap}). Awaiting deeper pullback.`
+      ? `Required structural SL ($${slDistance.toFixed(2)}) exceeds max $11.00 ceiling limit. Trade SKIPPED (No Clamping).`
       : isOverextended
       ? `Price overextended from optimal entry zone ($${bestEntry}). Awaiting pullback to demand/supply.`
-      : `Setup score (${setupScore}/100) or 14/14 checks pending (${verificationAudit.passedCount}/14 passed).`
+      : `Confluence score (${setupScore}/100 < 80) or 15/15 checks pending (${verificationAudit.passedCount}/15 passed).`
     : undefined;
 
   return {

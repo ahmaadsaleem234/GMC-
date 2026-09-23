@@ -77,7 +77,7 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
   let tp4 = params.tp4;
 
   if (isGold) {
-    const slDist = sl ? Math.max(7.0, Math.min(10.0, Math.abs(bestEntry - sl))) : 8.00;
+    const slDist = sl ? Math.max(8.0, Math.min(11.0, Math.abs(bestEntry - sl))) : 8.00;
     sl = isBuy ? Number((bestEntry - slDist).toFixed(2)) : Number((bestEntry + slDist).toFixed(2));
     tp1 = isBuy ? Number((bestEntry + 5.00).toFixed(2)) : Number((bestEntry - 5.00).toFixed(2));
     tp2 = isBuy ? Number((bestEntry + 10.00).toFixed(2)) : Number((bestEntry - 10.00).toFixed(2));
@@ -135,7 +135,7 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
 🎯 <b>TP4:</b> <code>${tp4.toFixed(2)}</code> (+${tp4Pips} pips)
 
 📊 <b>R:R:</b> <code>${rrStr}</code>
-🔥 <b>Score:</b> <code>${confidenceVal}/100</code> (14/14 Confluence)
+🔥 <b>Score:</b> <code>${confidenceVal}/100</code> (15/15 Confluence)
 📌 <b>Status:</b> <b>${statusLabel}</b>
 ⏱️ <b>Expiry:</b> <code>Until TP or SL Hit (Active Until Closed)</code>
 ━━━━━━━━━━━━━━━━━━━
