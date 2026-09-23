@@ -2143,41 +2143,6 @@ class WarRoomServerService {
         this.activeSetup = null;
         return;
       }
-
-      // 30-MINUTE EXPIRY CHECK (If neither SL nor TP4 reached within 30 minutes, auto-expire)
-      const setupAgeMs = nowMs - setup.createdAt;
-      if (setupAgeMs >= 30 * 60 * 1000) {
-        setup.status = "EXPIRED";
-        setup.closedAt = nowMs;
-        setup.finalOutcome = "EXPIRED";
-        const risk = Math.abs(setup.bestEntry - setup.stopLoss) || 4.5;
-        const diff = isBuy ? px - setup.bestEntry : setup.bestEntry - px;
-        setup.finalPnlPts = Number(diff.toFixed(2));
-        setup.finalPnlR = Number((diff / risk).toFixed(2));
-
-        setupLifecycleStorage.saveSetup(setup as any);
-        this.database.unshift({ ...setup });
-        this.lastTradeClosedAt = nowMs;
-
-        moduleSignalGatekeeper.clearGlobalCooldown();
-        centralSignalManager.resetCooldownManually();
-        tradeStateManager.clearCooldown();
-
-        this.addAuditLog("LIFECYCLE", "SETUP_EXPIRED", `War Room Setup ${setup.setupId} auto-expired after 30 minutes without reaching SL or TP targets. Entering analysis mode.`, px, 98, "OK");
-
-        await this.emitLifecycleAlert(
-          setup,
-          "SETUP_EXPIRED",
-          `⏱️ SIGNAL EXPIRED (30 MIN LIMIT): ${setup.setupId}`,
-          `30 minutes elapsed without hitting SL or TP targets. Closed at $${px.toFixed(2)}. Entering waiting/analysis mode.`,
-          px,
-          "INFO",
-          sendFn
-        );
-
-        this.activeSetup = null;
-        return;
-      }
     }
   }
 

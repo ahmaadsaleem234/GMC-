@@ -137,7 +137,7 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
 📊 <b>R:R:</b> <code>${rrStr}</code>
 🔥 <b>Score:</b> <code>${confidenceVal}/100</code> (14/14 Confluence)
 📌 <b>Status:</b> <b>${statusLabel}</b>
-⏱️ <b>Expiry:</b> <code>30 Minutes (Auto-Close if no TP/SL)</code>
+⏱️ <b>Expiry:</b> <code>Until TP or SL Hit (Active Until Closed)</code>
 ━━━━━━━━━━━━━━━━━━━
 <i>💡 Tip: Tap any price number to copy directly to MT5.</i>`;
 }
@@ -180,7 +180,7 @@ export function formatEntryActivatedAlert(params: LifecycleAlertParams): string 
 📍 <b>Executed Entry:</b> <code>${price}</code>
 🛡 <b>Stop Loss:</b> <code>${sl}</code>
 🎯 <b>Next Target:</b> ${nextTarget}
-⏱️ <b>Validity:</b> 30-Min Active Countdown Started`;
+⏱️ <b>Validity:</b> Active until TP or SL reached`;
 }
 
 export function formatTpHitAlert(level: 1 | 2 | 3 | 4, params: LifecycleAlertParams): string {

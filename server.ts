@@ -7477,37 +7477,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       serverActiveTrade = tradeStateManager.getActiveTrade() as any;
     }
 
-    // Strict Rule 1 & 3: Active trade stays active until TP or SL is reached.
-    // No arbitrary 45-minute timeout. Active trades are locked and run until legitimate TP/SL conclusion.
+    // Strict Rule: Active trade stays active until TP or SL is reached.
+    // Active trades are locked and run until legitimate TP/SL conclusion (No time-based auto-expiry).
 
     // 1. Evaluate for NEW SIGNAL only if NO active trade exists anywhere in the system
     let stateManagerActiveTrade = tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null;
-
-    // Automatic 30-Minute Signal Expiration Guard:
-    // If any active trade is older than 30 minutes and neither SL nor TP has completed it, auto-expire it
-    if (stateManagerActiveTrade && (now - (stateManagerActiveTrade.createdAt || 0)) >= 30 * 60 * 1000) {
-      console.log(`[HARAMI AI ENGINE]: Signal #${stateManagerActiveTrade.signalId} reached 30-minute expiry without hitting SL/TP. Auto-closing position.`);
-      const exitPx = stateManagerActiveTrade.currentPrice || stateManagerActiveTrade.entry;
-      tradeStateManager.closeActiveTrade("EXPIRED", exitPx, 0, 0, 0);
-      centralSignalManager.clearActiveSetup();
-      moduleSignalGatekeeper.clearGlobalCooldown();
-      tradeStateManager.clearCooldown();
-
-      if (mt5Config.telegramSignalsEnabled) {
-        const expireAlert = formatSignalExpiredAlert({
-          signalId: stateManagerActiveTrade.signalId,
-          symbol: "XAUUSD",
-          direction: stateManagerActiveTrade.direction,
-          price: exitPx,
-          exitPrice: exitPx,
-        });
-        sendServerTelegramMessage(expireAlert, undefined, undefined, `${stateManagerActiveTrade.signalId}_EXPIRED`).catch(console.error);
-      }
-
-      serverActiveTrade = null;
-      serverLastClosedTime = now;
-      stateManagerActiveTrade = null;
-    }
 
     const centralActiveSetup = centralSignalManager.getActiveSetup();
     if (!serverActiveTrade && centralActiveSetup) {
@@ -8146,76 +8120,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           }
         }
 
-        // 30-MINUTE SIGNAL EXPIRATION WATCHDOG:
-        // Rule 1: Signal has strict 30-minute validity.
-        // Rule 2: If SL or TP is hit within 30 minutes, trade completes normally.
-        // Rule 3: If neither SL nor TP is hit after 30 minutes, automatically expire/close signal and enter waiting/analysis mode.
-        const tradeAgeMinutes = (now - (trade.createdAt || now)) / 60000;
         const currentExitPrice = isBuy ? tick.bid : tick.ask;
         const floatingPips = isBuy
           ? Number(((currentExitPrice - activeEntry) * 10).toFixed(1))
           : Number(((activeEntry - currentExitPrice) * 10).toFixed(1));
-
-        if (tradeAgeMinutes >= 30) {
-          const finalPnL = Number((floatingPips * mt5Config.lotSize * 10).toFixed(2));
-          trade.status = "EXPIRED";
-          trade.closedAt = nowUtc;
-          tradeStateManager.closeActiveTrade("EXPIRED", currentExitPrice, finalPnL, floatingPips / 10, 0);
-
-          serverAccountBalance += finalPnL;
-          mt5AccountMetrics.balance += finalPnL;
-          mt5AccountMetrics.equity = mt5AccountMetrics.balance;
-          mt5AccountMetrics.dailyPnL += finalPnL;
-
-          trade.auditLogs.unshift({
-            timestamp: nowUtc,
-            event: "SIGNAL_EXPIRED_30M",
-            price: currentExitPrice,
-            bid: tick.bid,
-            ask: tick.ask,
-            note: `Signal #${trade.signalId || trade.id} expired after 30 minutes without hitting SL or TP. Position closed at market ($${currentExitPrice}). Entering continuous market waiting & analysis mode.`,
-          });
-
-          serverTradeHistory.unshift({
-            id: trade.id,
-            symbol: "FOREXCOM:XAUUSD",
-            direction: trade.direction,
-            entry: activeEntry,
-            exit: currentExitPrice,
-            pnlUSD: finalPnL,
-            pnlPips: floatingPips,
-            lotSize: mt5Config.lotSize,
-            duration: `${Math.round(tradeAgeMinutes)}m`,
-            confidence: trade.confidence,
-            reason: "30-Minute Expiry Limit Reached",
-            result: "MANUAL_CLOSE",
-            closedAt: nowUtc,
-          });
-
-          if (mt5Config.telegramSignalsEnabled) {
-            const expireText = formatSignalExpiredAlert({
-              signalId: trade.signalId || trade.id,
-              symbol: "XAUUSD",
-              direction: trade.direction,
-              price: currentExitPrice,
-              exitPrice: currentExitPrice,
-            });
-            const sigOk = await ensureTradeSignalDispatched(trade);
-            if (sigOk) {
-              await sendServerTelegramMessage(expireText, undefined, undefined, `${trade.signalId || trade.id}_EXPIRED`);
-            }
-          }
-
-          centralSignalManager.clearActiveSetup();
-          moduleSignalGatekeeper.clearGlobalCooldown();
-          centralSignalManager.resetCooldownManually();
-          tradeStateManager.clearCooldown();
-
-          serverActiveTrade = null;
-          serverLastClosedTime = now;
-          serverCurrentDecision = "WAIT — WAITING & ANALYSIS MODE (SCANNING FOR A+ SETUP)";
-          return;
-        }
 
         // --- BUY DIRECTION ---
         if (isBuy) {
