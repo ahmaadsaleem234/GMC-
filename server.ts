@@ -6696,31 +6696,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       serverTelegramStatus = "Connected";
       return true;
     } else {
-      console.log(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} recorded. Subscribers are pending bot chat initiation (/start).`);
-      if (isNewTradeSetup) {
-        const dirMatch = text.match(/\b(BUY|SELL)\b/i);
-        const incomingDir = dirMatch ? (dirMatch[1].toUpperCase() as "BUY" | "SELL") : "BUY";
-        const priceMatch = text.match(/(?:Entry|Price|at|Zone)\s*[:$]?\s*([0-9]{4}(?:\.[0-9]{1,2})?)/i);
-        const incomingPrice = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        registerDispatchedSignal(
-          signalIdExtracted,
-          signalEngine === "WAR_ROOM" ? "WAR_ROOM" : "HARAMI_AI",
-          incomingDir,
-          incomingPrice
-        );
-
-        if (serverActiveTrade) {
-          serverActiveTrade.entryDispatched = true;
-          if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
-            serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
-          }
-        }
-        tradeStateManager.markSignalDispatched(signalIdExtracted);
-        console.log(`[ENTRY CONFIRMED]: Initial signal for trade #${signalIdExtracted} active in SL/TP manager.`);
-      }
+      console.warn(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} could not be delivered to Telegram recipients. Holding lifecycle updates.`);
       serverTelegramDeliveryStatus = "Idle";
       serverTelegramStatus = "Connected";
-      return true;
+      return false;
     }
   }
 
@@ -7315,7 +7294,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     if (isGold) {
       const rawSlDist = sl ? Math.abs(entry - sl) : 8.0;
-      const goldSlDist = Number(Math.max(7.00, Math.min(10.00, rawSlDist)).toFixed(2));
+      const goldSlDist = Number(Math.max(8.00, Math.min(11.00, rawSlDist)).toFixed(2));
       sl = isBuy ? Number((entry - goldSlDist).toFixed(2)) : Number((entry + goldSlDist).toFixed(2));
       tp1 = isBuy ? Number((entry + 5.00).toFixed(2)) : Number((entry - 5.00).toFixed(2));
       tp2 = isBuy ? Number((entry + 10.00).toFixed(2)) : Number((entry - 10.00).toFixed(2));
@@ -7389,13 +7368,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     } else {
       const attempts = (lastAttemptInfo?.attempts || 0) + 1;
       entryDispatchAttemptMap.set(signalId, { attempts, lastAttempt: Date.now() });
-      if (attempts >= 3) {
-        console.log(`[ENTRY SIGNAL GUARD]: Initial signal #${signalId} marked processed after ${attempts} attempts to allow engine management to proceed.`);
-        trade.entryDispatched = true;
-        tradeStateManager.markSignalDispatched(signalId);
-        centralSignalManager.markSetupDispatched(signalId);
-        return true;
-      }
+      console.warn(`[ENTRY SIGNAL GUARD]: Initial signal #${signalId} failed to deliver (attempt ${attempts}). Holding lifecycle updates until setup is sent.`);
+      return false;
     }
     return ok;
   }
@@ -8943,10 +8917,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         // STRICT SEQUENCE GUARD: Ensure initial setup signal was dispatched before sending any lifecycle outcome alert
         const tradeSignalId = setup.setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim();
         const isEntryDispatched = Boolean(
-          setup.entryDispatched ||
-          setup.telegramDispatched ||
-          setup.dispatchedOutcomes?.includes("SIGNAL") ||
-          tradeStateManager.isSignalDispatched(tradeSignalId) ||
+          (setup.entryDispatched && setup.dispatchedOutcomes?.includes("SIGNAL")) ||
           serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId)
         );
 
