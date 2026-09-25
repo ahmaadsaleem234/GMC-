@@ -242,48 +242,11 @@ export function formatStatusUpdateTelegramMessage(
 export async function dispatchNewJugaadSetupToTelegram(
   setup: KhatarnakJugaadSetup
 ): Promise<{ success: boolean; error?: string }> {
-  if (!setup.hasValidSetup && setup.score < 80) {
-    return { success: false, error: "Setup score below 80 or no valid setup." };
-  }
-
-  // 1. Check with Central Signal Manager Gatekeeper
-  const gatekeeper = centralSignalManager.promoteKhatarnakJugaadSetup(setup);
-  if (!gatekeeper.allowed) {
-    return {
-      success: false,
-      error: gatekeeper.message,
-    };
-  }
-
-  const message = formatNewSetupTelegramMessage(setup);
-  const cfg = getTelegramConfig();
-
-  if (!cfg.botToken || !cfg.chatId) {
-    return { success: false, error: "Telegram Bot Token or Chat ID not configured." };
-  }
-
-  const res = await sendTelegramMessage(message);
-
-  const log: DispatchedJugaadAlert = {
-    id: `ALERT-${Date.now()}`,
-    setupId: setup.id,
-    timeframe: "1M",
-    signalType: "SELL",
-    event: "NEW_SETUP",
-    eventLabel: `NEW 1M 2.6 SELL (#${setup.id})`,
-    price: setup.currentPrice,
-    timestamp: Date.now(),
-    dateTime: new Date().toLocaleTimeString(),
-    messageText: message,
-    success: res.success,
+  // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+  return {
+    success: false,
+    error: "Telegram broadcasting is exclusively restricted to Harami AI per user directive.",
   };
-
-  saveAlertLog(log);
-  if (res.success) {
-    recordDispatchedEventKey(setup.id, "NEW_SETUP");
-  }
-
-  return res;
 }
 
 /**
@@ -294,53 +257,9 @@ export async function dispatchStatusUpdateToTelegram(
   event: JugaadTelegramEventType,
   currentPrice: number
 ): Promise<{ success: boolean; error?: string }> {
-  // Guard: Ensure initial trade entry setup was dispatched to Telegram FIRST
-  if (!isEventAlreadyDispatched(setup.id, "NEW_SETUP")) {
-    console.log(`[KHATARNAK TELEGRAM GUARD]: Initial trade signal #${setup.id} missing from Telegram! Dispatching initial setup FIRST.`);
-    await dispatchNewJugaadSetupToTelegram(setup);
-  }
-
-  const message = formatStatusUpdateTelegramMessage(setup, event, currentPrice);
-  const cfg = getTelegramConfig();
-
-  // Sync lifecycle transition into Central Signal Manager
-  if (
-    event === "ENTRY_HIT" ||
-    event === "TP1_HIT" ||
-    event === "TP2_HIT" ||
-    event === "TP3_HIT" ||
-    event === "FINAL_TP_HIT" ||
-    event === "SL_HIT" ||
-    event === "TP_THEN_SL_HIT" ||
-    event === "INVALIDATED"
-  ) {
-    centralSignalManager.updateActiveSetupLifecycleEvent(setup.id, event, currentPrice);
-  }
-
-  if (!cfg.botToken || !cfg.chatId) {
-    return { success: false, error: "Telegram Bot Token or Chat ID not configured." };
-  }
-
-  const res = await sendTelegramMessage(message);
-
-  const log: DispatchedJugaadAlert = {
-    id: `ALERT-${Date.now()}`,
-    setupId: setup.id,
-    timeframe: "1M",
-    signalType: "SELL",
-    event,
-    eventLabel: `${event} (#${setup.id})`,
-    price: currentPrice,
-    timestamp: Date.now(),
-    dateTime: new Date().toLocaleTimeString(),
-    messageText: message,
-    success: res.success,
+  // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+  return {
+    success: false,
+    error: "Telegram status updates are exclusively restricted to Harami AI per user directive.",
   };
-
-  saveAlertLog(log);
-  if (res.success) {
-    recordDispatchedEventKey(setup.id, event);
-  }
-
-  return res;
 }

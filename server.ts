@@ -6009,6 +6009,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     customAlertId?: string,
     isEntryDispatch?: boolean
   ): Promise<boolean> {
+    // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+    // Block any non-Harami trade signals or lifecycle events from reaching Telegram
+    const upperText = (text || "").toUpperCase();
+    if (
+      upperText.includes("KHATARNAK") ||
+      upperText.includes("💀") ||
+      upperText.includes("WAR ROOM") ||
+      upperText.includes("RETEST X") ||
+      upperText.includes("PRECISION HUNTER")
+    ) {
+      console.log(`[TELEGRAM BROADCAST GATE]: Intercepted & dropped non-Harami trade dispatch per user policy ("Only Harami AI").`);
+      return true; // Return true so upstream caller considers it safely handled
+    }
+
     // 1. Central Idempotency Check (Prevents duplicate trade signals and duplicate lifecycle events)
     const dedupCheck = serverTelegramIdempotency.isDuplicate(customAlertId, text, overrideChatId);
     if (dedupCheck.isDuplicate) {
@@ -6729,16 +6743,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // Idempotency: Mark as signalSent immediately in engine memory so it is NEVER sent twice
     retestXEngine.markSignalSent(setup.setupId);
 
-    const text = formatRetestXTelegramAlert(setup);
-
-    try {
-      const delivered = await sendServerTelegramMessage(text, undefined, undefined, setup.setupId);
-      console.log(`[RETEST X TELEGRAM]: Dispatched alert for Setup ID ${setup.setupId}. Result: ${delivered}`);
-      return delivered;
-    } catch (err) {
-      console.error(`[RETEST X TELEGRAM]: Broadcast error for ${setup.setupId}:`, err);
-      return false;
-    }
+    // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+    console.log(`[RETEST X TELEGRAM]: Bypassed alert for Setup ID ${setup.setupId} - channel is strictly reserved for Harami AI.`);
+    return false;
   }
 
   interface LiveGoldTick {
@@ -7362,32 +7369,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     return ok;
   }
 
-  async function ensureKhatarnakSetupDispatched(setup: any): Promise<boolean> {
-    if (!setup) return false;
-    const setupEventKey = `${setup.id}_NEW_SETUP`;
-    if (serverKhatarnakLifecycleEvents.has(setupEventKey)) return true;
-    if (!mt5Config.telegramSignalsEnabled) return false;
-
-    const lastAttemptInfo = khatarnakDispatchAttemptMap.get(setup.id);
-    if (lastAttemptInfo && Date.now() - lastAttemptInfo.lastAttempt < 15000) {
-      return false;
-    }
-
-    const kjMsg = formatNewSetupTelegramMessage(setup);
-    console.log(`[KHATARNAK GUARD]: Initial Khatarnak setup #${setup.id} missing from Telegram! Dispatching initial setup FIRST.`);
-    const ok = await sendServerTelegramMessage(kjMsg, undefined, undefined, setupEventKey, true);
-    if (ok) {
-      serverKhatarnakLifecycleEvents.add(setupEventKey);
-      khatarnakDispatchAttemptMap.delete(setup.id);
-    } else {
-      const attempts = (lastAttemptInfo?.attempts || 0) + 1;
-      khatarnakDispatchAttemptMap.set(setup.id, { attempts, lastAttempt: Date.now() });
-      if (attempts >= 3) {
-        serverKhatarnakLifecycleEvents.add(setupEventKey);
-        return true;
-      }
-    }
-    return ok;
+  async function ensureKhatarnakSetupDispatched(_setup: any): Promise<boolean> {
+    // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+    return false;
   }
 
   async function executeServerSignalEngineTick() {
@@ -7471,7 +7455,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       serverActiveTrade = stateManagerActiveTrade as any;
     }
 
-    const systemActiveTrade = serverActiveTrade || stateManagerActiveTrade || centralSignalManager.getActiveSetup() || warRoomServerService.getActiveSetup() || serverActiveKhatarnakSetup;
+    // Primary active trade reference: Dedicated to Harami AI per user directive
+    const systemActiveTrade = serverActiveTrade || (stateManagerActiveTrade && (stateManagerActiveTrade.signalId?.startsWith("HRM-") || stateManagerActiveTrade.strategyName?.includes("Harami")) ? stateManagerActiveTrade : null);
     if (!systemActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
         serverCurrentDecision = "WAIT — SIGNALS PAUSED";
@@ -8799,55 +8784,54 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
       try {
         console.log(`[SERVER CENTRAL DISPATCHER]: 🏆 Winning AI Setup Promoted: #${setup.setupId} (${setup.brainSource} ${setup.direction} @ $${setup.preferredEntry})`);
+        
+        // USER DIRECTIVE: ONLY Harami AI is allowed on Telegram!
+        if (setup.brainSource !== "HARAMI_AI") {
+          console.log(`[SERVER CENTRAL DISPATCHER]: Skipping Telegram broadcast for ${setup.brainSource} setup #${setup.setupId} (Telegram is exclusively reserved for Harami AI).`);
+          return;
+        }
+
         if (mt5Config.telegramSignalsEnabled) {
           let message = "";
           let chartBuffer: Buffer | undefined;
 
-          if (setup.brainSource === "KHATARNAK_JUGAAD") {
-            message = formatKhatarnakJugaadTelegramMessage(setup);
-          } else if (setup.brainSource === "HARAMI_AI") {
-            message = formatHaramiSignalMessage({
-              signalId: setup.setupId,
+          message = formatHaramiSignalMessage({
+            signalId: setup.setupId,
+            direction: setup.direction,
+            symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
+            entryLow: setup.entryZoneLow,
+            entryHigh: setup.entryZoneHigh,
+            bestEntry: setup.preferredEntry,
+            currentPrice: setup.preferredEntry,
+            sl: setup.stopLoss,
+            tp1: setup.tp1,
+            tp2: setup.tp2,
+            tp3: setup.tp3,
+            tp4: setup.finalTp,
+            rr: setup.rrRatioString || "1:2.8",
+            confidence: setup.marketConfidence || setup.setupScore || 94,
+            reason: setup.selectionReason || generateDynamicReason(setup.direction),
+            isAlreadyInZone: setup.lifecycleState === "ACTIVE" || setup.lifecycleState === "ENTRY_HIT",
+          });
+
+          try {
+            chartBuffer = await safeGenerateChartBufferWithTimeout({
+              symbol: "FOREXCOM:XAUUSD (Gold Spot)",
               direction: setup.direction,
-              symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
-              entryLow: setup.entryZoneLow,
-              entryHigh: setup.entryZoneHigh,
+              entryZone: [setup.entryZoneLow, setup.entryZoneHigh],
               bestEntry: setup.preferredEntry,
-              currentPrice: setup.preferredEntry,
               sl: setup.stopLoss,
               tp1: setup.tp1,
               tp2: setup.tp2,
               tp3: setup.tp3,
-              tp4: setup.finalTp,
-              rr: setup.rrRatioString || "1:2.8",
+              tp4: setup.finalTp || setup.tp3,
+              currentPrice: setup.preferredEntry,
               confidence: setup.marketConfidence || setup.setupScore || 94,
               reason: setup.selectionReason || generateDynamicReason(setup.direction),
-              isAlreadyInZone: setup.lifecycleState === "ACTIVE" || setup.lifecycleState === "ENTRY_HIT",
-            });
-
-            try {
-              chartBuffer = await safeGenerateChartBufferWithTimeout({
-                symbol: "FOREXCOM:XAUUSD (Gold Spot)",
-                direction: setup.direction,
-                entryZone: [setup.entryZoneLow, setup.entryZoneHigh],
-                bestEntry: setup.preferredEntry,
-                sl: setup.stopLoss,
-                tp1: setup.tp1,
-                tp2: setup.tp2,
-                tp3: setup.tp3,
-                tp4: setup.finalTp || setup.tp3,
-                currentPrice: setup.preferredEntry,
-                confidence: setup.marketConfidence || setup.setupScore || 94,
-                reason: setup.selectionReason || generateDynamicReason(setup.direction),
-                timestamp: new Date().toISOString(),
-              }, 1500);
-            } catch (chartErr) {
-              console.warn("[SERVER CENTRAL DISPATCHER]: Chart generation note:", chartErr);
-            }
-          } else if (setup.brainSource === "WAR_ROOM") {
-            message = formatWarRoomTelegramMessage(setup);
-          } else if (setup.brainSource === "PRECISION_HUNTER") {
-            message = "";
+              timestamp: new Date().toISOString(),
+            }, 1500);
+          } catch (chartErr) {
+            console.warn("[SERVER CENTRAL DISPATCHER]: Chart generation note:", chartErr);
           }
 
           if (message) {
@@ -8897,6 +8881,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // 🎯 Central Signal Manager Lifecycle Event Listener (ENTRY, TP1, TP2, TP3, FINAL TP, SL)
     centralSignalManager.onLifecycleEvent(async (setup: ActiveCentralSetup, event: string, currentPx: number) => {
       try {
+        // USER DIRECTIVE: ONLY Harami AI is allowed on Telegram!
+        if (setup.brainSource !== "HARAMI_AI") {
+          return;
+        }
+
         const eventKey = `${setup.setupId}::${event}`;
         const directionEmoji = setup.direction === "BUY" ? "🟢" : "🔴";
         let title = "";
@@ -9148,14 +9137,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       (evaluatedSetup as any).createdAt = Date.now();
                       serverActiveKhatarnakSetup = evaluatedSetup;
                       serverKhatarnakState = evaluatedSetup.isEntryTriggered ? "ACTIVE_RUNNING" : "PENDING_ENTRY";
-                      const kjMsg = formatNewSetupTelegramMessage(evaluatedSetup);
                       if (mt5Config.telegramSignalsEnabled) {
-                        await sendServerTelegramMessage(kjMsg, undefined, undefined, `${evaluatedSetup.id}_NEW_SETUP`, true);
-                        superAdminService.logAction(
-                          "KHATARNAK_AUTO_DISPATCH",
-                          `Khatarnak Jugaad Setup #${evaluatedSetup.id} (SELL @ $${evaluatedSetup.bestSellEntry.toFixed(2)}) automatically dispatched to Telegram subscribers.`,
-                          "SYSTEM"
-                        );
+                        // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+                        // Khatarnak Jugaad Telegram dispatch is permanently bypassed.
                       }
                     } else {
                       console.log(`[KHATARNAK GATEKEEPER]: Setup #${evaluatedSetup.id} blocked: ${promotion.message}`);
@@ -9173,17 +9157,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                   const eventKey = `${setup.id}::EXPIRED`;
                   if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                     serverKhatarnakLifecycleEvents.add(eventKey);
-                    const expireMsg = formatSignalExpiredAlert({
-                      signalId: setup.id,
-                      symbol: "XAUUSD",
-                      direction: "SELL",
-                      price: px,
-                      exitPrice: px,
-                    });
-                    if (mt5Config.telegramSignalsEnabled) {
-                      await ensureKhatarnakSetupDispatched(setup);
-                      await sendServerTelegramMessage(expireMsg, undefined, undefined, eventKey);
-                    }
+                    serverKhatarnakLifecycleEvents.add(eventKey);
                     moduleSignalGatekeeper.clearGlobalCooldown();
                     centralSignalManager.resetCooldownManually();
                     tradeStateManager.clearCooldown();
@@ -9199,11 +9173,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     const eventKey = `${setup.id}::ENTRY_HIT`;
                     if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                       serverKhatarnakLifecycleEvents.add(eventKey);
-                      const entryMsg = formatStatusUpdateTelegramMessage(setup, "ENTRY_HIT", px);
-                      if (mt5Config.telegramSignalsEnabled) {
-                        await ensureKhatarnakSetupDispatched(setup);
-                        await sendServerTelegramMessage(entryMsg, undefined, undefined, eventKey);
-                      }
                     }
                   }
                 }
@@ -9214,11 +9183,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     const eventKey = `${setup.id}::TP1_HIT`;
                     if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                       serverKhatarnakLifecycleEvents.add(eventKey);
-                      const tp1Msg = formatStatusUpdateTelegramMessage(setup, "TP1_HIT", px);
-                      if (mt5Config.telegramSignalsEnabled) {
-                        await ensureKhatarnakSetupDispatched(setup);
-                        await sendServerTelegramMessage(tp1Msg, undefined, undefined, eventKey);
-                      }
                     }
                   }
                   // TP2 Hit
@@ -9226,11 +9190,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     const eventKey = `${setup.id}::TP2_HIT`;
                     if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                       serverKhatarnakLifecycleEvents.add(eventKey);
-                      const tp2Msg = formatStatusUpdateTelegramMessage(setup, "TP2_HIT", px);
-                      if (mt5Config.telegramSignalsEnabled) {
-                        await ensureKhatarnakSetupDispatched(setup);
-                        await sendServerTelegramMessage(tp2Msg, undefined, undefined, eventKey);
-                      }
                     }
                   }
                   // Final TP Hit
@@ -9238,11 +9197,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     const eventKey = `${setup.id}::FINAL_TP_HIT`;
                     if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                       serverKhatarnakLifecycleEvents.add(eventKey);
-                      const finalMsg = formatStatusUpdateTelegramMessage(setup, "FINAL_TP_HIT", px);
-                      if (mt5Config.telegramSignalsEnabled) {
-                        await ensureKhatarnakSetupDispatched(setup);
-                        await sendServerTelegramMessage(finalMsg, undefined, undefined, eventKey);
-                      }
                       moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", setup.id);
                       centralSignalManager.startCooldown(30);
                       tradeStateManager.startCooldown(30, "TP_HIT", setup.id);
@@ -9257,11 +9211,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                     const eventKey = `${setup.id}::SL_HIT`;
                     if (!serverKhatarnakLifecycleEvents.has(eventKey)) {
                       serverKhatarnakLifecycleEvents.add(eventKey);
-                      const slMsg = formatStatusUpdateTelegramMessage(setup, "SL_HIT", px);
-                      if (mt5Config.telegramSignalsEnabled) {
-                        await ensureKhatarnakSetupDispatched(setup);
-                        await sendServerTelegramMessage(slMsg, undefined, undefined, eventKey);
-                      }
                       moduleSignalGatekeeper.startGlobalCooldown(30, "STOP_LOSS", setup.id);
                       centralSignalManager.startCooldown(30);
                       tradeStateManager.startCooldown(30, "STOP_LOSS", setup.id);
@@ -9588,39 +9537,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   });
 
   app.post("/api/warroom/trigger-telegram", async (req, res) => {
-    try {
-      const activeSetup = warRoomServerService.getActiveSetup();
-      if (!activeSetup) {
-        return res.status(400).json({ ok: false, error: "No active locked setup to dispatch. Lock a setup first." });
-      }
-
-      const signalText = formatHaramiSignalMessage({
-        direction: activeSetup.direction === "SELL" ? "SELL" : "BUY",
-        symbolShort: "XAUUSD",
-        assetName: "GOLD",
-        h4Context: activeSetup.h4Bias,
-        h1Bias: activeSetup.h1Bias.toUpperCase(),
-        m15Setup: activeSetup.m15Setup,
-        m5Entry: "CONFIRMED",
-        entryLow: activeSetup.entryZone[0],
-        entryHigh: activeSetup.entryZone[1],
-        bestEntry: activeSetup.bestEntry,
-        currentPrice: activeSetup.currentPrice,
-        sl: activeSetup.stopLoss,
-        tp1: activeSetup.tp1,
-        tp2: activeSetup.tp2,
-        tp3: activeSetup.tp3,
-        tp4: activeSetup.tp4,
-        rr: activeSetup.riskToReward,
-        confidence: activeSetup.confidence,
-        reason: activeSetup.m15Setup,
-      });
-
-      const sent = await sendServerTelegramMessage(signalText, undefined, undefined, `${activeSetup.setupId || "WAR_ROOM"}_NEW_SETUP`, true);
-      res.json({ ok: true, sent, message: "War Room setup successfully broadcast to Telegram channel!" });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err.message });
-    }
+    // USER DIRECTIVE: "Only harami ai send kiya karyein ga telegram py"
+    return res.status(403).json({
+      ok: false,
+      error: "Telegram broadcasting is exclusively restricted to Harami AI per user directive.",
+    });
   });
 
   app.post("/api/telegram/config", (req, res) => {

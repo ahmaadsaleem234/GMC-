@@ -1,6 +1,66 @@
 {
   "logs": [
     {
+      "id": "DELIV-1790361217745",
+      "signalId": "HA-104_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:33:37.363Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790360766523",
+      "signalId": "HA-104_SL_HIT",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:26:06.343Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790360763869",
+      "signalId": "HA-104_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:26:03.386Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790360470417",
+      "signalId": "HRM-6144_TP1_HIT",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:21:10.294Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790360469269",
+      "signalId": "HRM-6144::ENTRY_HIT",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:21:09.155Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790360467952",
+      "signalId": "HRM-6144_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-25T18:21:07.501Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
       "id": "DELIV-1790251665632",
       "signalId": "HRM-8469::ENTRY_HIT",
       "engine": "HARAMI_AI",

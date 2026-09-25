@@ -294,9 +294,10 @@ export function formatPrecisionHunterTelegramMessage(setup: ActiveCentralSetup):
 export async function dispatchCentralWinningSetupToTelegram(
   setup: ActiveCentralSetup
 ): Promise<{ success: boolean; message?: string }> {
-  // Precision Hunter is disabled from Telegram broadcast per user requirements
-  if (setup.brainSource === "PRECISION_HUNTER") {
-    return { success: false, message: "Precision Hunter Telegram dispatch is permanently disabled." };
+  // STRICT USER DIRECTIVE: Only Harami AI is broadcasted to Telegram!
+  if (setup.brainSource !== "HARAMI_AI") {
+    console.log(`[CENTRAL TELEGRAM DISPATCHER]: Skipping ${setup.brainSource} setup #${setup.setupId} - Telegram broadcasting is exclusively restricted to Harami AI.`);
+    return { success: false, message: "Telegram dispatch is restricted strictly to Harami AI only." };
   }
 
   const eventKey = `${setup.setupId}_NEW_SETUP`;
@@ -305,14 +306,7 @@ export async function dispatchCentralWinningSetupToTelegram(
     return { success: true, message: "Alert already broadcasted." };
   }
 
-  let message = "";
-  if (setup.brainSource === "KHATARNAK_JUGAAD") {
-    message = formatKhatarnakJugaadTelegramMessage(setup);
-  } else if (setup.brainSource === "HARAMI_AI") {
-    message = formatHaramiAiTelegramMessage(setup);
-  } else {
-    message = formatWarRoomTelegramMessage(setup);
-  }
+  const message = formatHaramiAiTelegramMessage(setup);
 
   const ok = await sendTelegramMessage(message, eventKey);
   if (ok.success) {
@@ -352,6 +346,11 @@ export async function dispatchCentralLifecycleEventToTelegram(
   currentPrice?: number,
   nextAvailableTimeFormatted?: string
 ): Promise<{ success: boolean; message?: string }> {
+  // STRICT USER DIRECTIVE: Only Harami AI is broadcasted to Telegram!
+  if (setup.brainSource !== "HARAMI_AI") {
+    return { success: false, message: "Lifecycle updates are restricted strictly to Harami AI only." };
+  }
+
   const eventKey = `${setup.setupId}_${event}`;
   const sent = getSentEvents();
   if (sent.has(eventKey)) {
@@ -366,12 +365,7 @@ export async function dispatchCentralLifecycleEventToTelegram(
   }
 
   const px = currentPrice || setup.preferredEntry;
-  const brainHeader =
-    setup.brainSource === "KHATARNAK_JUGAAD"
-      ? "💀 KHATARNAK JUGAAD"
-      : setup.brainSource === "HARAMI_AI"
-      ? "🤖 HARAMI AI"
-      : "🛡️ WAR ROOM";
+  const brainHeader = "🤖 HARAMI AI";
 
   const cdTime = nextAvailableTimeFormatted || "in 30 mins";
 
