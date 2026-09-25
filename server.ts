@@ -1303,6 +1303,7 @@ async function startServer() {
       cleanUser,
       fileSavedToken,
       cleanServerTelegramInput(cachedValidTelegramToken),
+      "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
     ].filter((t): t is string => Boolean(t) && isValidTelegramTokenFormat(t));
 
     const uniqueCandidates = Array.from(new Set(candidates));

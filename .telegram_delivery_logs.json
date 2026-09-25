@@ -1,6 +1,36 @@
 {
   "logs": [
     {
+      "id": "DELIV-1790251665632",
+      "signalId": "HRM-8469::ENTRY_HIT",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-24T12:07:45.468Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790251664598",
+      "signalId": "HRM-8469_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-24T12:07:44.244Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
+      "id": "DELIV-1790251623288",
+      "signalId": "trade-xauusd-forced-1790251622969_NEW_SETUP",
+      "engine": "HARAMI_AI",
+      "timestampUtc": "2026-09-24T12:07:02.996Z",
+      "recipientsCount": 2,
+      "successCount": 2,
+      "failedCount": 0,
+      "status": "DELIVERED"
+    },
+    {
       "id": "DELIV-1789925935726",
       "signalId": "WR-101_NEW_SETUP",
       "engine": "WAR_ROOM",

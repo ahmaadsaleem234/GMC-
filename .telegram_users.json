@@ -7,10 +7,11 @@
     "chatId": "935236586",
     "status": "pending",
     "joinedAt": "2026-08-22T13:58:02.241Z",
-    "lastActive": "2026-08-22T13:58:02.241Z",
+    "lastActive": "2026-09-24T12:06:57.878Z",
     "totalSignalsReceived": 0,
     "decisionAt": "2026-08-22T15:01:38.960Z",
-    "languageCode": "en"
+    "languageCode": "en",
+    "lastAdminRequestAt": 1790251617878
   },
   "5218548758": {
     "userId": "5218548758",
@@ -33,8 +34,8 @@
     "status": "approved",
     "planType": "lifetime",
     "joinedAt": "2026-08-28T17:02:04.620Z",
-    "lastActive": "2026-09-20T17:10:29.241Z",
-    "totalSignalsReceived": 56,
+    "lastActive": "2026-09-24T12:07:47.203Z",
+    "totalSignalsReceived": 60,
     "decisionAt": "2026-08-28T17:02:10.018Z",
     "languageCode": "en",
     "lastAdminRequestAt": 1787936524620,
