@@ -22,6 +22,7 @@ import {
   getRandomSignatureLine,
   centralSignalManager,
 } from "./centralSignalManager";
+import { formatHaramiSignalMessage } from "../utils/haramiSignalFormatter";
 
 const SENT_ALERTS_KEY = "central_telegram_sent_events_v1";
 
@@ -300,13 +301,37 @@ export async function dispatchCentralWinningSetupToTelegram(
     return { success: false, message: "Telegram dispatch is restricted strictly to Harami AI only." };
   }
 
+  // Check 30-minute cooldown
+  if (centralSignalManager.isCooldownActive()) {
+    console.log(`[CENTRAL TELEGRAM DISPATCHER]: Cooldown active (${centralSignalManager.getCooldownRemainingMinutes()}m remaining). Setup #${setup.setupId} not dispatched.`);
+    return { success: false, message: "System is in 30-minute cooldown after trade closure." };
+  }
+
   const eventKey = `${setup.setupId}_NEW_SETUP`;
   const sent = getSentEvents();
   if (sent.has(eventKey)) {
     return { success: true, message: "Alert already broadcasted." };
   }
 
-  const message = formatHaramiAiTelegramMessage(setup);
+  // Format using the formal Harami AI setup card
+  const message = formatHaramiSignalMessage({
+    signalId: setup.setupId,
+    direction: setup.direction,
+    symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
+    entryLow: setup.entryZoneLow,
+    entryHigh: setup.entryZoneHigh,
+    bestEntry: setup.preferredEntry,
+    currentPrice: setup.preferredEntry,
+    sl: setup.stopLoss,
+    tp1: setup.tp1,
+    tp2: setup.tp2,
+    tp3: setup.tp3,
+    tp4: setup.finalTp,
+    rr: setup.rrRatioString || "1:2.8",
+    confidence: setup.marketConfidence || setup.setupScore || 94,
+    reason: setup.selectionReason,
+    isAlreadyInZone: setup.lifecycleState === "ACTIVE" || setup.lifecycleState === "ENTRY_HIT",
+  });
 
   const ok = await sendTelegramMessage(message, eventKey);
   if (ok.success) {
@@ -545,9 +570,10 @@ export async function dispatchCentralLifecycleEventToTelegram(
   return { success: false, message: "Delivery failed." };
 }
 
-// Automatically subscribe to Central Signal Manager setup promotions for instant auto-dispatch
-// Only active in non-browser environments or when standalone without backend
-if (typeof window === "undefined" && typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
+// Note: In server environment (server.ts), server.ts registers the authoritative onSetupPromoted
+// listener that attaches live photo chart analysis and strict 30-minute cooldown locks.
+// Standalone dispatch listener is only activated if explicitly configured.
+if (typeof window === "undefined" && typeof process !== "undefined" && process.env.STANDALONE_DISPATCHER === "true" && typeof centralSignalManager !== "undefined" && centralSignalManager.onSetupPromoted) {
   centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
     try {
       if (centralSignalManager.isAutoBroadcastEnabled()) {

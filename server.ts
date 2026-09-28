@@ -2228,6 +2228,8 @@ async function startServer() {
         moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CANCEL", closedId);
         centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
+        serverLastClosedTime = Date.now();
+        serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
         await centralSignalManager.forceCloseActiveSetup("Cancelled by Super Admin");
         await answerTelegramCallback(cbId, "❌ Trade Cancelled", false);
       } else {
@@ -2262,6 +2264,8 @@ async function startServer() {
         moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CLOSE", closedId);
         centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
+        serverLastClosedTime = Date.now();
+        serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
         await centralSignalManager.forceCloseActiveSetup("Force Closed by Super Admin");
         await answerTelegramCallback(cbId, `✅ Trade Force Closed (+${pnl} USD)`, false);
       } else {
@@ -3131,6 +3135,8 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
         moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CANCEL", closedId1);
         centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
+        serverLastClosedTime = Date.now();
+        serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
         await sendSingleTelegramMessage(cbChatId, `❌ <b>TRADE CANCELLED</b>\nPosition removed from active tracking. 30-minute system cooldown activated.`);
       }
       const menu = superAdminService.renderLiveTradeControlMenu(serverActiveTrade, warRoomServerService.getActiveSetup());
@@ -3160,6 +3166,8 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
         moduleSignalGatekeeper.startGlobalCooldown(30, "MANUAL_CLOSE", closedId2);
         centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
+        serverLastClosedTime = Date.now();
+        serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
         await sendSingleTelegramMessage(cbChatId, `✅ <b>TRADE FORCE CLOSED</b>\nRealized P&L: +$${pnl} USD. 30-minute system cooldown activated.`);
       }
       const menu = superAdminService.renderLiveTradeControlMenu(serverActiveTrade, warRoomServerService.getActiveSetup());
@@ -5520,7 +5528,25 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
   let serverActiveTrade: ServerActiveTrade | null = null;
   let serverAccountBalance = 10000;
+  const STRICT_30_MIN_COOLDOWN_MS = 30 * 60 * 1000; // Strict 30-Minute Cooldown after SL or TP hit
   let serverLastClosedTime = 0;
+  let serverCooldownUntil = 0;
+
+  // Restore cooldown state from persistent storage across server reboots
+  try {
+    const smCooldown = tradeStateManager.checkCooldown();
+    if (smCooldown.inCooldown && smCooldown.cooldownUntil > Date.now()) {
+      serverCooldownUntil = smCooldown.cooldownUntil;
+      serverLastClosedTime = smCooldown.cooldownUntil - STRICT_30_MIN_COOLDOWN_MS;
+      console.log(`[SERVER COOLDOWN RESTORE]: Restored 30-min cooldown from TradeStateManager until ${new Date(serverCooldownUntil).toISOString()}`);
+    } else if (centralSignalManager.isCooldownActive()) {
+      const remainingSecs = centralSignalManager.getCooldownRemainingSeconds();
+      serverCooldownUntil = Date.now() + remainingSecs * 1000;
+      serverLastClosedTime = serverCooldownUntil - STRICT_30_MIN_COOLDOWN_MS;
+      console.log(`[SERVER COOLDOWN RESTORE]: Restored 30-min cooldown from CentralSignalManager until ${new Date(serverCooldownUntil).toISOString()}`);
+    }
+  } catch (e) {}
+
   let serverLastPulseTime = Date.now();
   let serverLastRecheckTime = 0; // Tracks 30-minute re-check interval
   let isBroadcasterLoopRunning = false;
@@ -5648,9 +5674,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         return true;
       }
 
-      if (serverLastClosedTime > 0 && now - serverLastClosedTime < 30 * 1000) {
-        const remainingSecs = Math.ceil((30 * 1000 - (now - serverLastClosedTime)) / 1000);
-        console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Post-close stabilization active (${remainingSecs}s remaining).`);
+      if ((serverCooldownUntil > now) || (serverLastClosedTime > 0 && now - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)) {
+        const remainingMs = Math.max(0, serverCooldownUntil > now ? serverCooldownUntil - now : STRICT_30_MIN_COOLDOWN_MS - (now - serverLastClosedTime));
+        const remMins = Math.floor(remainingMs / 60000);
+        const remSecs = Math.floor((remainingMs % 60000) / 1000);
+        console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Strict 30-minute cooldown active (${remMins}m ${remSecs}s remaining).`);
         return true;
       }
     }
@@ -6390,10 +6418,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           return false;
         }
 
-        if (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 1000) {
-          const remainingSecs = Math.ceil((30 * 1000 - (Date.now() - serverLastClosedTime)) / 1000);
+        if ((serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)) {
+          const remainingMs = Math.max(0, serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : STRICT_30_MIN_COOLDOWN_MS - (Date.now() - serverLastClosedTime));
+          const remMins = Math.floor(remainingMs / 60000);
+          const remSecs = Math.floor((remainingMs % 60000) / 1000);
           console.warn(
-            `[TELEGRAM GATEWAY POST-CLOSE]: Stabilizing state for trade (#${signalIdExtracted}) (${remainingSecs}s remaining).`
+            `[TELEGRAM GATEWAY POST-CLOSE]: Dropped trade (#${signalIdExtracted}) - Strict 30-minute cooldown active (${remMins}m ${remSecs}s remaining).`
           );
           serverTelegramDeliveryStatus = "Idle";
           return false;
@@ -6410,7 +6440,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             cooldown.inCooldown ||
             centralSignalManager.isCooldownActive() ||
             globalCooldown.inCooldown ||
-            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 1000),
+            (serverCooldownUntil > Date.now()) ||
+            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS),
         });
 
         if (!riskCheck.allowed) {
@@ -7455,8 +7486,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       serverActiveTrade = stateManagerActiveTrade as any;
     }
 
-    // Primary active trade reference: Dedicated to Harami AI per user directive
-    const systemActiveTrade = serverActiveTrade || (stateManagerActiveTrade && (stateManagerActiveTrade.signalId?.startsWith("HRM-") || stateManagerActiveTrade.strategyName?.includes("Harami")) ? stateManagerActiveTrade : null);
+    // USER DIRECTIVE: "sirf 1 waqt mein 1 trade active hogi"
+    // Single Active Trade Rule: Check all managers for an existing active trade
+    const systemActiveTrade =
+      serverActiveTrade ||
+      (tradeStateManager.hasActiveTrade() ? (tradeStateManager.getActiveTrade() as any) : null) ||
+      (centralSignalManager.getActiveSetup() ? (centralSignalManager.getActiveSetup() as any) : null);
+
     if (!systemActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {
         serverCurrentDecision = "WAIT — SIGNALS PAUSED";
@@ -7465,27 +7501,23 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
       // Check Strict 30-Minute Cooldown across all managers
       const cooldown = tradeStateManager.checkCooldown();
-      if (cooldown.inCooldown) {
-        serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (${cooldown.remainingMinutes}m remaining)`;
-        return;
-      }
-
-      if (centralSignalManager.isCooldownActive()) {
-        serverCurrentDecision = `WAIT — CENTRAL COOLDOWN ACTIVE (${centralSignalManager.getCooldownRemainingMinutes()}m remaining)`;
-        return;
-      }
-
+      const centralCooldownActive = centralSignalManager.isCooldownActive();
       const globalGateCheck = moduleSignalGatekeeper.isGlobalCooldownActive();
-      if (globalGateCheck.inCooldown) {
-        serverCurrentDecision = `WAIT — SYSTEM COOLDOWN ACTIVE (${globalGateCheck.remainingMinutes}m remaining)`;
-        return;
-      }
+      const timeSinceClosed = serverLastClosedTime > 0 ? now - serverLastClosedTime : Infinity;
+      const isServerInCooldown = (serverCooldownUntil > now) || (timeSinceClosed < STRICT_30_MIN_COOLDOWN_MS);
 
-      // Brief 30s stabilization window after closed trades to avoid duplicate entries
-      const COOLDOWN_MS = 30 * 1000;
-      if (now - serverLastClosedTime < COOLDOWN_MS) {
-        const remainingSecs = Math.ceil((COOLDOWN_MS - (now - serverLastClosedTime)) / 1000);
-        serverCurrentDecision = `WAIT — STABILIZING (${remainingSecs}s remaining)`;
+      if (cooldown.inCooldown || centralCooldownActive || globalGateCheck.inCooldown || isServerInCooldown) {
+        const remainingMs = Math.max(
+          0,
+          cooldown.inCooldown ? cooldown.cooldownUntil - now : 0,
+          centralCooldownActive ? centralSignalManager.getCooldownRemainingSeconds() * 1000 : 0,
+          globalGateCheck.inCooldown ? globalGateCheck.remainingMinutes * 60000 : 0,
+          serverCooldownUntil > now ? serverCooldownUntil - now : 0,
+          timeSinceClosed < STRICT_30_MIN_COOLDOWN_MS ? STRICT_30_MIN_COOLDOWN_MS - timeSinceClosed : 0
+        );
+        const remMins = Math.floor(remainingMs / 60000);
+        const remSecs = Math.floor((remainingMs % 60000) / 1000);
+        serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (${remMins}m ${remSecs}s remaining after TP/SL)`;
         return;
       }
 
@@ -7499,7 +7531,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
       if (
         (timeSinceLastRecheck >= SCAN_INTERVAL_MS || serverLastRecheckTime === 0) &&
-        now - serverLastClosedTime >= COOLDOWN_MS
+        (serverLastClosedTime === 0 || now - serverLastClosedTime >= STRICT_30_MIN_COOLDOWN_MS)
       ) {
         serverLastRecheckTime = now;
         serverLastAnalysisTime = now;
@@ -7547,7 +7579,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             cooldown.inCooldown ||
             centralSignalManager.isCooldownActive() ||
             globalGateCheck.inCooldown ||
-            now - serverLastClosedTime < COOLDOWN_MS,
+            (serverCooldownUntil > now) ||
+            (serverLastClosedTime > 0 && now - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS),
         });
 
         if (!riskGate.allowed) {
@@ -7997,9 +8030,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           tradeStateManager.closeActiveTrade("EXPIRED", tick.price, 0, 0, 0);
           centralSignalManager.clearActiveSetup();
-          moduleSignalGatekeeper.clearGlobalCooldown();
-          centralSignalManager.resetCooldownManually();
-          tradeStateManager.clearCooldown();
+          tradeStateManager.startCooldown(30, "EXPIRED", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(30);
+          moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", trade.signalId || trade.id);
+          serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "EXPIRED", 30);
 
           serverTradeHistory.unshift({
             id: trade.id,
@@ -8033,7 +8067,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
-          serverCurrentDecision = "WAIT — ANALYSIS MODE ACTIVE (SCANNING LIVE MARKET FOR A+ VALID SETUP)";
+          serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+          serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after trade expired)";
           return;
         } else {
           return; // Still waiting for entry zone. Do NOT evaluate TP/SL yet!
@@ -8153,8 +8188,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
                 centralSignalManager.startCooldown(30);
                 tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
+                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", 30);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
+                serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+                serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP1 hit)";
                 return;
               }
             }
@@ -8302,6 +8340,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
               centralSignalManager.startCooldown(30);
               tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", 30);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -8320,6 +8359,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
+              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+              serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP4 hit)";
               return;
             }
           }
@@ -8385,6 +8426,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
               centralSignalManager.startCooldown(30);
               tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", 30);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8410,6 +8452,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
+              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+              serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
               return;
             }
           }
@@ -8495,8 +8539,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
                 centralSignalManager.startCooldown(30);
                 tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
+                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", 30);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
+                serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+                serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP1 hit)";
                 return;
               }
             }
@@ -8644,6 +8691,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
               centralSignalManager.startCooldown(30);
               tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", 30);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -8662,6 +8710,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
+              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+              serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP4 hit)";
               return;
             }
           }
@@ -8727,6 +8777,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
               centralSignalManager.startCooldown(30);
               tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", 30);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8752,6 +8803,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
+              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+              serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
               return;
             }
           }
@@ -9014,6 +9067,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           ) {
             serverActiveTrade = null;
             serverLastClosedTime = Date.now();
+            serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
+            serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${event})`;
             tradeStateManager.closeActiveTrade(
               event === "TP_THEN_SL_HIT" ? "BREAKEVEN" : event === "SL_HIT" ? "STOP_LOSS" : "WIN_TP",
               currentPx,
@@ -9085,7 +9140,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             centralSignalManager.isCooldownActive() ||
             serverTelegramIdempotency.checkCooldown().inCooldown ||
             moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown ||
-            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000);
+            (serverCooldownUntil > Date.now()) ||
+            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS);
 
           // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated)
           if (centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
@@ -9115,7 +9171,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               }));
 
               const anyTradeActive = !!serverActiveTrade || tradeStateManager.hasActiveTrade() || !!centralSignalManager.getActiveSetup() || !!warRoomServerService.getActiveSetup();
-              const cooldownActive = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < 30 * 60 * 1000);
+              const cooldownActive = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown || (serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS);
 
               if (!serverActiveKhatarnakSetup && !anyTradeActive && !cooldownActive) {
                 const evaluatedSetup = calculateKhatarnakJugaadSetup(
@@ -9201,6 +9257,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       centralSignalManager.startCooldown(30);
                       tradeStateManager.startCooldown(30, "TP_HIT", setup.id);
                       serverLastClosedTime = Date.now();
+                      serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
                       centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} reached Final TP at $${px}`, px);
                       serverActiveKhatarnakSetup = null;
                       serverKhatarnakState = "SEARCHING";
@@ -9215,6 +9272,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                       centralSignalManager.startCooldown(30);
                       tradeStateManager.startCooldown(30, "STOP_LOSS", setup.id);
                       serverLastClosedTime = Date.now();
+                      serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
                       centralSignalManager.forceCloseActiveSetup(`Khatarnak Setup #${setup.id} hit Stop Loss at $${px}`, px);
                       serverActiveKhatarnakSetup = null;
                       serverKhatarnakState = "SEARCHING";
@@ -9769,8 +9827,22 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       lastSignalTime: serverLastSignalTime ? new Date(serverLastSignalTime).toISOString() : null,
       currentDecision: serverCurrentDecision,
       telegramDeliveryStatus: serverTelegramDeliveryStatus,
-      hasActiveTrade: !!serverActiveTrade,
-      activeTrade: serverActiveTrade,
+      hasActiveTrade: Boolean(serverActiveTrade || tradeStateManager.hasActiveTrade() || centralSignalManager.getActiveSetup()),
+      activeTrade: serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup(),
+      inCooldown: Boolean(
+        tradeStateManager.checkCooldown().inCooldown ||
+        centralSignalManager.isCooldownActive() ||
+        (serverCooldownUntil > Date.now()) ||
+        (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)
+      ),
+      cooldownRemainingMinutes: Math.ceil(
+        Math.max(
+          0,
+          serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : 0,
+          serverLastClosedTime > 0 ? STRICT_30_MIN_COOLDOWN_MS - (Date.now() - serverLastClosedTime) : 0,
+          tradeStateManager.checkCooldown().inCooldown ? tradeStateManager.checkCooldown().cooldownUntil - Date.now() : 0
+        ) / 60000
+      ),
       accountMetrics: mt5AccountMetrics,
       history: serverTradeHistory,
       analysisLogs: serverAnalysisLogs.slice(0, 20),
@@ -9780,11 +9852,19 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   });
 
   app.get("/api/telegram/active-signal", (req, res) => {
+    const currentActiveTrade = serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup();
     res.json({
       ok: true,
-      activeTrade: serverActiveTrade,
+      activeTrade: currentActiveTrade,
       accountBalance: serverAccountBalance,
       lastClosedTime: serverLastClosedTime,
+      cooldownUntil: serverCooldownUntil,
+      inCooldown: Boolean(
+        tradeStateManager.checkCooldown().inCooldown ||
+        centralSignalManager.isCooldownActive() ||
+        (serverCooldownUntil > Date.now()) ||
+        (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)
+      ),
       chatId: serverTargetChatId,
       status: "24/7 Autonomous Background Broadcaster Active",
       engineStatus: serverEngineStatus,
@@ -9795,7 +9875,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       lastSignalTime: serverLastSignalTime ? new Date(serverLastSignalTime).toISOString() : null,
       currentDecision: serverCurrentDecision,
       telegramDeliveryStatus: serverTelegramDeliveryStatus,
-      hasActiveTrade: !!serverActiveTrade,
+      hasActiveTrade: Boolean(currentActiveTrade),
     });
   });
 

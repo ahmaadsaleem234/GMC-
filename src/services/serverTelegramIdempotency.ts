@@ -240,7 +240,7 @@ class TelegramIdempotencyRegistry {
     alertId?: string,
     messageText: string = "",
     chatId?: string
-  ): { isDuplicate: boolean; key: string; reason?: string } {
+  ): { isDuplicate: boolean; key: string; reason?: string; isBlocked?: boolean } {
     const key = this.resolveCompositeKey(alertId, messageText);
     const tradeId = this.extractTradeId(messageText, alertId);
     const event = this.extractEventType(messageText, alertId);
@@ -250,6 +250,7 @@ class TelegramIdempotencyRegistry {
     if (this.dispatchedKeys.has(key)) {
       return {
         isDuplicate: true,
+        isBlocked: false,
         key,
         reason: `Event key [${key}] has already been dispatched to Telegram.`,
       };
@@ -262,12 +263,14 @@ class TelegramIdempotencyRegistry {
         if (tradeId && tradeId === this.activeTradeId) {
           return {
             isDuplicate: true,
+            isBlocked: false,
             key,
             reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`,
           };
         }
         return {
           isDuplicate: true,
+          isBlocked: true,
           key,
           reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`,
         };
@@ -281,8 +284,9 @@ class TelegramIdempotencyRegistry {
         const timeStr = `${remMins}m ${remSecs}s`;
         return {
           isDuplicate: true,
+          isBlocked: true,
           key,
-          reason: `Post-trade cooldown active (${timeStr} remaining). Next trade is blocked until cooldown completes.`,
+          reason: `Post-trade 30-minute cooldown active (${timeStr} remaining). Next trade is blocked until cooldown completes.`,
         };
       }
 
@@ -290,6 +294,7 @@ class TelegramIdempotencyRegistry {
       if (this.lastNewSetupTimestamp > 0 && now - this.lastNewSetupTimestamp < 60 * 1000) {
         return {
           isDuplicate: true,
+          isBlocked: true,
           key,
           reason: `Global setup rate limit active. Another trade signal was broadcasted ${Math.round((now - this.lastNewSetupTimestamp) / 1000)}s ago.`,
         };
@@ -311,10 +316,44 @@ class TelegramIdempotencyRegistry {
           const minsAgo = Math.round((now - recentDupe.timestamp) / 60000);
           return {
             isDuplicate: true,
+            isBlocked: true,
             key,
             reason: `Duplicate setup in ${dir} zone ($${entryPx.toFixed(2)} vs prior $${recentDupe.entry.toFixed(2)}) already broadcasted ${minsAgo}m ago.`,
           };
         }
+      }
+    }
+
+    // 2B. STRICT 1 ACTIVE TRADE LOCK FOR LIFECYCLE EVENTS
+    if (event !== "NEW_SETUP" && event !== "GENERAL_ALERT") {
+      // Rule 1: Initial formal setup card MUST have been delivered first
+      if (tradeId && !this.hasInitialSignalBeenDispatched(tradeId)) {
+        return {
+          isDuplicate: true,
+          isBlocked: true,
+          key,
+          reason: `Blocked lifecycle alert [${event}]: Initial formal setup card for #${tradeId} was never delivered to Telegram!`,
+        };
+      }
+
+      // Rule 2: If a trade is currently active and this event belongs to a different trade, block it!
+      if (this.activeTradeId && tradeId && tradeId !== this.activeTradeId) {
+        return {
+          isDuplicate: true,
+          isBlocked: true,
+          key,
+          reason: `Blocked lifecycle alert for #${tradeId}: Trade #${this.activeTradeId} is currently the single active trade.`,
+        };
+      }
+
+      // Rule 3: If no trade is active and system is in cooldown, block orphaned alerts
+      if (!this.activeTradeId && now < this.cooldownUntil) {
+        return {
+          isDuplicate: true,
+          isBlocked: true,
+          key,
+          reason: `Blocked lifecycle alert for #${tradeId}: System is currently in 30-minute cooldown.`,
+        };
       }
     }
 
@@ -327,6 +366,7 @@ class TelegramIdempotencyRegistry {
       const minutesAgo = Math.round((now - lastSent) / 60000);
       return {
         isDuplicate: true,
+        isBlocked: false,
         key,
         reason: `Identical message text was already sent ${minutesAgo}m ago to chat ${chatId || "subscribers"}.`,
       };
