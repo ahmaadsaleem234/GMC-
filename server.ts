@@ -3233,6 +3233,19 @@ Showing ${filtered.length} user(s). Click any user to view profile and adjust ac
       });
 
       if (candidate) {
+        // Enforce strict 1 active trade at a time rule
+        const existingActive = tradeStateManager.getActiveTrade() || serverActiveTrade || centralSignalManager.getActiveSetup();
+        if (existingActive) {
+          const existingId = (existingActive as any).setupId || (existingActive as any).signalId || (existingActive as any).id || "ACTIVE";
+          await answerTelegramCallback(cbId, `⚠️ Trade #${existingId} is already active. Only 1 trade allowed at a time.`, true);
+          await editTelegramMessageText(
+            cbChatId,
+            cbMsgId,
+            `⚠️ <b>ACTIVE TRADE ALREADY RUNNING</b>\n━━━━━━━━━━━━━━━━━━━━\nTrade <code>#${existingId}</code> is currently active in the system.\n\n<b>Rule:</b> Only 1 active trade allowed at a time (whether BUY or SELL).\n<i>Please wait for #${existingId} to reach TP/SL conclusion before approving new setups.</i>`
+          );
+          return;
+        }
+
         pendingAdminTradeCandidates.delete(targetSetupId);
         
         // Broadcast approved trade to ALL approved users

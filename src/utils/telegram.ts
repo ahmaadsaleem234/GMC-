@@ -117,7 +117,7 @@ export async function sendTelegramMessage(
       }
     }
 
-    // Method 1: Server Proxy Route /api/telegram/send with Idempotency Protection (Only in browser or resolved URL)
+    // Method 1: Server Proxy Route /api/telegram/send with Central Orchestrator & Single Trade Protection
     if (typeof window !== "undefined" && typeof fetch === "function") {
       try {
         const response = await fetch("/api/telegram/send", {
@@ -141,12 +141,15 @@ export async function sendTelegramMessage(
             }
             return { success: true, message: "✅ Telegram signal dispatched successfully to channel!" };
           }
-          if (data.error) {
-            console.warn("Server route returned error:", data.error);
-          }
+          // Server returned explicit rejection (e.g. already active trade running, cooldown, etc.)
+          console.warn("[TELEGRAM CLIENT]: Server rejected signal dispatch:", data.error || data.message || "Active trade limit enforced.");
+          return {
+            success: false,
+            message: data.error || data.message || "Signal rejected by server (Only 1 active trade allowed).",
+          };
         }
       } catch (serverErr) {
-        console.warn("Server proxy Telegram send failed, trying direct browser API...", serverErr);
+        console.warn("Server proxy Telegram send unreachable:", serverErr);
       }
     }
 
