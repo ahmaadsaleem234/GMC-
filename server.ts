@@ -2091,8 +2091,8 @@ async function startServer() {
     }
 
     if (data.startsWith("adm:csm:cd:set:")) {
-      const mins = Number(data.replace("adm:csm:cd:set:", "")) as any;
-      centralSignalManager.setConfig(70, mins, true);
+      const mins = Number(data.replace("adm:csm:cd:set:", "")) || 30;
+      setSystemCooldownMinutes(mins);
       superAdminService.logAction("COOLDOWN_DURATION_CHANGED", `Set cooldown duration to ${mins} minutes`, cbUserId);
       await answerTelegramCallback(cbId, `⏱️ Cooldown set to ${mins} min`, false);
       const cooldown = centralSignalManager.getCooldown();
@@ -4436,8 +4436,21 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                     continue;
                   }
 
-                  // Super Admin /cooldown or /cd -> Open Cooldown Monitor
+                  // Super Admin /cooldown or /cd -> Open Cooldown Monitor or set duration
                   if (textLower.startsWith("/cooldown") || textLower.startsWith("/cd") || ["cooldown", "cd"].includes(textLower)) {
+                    const cdMatch = textLower.match(/(?:\/cooldown|\/cd|cooldown|cd)\s+(\d+)/i);
+                    if (cdMatch && cdMatch[1]) {
+                      const mins = parseInt(cdMatch[1], 10);
+                      if (mins >= 1 && mins <= 180) {
+                        setSystemCooldownMinutes(mins);
+                        superAdminService.logAction("COOLDOWN_DURATION_CHANGED", `Set cooldown duration to ${mins} minutes via command`, userId);
+                        await sendSingleTelegramMessage(
+                          chatId,
+                          `⏱️ <b>COOLDOWN DURATION UPDATED!</b>\n━━━━━━━━━━━━━━━━━━━\nPost-trade cooldown set to <b>${mins} minutes</b> across all AI models & Telegram broadcaster.\n\n<i>Use /cooldown to view status or /unblock to clear active cooldown.</i>`
+                        );
+                        continue;
+                      }
+                    }
                     const cooldown = centralSignalManager.getCooldown();
                     const menu = superAdminService.renderCooldownStatusView(cooldown);
                     await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
@@ -5541,7 +5554,51 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
   let serverActiveTrade: ServerActiveTrade | null = null;
   let serverAccountBalance = 10000;
-  const STRICT_30_MIN_COOLDOWN_MS = 30 * 60 * 1000; // Strict 30-Minute Cooldown after SL or TP hit
+  let serverConfiguredCooldownMins = 30;
+  try {
+    const superCfg = superAdminService.getConfig();
+    if (superCfg && typeof (superCfg as any).cooldownMinutes === "number" && (superCfg as any).cooldownMinutes > 0) {
+      serverConfiguredCooldownMins = (superCfg as any).cooldownMinutes;
+    }
+  } catch (e) {}
+
+  function getSystemCooldownMs(): number {
+    return serverConfiguredCooldownMins * 60 * 1000;
+  }
+
+  function setSystemCooldownMinutes(minutes: number): void {
+    const validMins = Math.max(1, Math.min(180, Math.round(minutes)));
+    serverConfiguredCooldownMins = validMins;
+    try {
+      centralSignalManager.setCooldownMinutes(validMins as any);
+      tradeStateManager.setCooldownDuration(validMins);
+      moduleSignalGatekeeper.setGlobalCooldownDuration(validMins);
+      serverTelegramIdempotency.setCooldownDuration(validMins);
+      const cfg = superAdminService.getConfig();
+      if (cfg) {
+        (cfg as any).cooldownMinutes = validMins;
+        superAdminService.saveConfig();
+      }
+      console.log(`[GLOBAL COOLDOWN ENGINE]: Post-trade cooldown duration set to ${validMins} minutes across all systems.`);
+    } catch (e) {
+      console.error("[GLOBAL COOLDOWN ENGINE]: Error setting cooldown duration:", e);
+    }
+  }
+
+  // Connect Central Signal Manager Single Active Trade External Getter
+  try {
+    centralSignalManager.setExternalActiveTradeGetter(() => {
+      if (serverActiveTrade && serverActiveTrade.status !== "CLOSED" && serverActiveTrade.status !== "CANCELLED") {
+        return serverActiveTrade;
+      }
+      if (tradeStateManager.hasActiveTrade()) {
+        return tradeStateManager.getActiveTrade();
+      }
+      return null;
+    });
+  } catch (e) {}
+
+  const STRICT_30_MIN_COOLDOWN_MS = getSystemCooldownMs(); // Dynamic Cooldown after SL or TP hit
   let serverLastClosedTime = 0;
   let serverCooldownUntil = 0;
 
@@ -5550,13 +5607,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     const smCooldown = tradeStateManager.checkCooldown();
     if (smCooldown.inCooldown && smCooldown.cooldownUntil > Date.now()) {
       serverCooldownUntil = smCooldown.cooldownUntil;
-      serverLastClosedTime = smCooldown.cooldownUntil - STRICT_30_MIN_COOLDOWN_MS;
-      console.log(`[SERVER COOLDOWN RESTORE]: Restored 30-min cooldown from TradeStateManager until ${new Date(serverCooldownUntil).toISOString()}`);
+      serverLastClosedTime = smCooldown.cooldownUntil - getSystemCooldownMs();
+      console.log(`[SERVER COOLDOWN RESTORE]: Restored cooldown from TradeStateManager until ${new Date(serverCooldownUntil).toISOString()}`);
     } else if (centralSignalManager.isCooldownActive()) {
       const remainingSecs = centralSignalManager.getCooldownRemainingSeconds();
       serverCooldownUntil = Date.now() + remainingSecs * 1000;
-      serverLastClosedTime = serverCooldownUntil - STRICT_30_MIN_COOLDOWN_MS;
-      console.log(`[SERVER COOLDOWN RESTORE]: Restored 30-min cooldown from CentralSignalManager until ${new Date(serverCooldownUntil).toISOString()}`);
+      serverLastClosedTime = serverCooldownUntil - getSystemCooldownMs();
+      console.log(`[SERVER COOLDOWN RESTORE]: Restored cooldown from CentralSignalManager until ${new Date(serverCooldownUntil).toISOString()}`);
     }
   } catch (e) {}
 
@@ -8198,14 +8255,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 });
                 centralSignalManager.clearActiveSetup();
                 moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-                moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
-                centralSignalManager.startCooldown(30);
-                tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
-                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", 30);
+                moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+                centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+                tradeStateManager.startCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", serverConfiguredCooldownMins);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
-                serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-                serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP1 hit)";
+                serverCooldownUntil = now + getSystemCooldownMs();
+                serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after TP1 hit)`;
                 return;
               }
             }
@@ -8372,8 +8429,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
-              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-              serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP4 hit)";
+              serverCooldownUntil = now + getSystemCooldownMs();
+              serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after TP4 hit)`;
               return;
             }
           }
@@ -8436,10 +8493,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(30);
-              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", 30);
+              moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+              tradeStateManager.startCooldown(serverConfiguredCooldownMins, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", serverConfiguredCooldownMins);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8465,8 +8522,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
-              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-              serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
+              serverCooldownUntil = now + getSystemCooldownMs();
+              serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
               return;
             }
           }
@@ -8549,14 +8606,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 });
                 centralSignalManager.clearActiveSetup();
                 moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-                moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
-                centralSignalManager.startCooldown(30);
-                tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
-                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", 30);
+                moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+                centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+                tradeStateManager.startCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+                serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP1_HIT", serverConfiguredCooldownMins);
                 serverActiveTrade = null;
                 serverLastClosedTime = now;
-                serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-                serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP1 hit)";
+                serverCooldownUntil = now + getSystemCooldownMs();
+                serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after TP1 hit)`;
                 return;
               }
             }
@@ -8701,10 +8758,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(30);
-              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
-              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", 30);
+              moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+              tradeStateManager.startCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", serverConfiguredCooldownMins);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -8723,8 +8780,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
-              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-              serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after TP4 hit)";
+              serverCooldownUntil = now + getSystemCooldownMs();
+              serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after TP4 hit)`;
               return;
             }
           }
@@ -8787,10 +8844,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(30);
-              tradeStateManager.startCooldown(30, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
-              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", 30);
+              moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+              tradeStateManager.startCooldown(serverConfiguredCooldownMins, isBE ? "BREAKEVEN" : "STOP_LOSS", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, isBE ? "BREAKEVEN" : "STOP_LOSS", serverConfiguredCooldownMins);
 
               const outcomeText = isBE
                 ? formatBreakevenAlert({
@@ -8816,8 +8873,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               serverActiveTrade = null;
               serverLastClosedTime = now;
-              serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
-              serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
+              serverCooldownUntil = now + getSystemCooldownMs();
+              serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after ${isBE ? "Breakeven" : "Stop Loss"})`;
               return;
             }
           }
@@ -9080,8 +9137,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           ) {
             serverActiveTrade = null;
             serverLastClosedTime = Date.now();
-            serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
-            serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after ${event})`;
+            serverCooldownUntil = serverLastClosedTime + getSystemCooldownMs();
+            serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after ${event})`;
             tradeStateManager.closeActiveTrade(
               event === "TP_THEN_SL_HIT" ? "BREAKEVEN" : event === "SL_HIT" ? "STOP_LOSS" : "WIN_TP",
               currentPx,
@@ -9089,11 +9146,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               0,
               0
             );
-            tradeStateManager.startCooldown(30, event, setup.setupId);
-            moduleSignalGatekeeper.startGlobalCooldown(30, event, setup.setupId);
-            serverTelegramIdempotency.recordTradeClosed(setup.setupId, event, 30);
+            tradeStateManager.startCooldown(serverConfiguredCooldownMins, event, setup.setupId);
+            moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, event, setup.setupId);
+            serverTelegramIdempotency.recordTradeClosed(setup.setupId, event, serverConfiguredCooldownMins);
             centralSignalManager.clearActiveSetup();
-            console.log(`[LIFECYCLE EVENT]: Trade #${setup.setupId} closed (${event}). Global 30-minute cooldown active across all engines.`);
+            centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+            console.log(`[LIFECYCLE EVENT]: Trade #${setup.setupId} closed (${event}). Global ${serverConfiguredCooldownMins}-minute cooldown active across all engines.`);
           }
         }
       } catch (err) {
@@ -10006,12 +10064,67 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
   });
 
+  app.get("/api/cooldown/config", (req, res) => {
+    try {
+      const smCooldown = tradeStateManager.checkCooldown();
+      const csmCooldown = centralSignalManager.getCooldown();
+      const gateCooldown = moduleSignalGatekeeper.isGlobalCooldownActive();
+      const timeSinceClosed = serverLastClosedTime > 0 ? Date.now() - serverLastClosedTime : Infinity;
+      const isServerCd = (serverCooldownUntil > Date.now()) || (timeSinceClosed < getSystemCooldownMs());
+      
+      const isInCooldown = smCooldown.inCooldown || csmCooldown.isActive || gateCooldown.inCooldown || isServerCd;
+      const remainingMs = Math.max(
+        0,
+        smCooldown.inCooldown ? smCooldown.cooldownUntil - Date.now() : 0,
+        csmCooldown.isActive ? (csmCooldown.remainingSeconds || 0) * 1000 : 0,
+        gateCooldown.inCooldown ? gateCooldown.remainingMinutes * 60000 : 0,
+        serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : 0,
+        timeSinceClosed < getSystemCooldownMs() ? getSystemCooldownMs() - timeSinceClosed : 0
+      );
+
+      res.json({
+        ok: true,
+        cooldownMinutes: serverConfiguredCooldownMins,
+        isInCooldown,
+        remainingSeconds: Math.ceil(remainingMs / 1000),
+        remainingMinutes: Math.ceil(remainingMs / 60000),
+        cooldownUntil: serverCooldownUntil,
+        activeTrade: serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/cooldown/config", (req, res) => {
+    try {
+      const { cooldownMinutes } = req.body || {};
+      const mins = Number(cooldownMinutes);
+      if (isNaN(mins) || mins < 1 || mins > 180) {
+        return res.status(400).json({ ok: false, error: "cooldownMinutes must be a number between 1 and 180." });
+      }
+      setSystemCooldownMinutes(mins);
+      res.json({
+        ok: true,
+        cooldownMinutes: serverConfiguredCooldownMins,
+        message: `System post-trade cooldown configured to ${serverConfiguredCooldownMins} minutes.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   app.post("/api/cooldown/reset", (req, res) => {
     try {
       tradeStateManager.resetCooldown();
+      centralSignalManager.resetCooldown();
+      moduleSignalGatekeeper.clearGlobalCooldown();
+      serverLastClosedTime = 0;
+      serverCooldownUntil = 0;
+      serverCurrentDecision = "SCANNING LIVE (COOLDOWN CLEARED)";
       res.json({
         ok: true,
-        message: "Trade cooldown timer reset. Armed for next setup.",
+        message: "Trade cooldown timer reset across all engines. Armed for next setup.",
       });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });

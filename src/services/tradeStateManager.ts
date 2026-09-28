@@ -359,27 +359,38 @@ export class MasterTradeStateManager {
     this.persistState();
   }
 
+  private defaultCooldownMinutes: number = 30;
+
+  public setCooldownDuration(minutes: number): void {
+    this.defaultCooldownMinutes = Math.max(1, Math.min(180, Math.round(minutes)));
+    console.log(`[TRADE STATE MANAGER]: Default cooldown duration set to ${this.defaultCooldownMinutes} minutes.`);
+  }
+
+  public getDefaultCooldownDuration(): number {
+    return this.defaultCooldownMinutes;
+  }
+
   public triggerTradeClosedCooldown(
     trade: UnifiedActiveTrade,
     outcome: string,
-    customDurationMinutes: number = 30
+    customDurationMinutes?: number
   ) {
     if (outcome === "EXPIRED") {
       this.clearCooldown();
       console.log(
-        `[TRADE STATE MANAGER]: ⏱️ Trade #${trade?.signalId || "N/A"} EXPIRED after 30 minutes. Entering continuous waiting & analysis mode.`
+        `[TRADE STATE MANAGER]: ⏱️ Trade #${trade?.signalId || "N/A"} EXPIRED after timeout. Entering continuous waiting & analysis mode.`
       );
       return;
     }
 
     const now = Date.now();
-    const durationMinutes = customDurationMinutes || 30;
+    const durationMinutes = typeof customDurationMinutes === "number" && customDurationMinutes > 0 ? customDurationMinutes : this.defaultCooldownMinutes;
     const durationMs = durationMinutes * 60 * 1000;
     this.cooldownState = {
       inCooldown: true,
       cooldownUntil: now + durationMs,
       remainingMinutes: durationMinutes,
-      reason: `Trade #${trade.signalId} concluded with ${outcome}. Strict 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
+      reason: `Trade #${trade.signalId} concluded with ${outcome}. Strict ${durationMinutes}-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
       lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
       lastFailedSetupZone: {
         low: Math.min(trade.entryZone[0], trade.entryZone[1]),
@@ -388,17 +399,17 @@ export class MasterTradeStateManager {
       },
     };
     console.log(
-      `[TRADE STATE MANAGER]: ⏳ 30-Minute Cooldown Activated for trade #${trade.signalId} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
+      `[TRADE STATE MANAGER]: ⏳ ${durationMinutes}-Minute Cooldown Activated for trade #${trade.signalId} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
     );
     this.persistState();
   }
 
   public triggerSlCooldown(failedTrade: UnifiedActiveTrade) {
-    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", 30);
+    this.triggerTradeClosedCooldown(failedTrade, "STOP_LOSS", this.defaultCooldownMinutes);
   }
 
   public startCooldown(
-    customDurationMinutes: number = 30,
+    customDurationMinutes?: number,
     outcome: string = "TRADE_CLOSED",
     signalId?: string,
     zone?: { low: number; high: number; direction: "BUY" | "SELL" }
@@ -406,24 +417,24 @@ export class MasterTradeStateManager {
     if (outcome === "EXPIRED") {
       this.clearCooldown();
       console.log(
-        `[TRADE STATE MANAGER]: ⏱️ Trade #${signalId || "N/A"} EXPIRED after 30 minutes. Entering continuous waiting & analysis mode.`
+        `[TRADE STATE MANAGER]: ⏱️ Trade #${signalId || "N/A"} EXPIRED after timeout. Entering continuous waiting & analysis mode.`
       );
       return;
     }
 
     const now = Date.now();
-    const durationMinutes = customDurationMinutes !== undefined ? customDurationMinutes : 30;
+    const durationMinutes = typeof customDurationMinutes === "number" && customDurationMinutes > 0 ? customDurationMinutes : this.defaultCooldownMinutes;
     const durationMs = durationMinutes * 60 * 1000;
     this.cooldownState = {
       inCooldown: true,
       cooldownUntil: now + durationMs,
       remainingMinutes: durationMinutes,
-      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. 30-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
+      reason: `Trade #${signalId || "N/A"} concluded with ${outcome}. ${durationMinutes}-Minute Cooldown active to ensure high-quality non-conflicting setups.`,
       lastSlHitTimestamp: outcome === "STOP_LOSS" ? now : this.cooldownState.lastSlHitTimestamp,
       lastFailedSetupZone: zone || this.cooldownState.lastFailedSetupZone,
     };
     console.log(
-      `[TRADE STATE MANAGER]: ⏳ Cooldown Activated for trade #${signalId || "N/A"} (${outcome}) until ${new Date(now + durationMs).toISOString()}`
+      `[TRADE STATE MANAGER]: ⏳ Cooldown Activated for trade #${signalId || "N/A"} (${outcome}) for ${durationMinutes}m until ${new Date(now + durationMs).toISOString()}`
     );
     this.persistState();
   }

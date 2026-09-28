@@ -748,6 +748,27 @@ export class CentralSignalManagerEngine {
     );
   }
 
+  private externalActiveTradeGetter?: () => any;
+
+  public setExternalActiveTradeGetter(getter: () => any) {
+    this.externalActiveTradeGetter = getter;
+  }
+
+  public setCooldownMinutes(cooldownMins: number) {
+    const validMins = Math.max(1, Math.min(180, Math.round(cooldownMins))) as CooldownDurationMinutes;
+    this.cooldownMinutesConfig = validMins;
+    if (this.cooldown.isActive && this.cooldown.startedAt) {
+      const durationMs = validMins * 60 * 1000;
+      this.cooldown.expiresAt = this.cooldown.startedAt + durationMs;
+      this.cooldown.durationMinutes = validMins;
+      const expDate = new Date(this.cooldown.expiresAt);
+      this.cooldown.nextAvailableTimeFormatted = `${String(expDate.getUTCHours()).padStart(2, "0")}:${String(expDate.getUTCMinutes()).padStart(2, "0")}:${String(expDate.getUTCSeconds()).padStart(2, "0")} UTC`;
+      this.updateCooldownTicker();
+    }
+    this.saveToStorage();
+    console.log(`[CENTRAL SIGNAL MANAGER]: Post-trade cooldown duration set to ${validMins} minutes.`);
+  }
+
   public setConfig(
     minScore: number,
     cooldownMins: CooldownDurationMinutes,
@@ -1650,6 +1671,68 @@ export class CentralSignalManagerEngine {
       HARAMI_AI: this.evaluateHaramiAiCandidate(valid15m, valid5m, px, assetKey),
     };
 
+    // Synchronize with external active trade if this.activeSetup is null
+    if (!this.activeSetup && this.externalActiveTradeGetter) {
+      try {
+        const extTrade = this.externalActiveTradeGetter();
+        if (extTrade && (extTrade.status === "WAITING_FOR_ENTRY" || extTrade.status === "ENTRY_CONFIRMED" || extTrade.status === "OPEN" || extTrade.status === "TP1_HIT" || extTrade.status === "TP2_HIT" || extTrade.status === "TP3_HIT")) {
+          const setupId = String(extTrade.signalId || extTrade.id || "HA-101").replace("#", "").trim();
+          this.activeSetup = {
+            setupId,
+            brainSource: extTrade.strategyName?.includes("War Room") ? "WAR_ROOM" : "HARAMI_AI",
+            brainName: extTrade.strategyName || "Harami AI",
+            brainEmoji: extTrade.strategyName?.includes("War Room") ? "🛡️" : "🤖",
+            assetKey: "XAUUSD",
+            timeframe: "15M",
+            direction: extTrade.direction,
+            lifecycleState: extTrade.status === "TP1_HIT" ? "TP1_HIT" : extTrade.status === "TP2_HIT" ? "TP2_HIT" : extTrade.status === "TP3_HIT" ? "TP3_HIT" : "ACTIVE",
+            lifecycleStatusLabel: extTrade.status === "TP1_HIT" ? "🎯 TP1 HIT" : extTrade.status === "TP2_HIT" ? "🎯 TP2 HIT" : extTrade.status === "TP3_HIT" ? "🎯 TP3 HIT" : "🟢 ACTIVE",
+            entryZoneLow: extTrade.entryZone?.[0] || extTrade.entryZoneLow || (extTrade.entry - 0.5),
+            entryZoneHigh: extTrade.entryZone?.[1] || extTrade.entryZoneHigh || (extTrade.entry + 0.5),
+            entryRangeFormatted: `$${(extTrade.entryZone?.[0] || extTrade.entry - 0.5).toFixed(2)} — $${(extTrade.entryZone?.[1] || extTrade.entry + 0.5).toFixed(2)}`,
+            preferredEntry: extTrade.entry,
+            stopLoss: extTrade.sl,
+            tp1: extTrade.tp1,
+            tp2: extTrade.tp2,
+            tp3: extTrade.tp3,
+            finalTp: extTrade.tp4 || extTrade.tp3,
+            rrRatioString: extTrade.rr || "1:2.8",
+            signatureLine: getRandomSignatureLine("HARAMI_AI"),
+            setupScore: extTrade.confidence || 92,
+            marketConfidence: extTrade.confidence || 92,
+            aiConsensus: "Strong Consensus (Active Harami Setup)",
+            consensusStrength: "STRONG_CONSENSUS" as const,
+            selectionReason: extTrade.reason || "Harami AI Active Trade",
+            protectionActive: Boolean(extTrade.tp1Hit || extTrade.isBreakeven),
+            protectedSlLevel: extTrade.tp1Hit || extTrade.isBreakeven ? extTrade.entry : null,
+            protectionMessage: extTrade.tp1Hit || extTrade.isBreakeven ? "🛡️ Protection Active: SL at Break-Even." : null,
+            isBreakeven: Boolean(extTrade.tp1Hit || extTrade.isBreakeven),
+            isEntryTriggered: extTrade.status !== "WAITING_FOR_ENTRY",
+            entryPriceActivated: extTrade.entry,
+            isTp1Hit: Boolean(extTrade.tp1Hit),
+            isTp2Hit: Boolean(extTrade.tp2Hit),
+            isTp3Hit: Boolean(extTrade.tp3Hit),
+            isFinalTpHit: Boolean(extTrade.tp4Hit),
+            isSlHit: Boolean(extTrade.slHit),
+            isInvalidated: false,
+            isExpired: false,
+            highestPriceObserved: px,
+            lowestPriceObserved: px,
+            pnlPips: extTrade.pnlPips || 0,
+            pnlUSD: extTrade.currentFloatingPnL || 0,
+            activatedAt: extTrade.createdAt || Date.now(),
+            activatedTimeUtc: extTrade.signalGeneratedAt || new Date().toISOString().substring(11, 19) + " UTC",
+            closedAt: null,
+            closedTimeUtc: null,
+            finalOutcome: null,
+            entryDispatched: Boolean(extTrade.entryDispatched),
+            telegramDispatched: Boolean(extTrade.entryDispatched),
+            dispatchedOutcomes: extTrade.dispatchedOutcomes || ["SIGNAL"],
+          };
+        }
+      } catch (e) {}
+    }
+
     // If an active setup is currently running, mark all candidate setups as QUEUED_WAITING
     if (this.activeSetup) {
       Object.values(candidates).forEach((c) => {
@@ -1675,8 +1758,12 @@ export class CentralSignalManagerEngine {
     if (this.activeSetup) {
       this.monitorActiveSetupLifecycle(px, candles5m);
     } else if (!this.cooldown.isActive && marketStatus === "HEALTHY") {
-      // 5. SETUP PRIORITY & SELECTION ENGINE (Select ONLY ONE winning setup)
-      this.runPriorityCompetitionAndSelectWinner(candidates, consensus, px);
+      // Check again if external active trade exists before running priority competition
+      const extTrade = this.externalActiveTradeGetter ? this.externalActiveTradeGetter() : null;
+      if (!extTrade) {
+        // 5. SETUP PRIORITY & SELECTION ENGINE (Select ONLY ONE winning setup)
+        this.runPriorityCompetitionAndSelectWinner(candidates, consensus, px);
+      }
     }
 
     // 6. RANKINGS & LEADERBOARD

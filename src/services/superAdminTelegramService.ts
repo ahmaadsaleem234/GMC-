@@ -2434,16 +2434,22 @@ After a trade hits TP or SL, the Central Signal Manager locks new trade generati
           { text: "🔄 Reset / Skip Cooldown Now", callback_data: "adm:csm:cd:reset" },
         ],
         [
+          { text: duration === 5 ? "🔘 5 Min (Active)" : "⏱️ Set 5 Min", callback_data: "adm:csm:cd:set:5" },
+          { text: duration === 10 ? "🔘 10 Min (Active)" : "⏱️ Set 10 Min", callback_data: "adm:csm:cd:set:10" },
           { text: duration === 15 ? "🔘 15 Min (Active)" : "⏱️ Set 15 Min", callback_data: "adm:csm:cd:set:15" },
-          { text: duration === 30 ? "🔘 30 Min (Active)" : "⏱️ Set 30 Min", callback_data: "adm:csm:cd:set:30" },
         ],
         [
-          { text: duration === 35 ? "🔘 35 Min (Active)" : "⏱️ Set 35 Min", callback_data: "adm:csm:cd:set:35" },
+          { text: duration === 20 ? "🔘 20 Min (Active)" : "⏱️ Set 20 Min", callback_data: "adm:csm:cd:set:20" },
+          { text: duration === 30 ? "🔘 30 Min (Active)" : "⏱️ Set 30 Min", callback_data: "adm:csm:cd:set:30" },
           { text: duration === 45 ? "🔘 45 Min (Active)" : "⏱️ Set 45 Min", callback_data: "adm:csm:cd:set:45" },
         ],
         [
+          { text: duration === 60 ? "🔘 60 Min (Active)" : "⏱️ Set 60 Min", callback_data: "adm:csm:cd:set:60" },
           { text: "🔄 Refresh Status", callback_data: "adm:csm:cooldown" },
+        ],
+        [
           { text: "🔙 Central Manager", callback_data: "adm:csm:menu" },
+          { text: "👑 Admin Panel", callback_data: "adm:home" },
         ],
       ],
     };

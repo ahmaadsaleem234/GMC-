@@ -42,8 +42,18 @@ export class ModuleSignalGatekeeper {
     startedAt: number;
   } | null = null;
 
-  // 30 Minutes standard cooldown after trade completion
+  // Default cooldown duration in minutes
+  private defaultCooldownDurationMinutes: number = 30;
   public readonly COOLDOWN_DURATION_MS = 30 * 60 * 1000;
+
+  public setGlobalCooldownDuration(minutes: number): void {
+    this.defaultCooldownDurationMinutes = Math.max(1, Math.min(180, Math.round(minutes)));
+    console.log(`[MODULE GATEKEEPER]: Cooldown duration set to ${this.defaultCooldownDurationMinutes} minutes.`);
+  }
+
+  public getGlobalCooldownDuration(): number {
+    return this.defaultCooldownDurationMinutes;
+  }
 
   public clearGlobalCooldown(): void {
     this.globalCooldown = null;
@@ -56,7 +66,7 @@ export class ModuleSignalGatekeeper {
    * Prevents conflicting signals while allowing high quality setups after cooldown.
    */
   public startGlobalCooldown(
-    durationMinutes: number = 30,
+    durationMinutes?: number,
     outcome: string = "TRADE_CLOSED",
     tradeId?: string
   ): void {
@@ -65,8 +75,9 @@ export class ModuleSignalGatekeeper {
       return;
     }
 
+    const mins = typeof durationMinutes === "number" && durationMinutes > 0 ? durationMinutes : this.defaultCooldownDurationMinutes;
     const now = Date.now();
-    const durationMs = durationMinutes * 60 * 1000;
+    const durationMs = mins * 60 * 1000;
     this.globalCooldown = {
       cooldownUntil: now + durationMs,
       triggeredBy: outcome,
@@ -87,7 +98,7 @@ export class ModuleSignalGatekeeper {
     }
 
     console.log(
-      `[GLOBAL COOLDOWN ACTIVATED] ⏳ System-wide cooldown set for ${durationMinutes}m until ${new Date(now + durationMs).toISOString()} (Triggered by ${outcome} on Trade #${tradeId || "N/A"}).`
+      `[GLOBAL COOLDOWN ACTIVATED] ⏳ System-wide cooldown set for ${mins}m until ${new Date(now + durationMs).toISOString()} (Triggered by ${outcome} on Trade #${tradeId || "N/A"}).`
     );
   }
 
@@ -106,7 +117,7 @@ export class ModuleSignalGatekeeper {
     return {
       inCooldown: true,
       remainingMinutes,
-      reason: `System in strict 30-minute post-trade cooldown (${remainingMinutes}m remaining) triggered by ${this.globalCooldown.triggeredBy}.`,
+      reason: `System in strict post-trade cooldown (${remainingMinutes}m remaining) triggered by ${this.globalCooldown.triggeredBy}.`,
     };
   }
 
