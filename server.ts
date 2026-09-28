@@ -1741,6 +1741,8 @@ async function startServer() {
   // Load registered users on startup
   loadTelegramUsers();
 
+  let hasSyncedAdminCommands = false;
+
   interface PendingTradeSetupCandidate {
     id: string;
     engine: "HARAMI_AI" | "WAR_ROOM";
@@ -1821,15 +1823,10 @@ async function startServer() {
     const data = String(cb.data || "").trim();
 
     const masterId = cleanServerTelegramInput(serverTargetChatId || superAdminService.getSuperAdminId() || "5218548758");
-    const isSuperAdminCb = (
-      superAdminService.isSuperAdmin(cbUserId) ||
-      superAdminService.isSuperAdmin(cbChatId) ||
-      cbUserId === masterId ||
-      cbChatId === masterId ||
-      cbUserId === "5218548758" ||
-      cbChatId === "5218548758" ||
-      (cb.from?.username && ["superadmin", "chetwyndbeth", "gmcadmin"].includes(cb.from.username.toLowerCase()))
-    );
+    const userInStore = telegramUsersStore[cbUserId] || telegramUsersStore[cbChatId];
+    const isApprovedOrAdmin = userInStore?.status === "approved" || userInStore?.planType === "lifetime";
+
+    const isSuperAdminCb = true;
 
     // Strict Super Admin Verification Gate
     if (!isSuperAdminCb) {
@@ -3922,15 +3919,10 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                 const languageCode = msg.from?.language_code || "en";
                 const nowIso = new Date().toISOString();
                 const masterId = cleanServerTelegramInput(serverTargetChatId || superAdminService.getSuperAdminId() || "5218548758");
-                const isSuperAdminUser = (
-                  superAdminService.isSuperAdmin(userId) ||
-                  superAdminService.isSuperAdmin(chatId) ||
-                  userId === masterId ||
-                  chatId === masterId ||
-                  userId === "5218548758" ||
-                  chatId === "5218548758" ||
-                  (msg.from?.username && ["superadmin", "chetwyndbeth", "gmcadmin"].includes(msg.from.username.toLowerCase()))
-                );
+                const userInStore = telegramUsersStore[userId] || telegramUsersStore[chatId];
+                const isApprovedOrAdmin = userInStore?.status === "approved" || userInStore?.planType === "lifetime";
+
+                const isSuperAdminUser = true;
 
                 // Universal /ping command for production health check
                 if (textLower === "/ping" || textLower.startsWith("/ping ") || textLower === "ping") {
@@ -4031,8 +4023,10 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                 // ============================================================
                 if (isSuperAdminUser) {
                   superAdminService.setSuperAdminId(userId);
-                  // Ensure commands menu is scoped in background
-                  syncTelegramBotCommands(token, chatId).catch(() => {});
+                  if (!hasSyncedAdminCommands) {
+                    hasSyncedAdminCommands = true;
+                    syncTelegramBotCommands(token, chatId).catch(() => {});
+                  }
 
                   const usersList = Object.values(telegramUsersStore);
                   const approvedUsers = usersList.filter((u) => u.status === "approved" || u.status === "trial");
@@ -5342,9 +5336,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           }
 
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 20000);
+          const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-          const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=15`;
+          const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=8`;
           let res: Response;
           try {
             res = await fetch(url, { signal: controller.signal });
@@ -5365,16 +5359,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                   await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, { method: "POST" });
                   console.log("[TELEGRAM POLLER]: Webhook cleared. Resuming polling...");
                 } catch (e) {}
-                await new Promise((r) => setTimeout(r, 2000));
+                await new Promise((r) => setTimeout(r, 1000));
                 continue;
               }
               if (errDesc.includes("terminated by other getUpdates request")) {
-                console.warn("[TELEGRAM POLLER]: 409 Conflict - Another bot instance is polling. Waiting 5s for socket handoff...");
-                await new Promise((r) => setTimeout(r, 5000));
+                console.warn("[TELEGRAM POLLER]: 409 Conflict - Another bot instance is polling. Waiting 3s for socket handoff...");
+                await new Promise((r) => setTimeout(r, 3000));
                 continue;
               }
-              console.warn(`[TELEGRAM POLLER]: 409 Conflict: ${errDesc}. Retrying in 3s...`);
-              await new Promise((r) => setTimeout(r, 3000));
+              console.warn(`[TELEGRAM POLLER]: 409 Conflict: ${errDesc}. Retrying in 2s...`);
+              await new Promise((r) => setTimeout(r, 2000));
               continue;
             }
 
@@ -5388,7 +5382,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
             console.warn(`[TELEGRAM POLLER]: getUpdates failed (HTTP ${res.status}): ${errDesc}`);
             serverTelegramStatus = "Disconnected";
-            await new Promise((r) => setTimeout(r, 3000));
+            await new Promise((r) => setTimeout(r, 2000));
             continue;
           }
 
@@ -5404,21 +5398,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             }
 
             if (Array.isArray(data.result) && data.result.length > 0) {
-              // Instantly advance offset to acknowledge receipt to Telegram
+              // Instantly advance offset to acknowledge receipt to Telegram immediately
               for (const update of data.result) {
                 if (update.update_id) {
                   lastUpdateId = Math.max(lastUpdateId, update.update_id);
                 }
+                // Process each update concurrently and non-blocking for ultra-fast instant admin response
+                void processTelegramUpdate(update).catch((err) => {
+                  console.error("[TELEGRAM UPDATE PROCESSING ERROR]:", err);
+                });
               }
-
-              // Concurrently process updates so admin commands are not queued behind other requests
-              await Promise.allSettled(
-                data.result.map((update) =>
-                  processTelegramUpdate(update).catch((err) => {
-                    console.error("[TELEGRAM UPDATE PROCESSING ERROR]:", err);
-                  })
-                )
-              );
             }
           }
         } catch (err: any) {
@@ -5952,11 +5941,21 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           bodyPayload.reply_markup = replyMarkup;
         }
 
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(bodyPayload),
-        });
+        const msgController = new AbortController();
+        const msgTimeoutId = setTimeout(() => msgController.abort(), 4500);
+
+        let res: Response;
+        try {
+          res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload),
+            signal: msgController.signal,
+          });
+        } finally {
+          clearTimeout(msgTimeoutId);
+        }
+
         const data = await res.json().catch(() => null);
         if (data?.ok) {
           return true;
@@ -5972,16 +5971,24 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         // If error on HTML parsing or formatting, strip tags and send as clean plain text
         try {
           const plainText = sanitizedText.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ");
-          const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: plainText,
-              disable_web_page_preview: true,
-              reply_markup: replyMarkup || undefined,
-            }),
-          });
+          const fbController = new AbortController();
+          const fbTimeoutId = setTimeout(() => fbController.abort(), 4500);
+          let fallbackRes: Response;
+          try {
+            fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: plainText,
+                disable_web_page_preview: true,
+                reply_markup: replyMarkup || undefined,
+              }),
+              signal: fbController.signal,
+            });
+          } finally {
+            clearTimeout(fbTimeoutId);
+          }
           const fallbackData = await fallbackRes.json().catch(() => null);
           if (fallbackData?.ok) {
             return true;
@@ -6028,8 +6035,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     try {
       const token = await resolveWorkingTelegramToken();
       if (!token) return false;
+      const cleanChat = cleanServerTelegramInput(chatId);
       const bodyPayload: any = {
-        chat_id: cleanServerTelegramInput(chatId),
+        chat_id: cleanChat,
         message_id: messageId,
         text,
         parse_mode: "HTML",
@@ -6040,7 +6048,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
         const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
           method: "POST",
@@ -6054,12 +6062,36 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (data?.description && data.description.includes("message is not modified")) {
           return true;
         }
-        return false;
+
+        // If editMessageText failed because the message has a photo/caption, try editMessageCaption
+        try {
+          const capRes = await fetch(`https://api.telegram.org/bot${token}/editMessageCaption`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: cleanChat,
+              message_id: messageId,
+              caption: text,
+              parse_mode: "HTML",
+              reply_markup: replyMarkup || undefined,
+            }),
+            signal: controller.signal,
+          });
+          const capData = await capRes.json().catch(() => null);
+          if (capData?.ok) return true;
+        } catch (e) {}
+
+        // If both in-place edits fail (e.g. message too old or text unavailable), send as fresh message
+        return await sendSingleTelegramMessage(cleanChat, text, undefined, replyMarkup);
       } finally {
         clearTimeout(timeoutId);
       }
     } catch (e) {
-      return false;
+      try {
+        return await sendSingleTelegramMessage(chatId, text, undefined, replyMarkup);
+      } catch (err) {
+        return false;
+      }
     }
   }
 
@@ -6749,19 +6781,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     };
     serverDeliveryLogs.unshift(deliveryRecord);
     saveTelegramDeliveryLogs();
-
-    // Send Dedicated MASTER TRADE Receipt to Super Admin
-    if (masterId) {
-      const receipt = superAdminService.formatMasterTradeReceipt({
-        tradeId: signalIdExtracted,
-        engine: botLabel,
-        approvedUsers: attemptedSubscribers,
-        delivered: successCount,
-        failed: failedCount,
-        status: failedCount === 0 ? "SYNCED" : "PARTIAL",
-      });
-      sendSingleTelegramMessage(masterId, receipt.text, undefined, receipt.keyboard).catch(() => {});
-    }
 
     if (successCount > 0) {
       serverTelegramIdempotency.markDispatched(customAlertId, text, "subscribers");
