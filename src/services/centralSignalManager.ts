@@ -25,6 +25,7 @@ try {
 }
 
 import { Candle, LivePrice } from "../types";
+import { tradeStateManager } from "./tradeStateManager.js";
 import {
   calculateKhatarnakJugaadSetup,
   KhatarnakJugaadSetup,
@@ -1194,24 +1195,30 @@ export class CentralSignalManagerEngine {
       };
     }
 
-    // 1. Check if an active trade is already running
-    if (this.activeSetup) {
+    // 1. Check if an active trade is already running (internally or externally)
+    const extTrade = this.externalActiveTradeGetter ? this.externalActiveTradeGetter() : null;
+    const hasActiveExt = extTrade && (extTrade.status === "WAITING_FOR_ENTRY" || extTrade.status === "ENTRY_CONFIRMED" || extTrade.status === "OPEN" || extTrade.status?.startsWith("TP"));
+    const activeRunning = this.activeSetup || (hasActiveExt ? extTrade : null) || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null);
+
+    if (activeRunning) {
+      const activeId = (activeRunning as any).setupId || (activeRunning as any).signalId || (activeRunning as any).id || "ACTIVE";
+      const activeBrain = (activeRunning as any).brainName || (activeRunning as any).strategyName || "Master Engine";
       // If it is the exact same setup being re-confirmed / updated, allow it
-      if (setupData.setupId && this.activeSetup.setupId === setupData.setupId) {
+      if (setupData.setupId && activeId === setupData.setupId) {
         return {
           allowed: true,
           reason: "ALLOWED",
-          message: `Setup ${this.activeSetup.setupId} is already the Single Active Setup.`,
-          activeSetup: this.activeSetup,
+          message: `Setup ${activeId} is already the Single Active Setup.`,
+          activeSetup: this.activeSetup || undefined,
         };
       }
 
-      console.log(`[${source} → CENTRAL GATEKEEPER]: ⏳ QUEUED — Active trade currently running (${this.activeSetup.brainName} [${this.activeSetup.setupId}]).`);
+      console.log(`[${source} → CENTRAL GATEKEEPER]: ⏳ QUEUED — Active trade currently running (${activeBrain} [${activeId}]).`);
       return {
         allowed: false,
         reason: "BLOCKED_ACTIVE_EXISTS",
-        message: `Gatekeeper Block: Only 1 active trade allowed on Telegram. Currently active: ${this.activeSetup.brainName} [${this.activeSetup.setupId}] (${this.activeSetup.lifecycleStatusLabel}). This setup remains QUEUED in the background.`,
-        activeSetup: this.activeSetup,
+        message: `Gatekeeper Block: Only 1 active trade allowed on Telegram. Currently active: ${activeBrain} [${activeId}]. Next setup remains QUEUED in background.`,
+        activeSetup: this.activeSetup || undefined,
       };
     }
 

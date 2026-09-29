@@ -1126,6 +1126,7 @@ async function startServer() {
   let isPollingLoopRunning = false;
   let telegramPollingStarted = false;
   let lastUpdateId = 0;
+  const STRICT_30_MIN_COOLDOWN_MS = 30 * 60 * 1000;
 
   function cleanServerTelegramInput(str?: string): string {
     if (!str) return "";
@@ -2226,7 +2227,7 @@ async function startServer() {
         centralSignalManager.startCooldown(30);
         serverActiveTrade = null;
         serverLastClosedTime = Date.now();
-        serverCooldownUntil = serverLastClosedTime + STRICT_30_MIN_COOLDOWN_MS;
+        serverCooldownUntil = serverLastClosedTime + getSystemCooldownMs();
         await centralSignalManager.forceCloseActiveSetup("Cancelled by Super Admin");
         await answerTelegramCallback(cbId, "❌ Trade Cancelled", false);
       } else {
@@ -4455,7 +4456,9 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                   if (textLower.startsWith("/reset_cooldown") || textLower.startsWith("/unblock") || textLower.startsWith("/clear_cooldown") || textLower.startsWith("/clear_cd") || ["unblock", "reset cooldown"].includes(textLower)) {
                     centralSignalManager.resetCooldown();
                     tradeStateManager.resetCooldown();
+                    moduleSignalGatekeeper.clearGlobalCooldown();
                     serverLastClosedTime = 0;
+                    serverCooldownUntil = 0;
                     serverCurrentDecision = "SCANNING LIVE (UNBLOCKED)";
                     superAdminService.logAction("COOLDOWN_RESET", "Super Admin manually reset cooldown via Telegram command", userId);
                     await sendSingleTelegramMessage(
@@ -4623,6 +4626,41 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
 
                   // Super Admin /trade_now or /force_signal -> Immediately force generate and dispatch a high-probability trade
                   if (textLower.startsWith("/trade_now") || textLower.startsWith("/force_trade") || textLower.startsWith("/forcesignal") || textLower.startsWith("/generate_signal")) {
+                    const existingActive = serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup();
+                    if (existingActive) {
+                      const activeId = (existingActive as any).signalId || (existingActive as any).id || (existingActive as any).setupId || "ACTIVE";
+                      const activeDir = (existingActive as any).direction || "TRADE";
+                      const activeEntry = (existingActive as any).entry || (existingActive as any).preferredEntry || "";
+                      await sendSingleTelegramMessage(
+                        chatId,
+                        `⚠️ <b>CANNOT GENERATE NEW TRADE</b>\n━━━━━━━━━━━━━━━━━━━━\nAn active trade (<b>#${activeId}</b> • ${activeDir} @ $${activeEntry}) is currently running on Telegram!\n\nSystem enforces a strict <b>Single Active Trade</b> policy. Wait until SL or TP hit or manually close current trade before generating next setup.`
+                      );
+                      continue;
+                    }
+
+                    const cooldown = tradeStateManager.checkCooldown();
+                    const centralCd = centralSignalManager.isCooldownActive();
+                    const nowCheck = Date.now();
+                    const systemCdMs = getSystemCooldownMs();
+                    const timeSinceClosed = serverLastClosedTime > 0 ? nowCheck - serverLastClosedTime : Infinity;
+                    const serverCd = (serverCooldownUntil > nowCheck) || (timeSinceClosed < systemCdMs);
+
+                    if (cooldown.inCooldown || centralCd || serverCd) {
+                      const remMs = Math.max(
+                        0,
+                        cooldown.inCooldown ? cooldown.cooldownUntil - nowCheck : 0,
+                        centralCd ? centralSignalManager.getCooldownRemainingSeconds() * 1000 : 0,
+                        serverCooldownUntil > nowCheck ? serverCooldownUntil - nowCheck : 0,
+                        timeSinceClosed < systemCdMs ? systemCdMs - timeSinceClosed : 0
+                      );
+                      const remM = Math.ceil(remMs / 60000);
+                      await sendSingleTelegramMessage(
+                        chatId,
+                        `⏳ <b>COOLDOWN ACTIVE (${remM}m remaining)</b>\n━━━━━━━━━━━━━━━━━━━━\nSystem is currently in strict post-trade cooldown after TP/SL hit.\n\nNext automated trade will be sent once cooldown completes.\n<i>To override cooldown and force an immediate setup, send <code>/unblock</code> first.</i>`
+                      );
+                      continue;
+                    }
+
                     const tick = await fetchLiveServerGoldTick();
                     const entry = Number(tick.price.toFixed(2));
                     const now = Date.now();
@@ -5587,7 +5625,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     });
   } catch (e) {}
 
-  const STRICT_30_MIN_COOLDOWN_MS = getSystemCooldownMs(); // Dynamic Cooldown after SL or TP hit
+  // Dynamic Cooldown after SL or TP hit
   let serverLastClosedTime = 0;
   let serverCooldownUntil = 0;
 
@@ -5733,8 +5771,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         return true;
       }
 
-      if ((serverCooldownUntil > now) || (serverLastClosedTime > 0 && now - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)) {
-        const remainingMs = Math.max(0, serverCooldownUntil > now ? serverCooldownUntil - now : STRICT_30_MIN_COOLDOWN_MS - (now - serverLastClosedTime));
+      if ((serverCooldownUntil > now) || (serverLastClosedTime > 0 && now - serverLastClosedTime < getSystemCooldownMs())) {
+        const remainingMs = Math.max(0, serverCooldownUntil > now ? serverCooldownUntil - now : getSystemCooldownMs() - (now - serverLastClosedTime));
         const remMins = Math.floor(remainingMs / 60000);
         const remSecs = Math.floor((remainingMs % 60000) / 1000);
         console.log(`[DEDUP/COOLDOWN GUARD]: Blocked ${direction} signal from ${originEngine}. Strict 30-minute cooldown active (${remMins}m ${remSecs}s remaining).`);
@@ -6520,8 +6558,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           return false;
         }
 
-        if ((serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)) {
-          const remainingMs = Math.max(0, serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : STRICT_30_MIN_COOLDOWN_MS - (Date.now() - serverLastClosedTime));
+        if ((serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs())) {
+          const remainingMs = Math.max(0, serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : getSystemCooldownMs() - (Date.now() - serverLastClosedTime));
           const remMins = Math.floor(remainingMs / 60000);
           const remSecs = Math.floor((remainingMs % 60000) / 1000);
           console.warn(
@@ -6543,7 +6581,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             centralSignalManager.isCooldownActive() ||
             globalCooldown.inCooldown ||
             (serverCooldownUntil > Date.now()) ||
-            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS),
+            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs()),
         });
 
         if (!riskCheck.allowed) {
@@ -7588,12 +7626,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         return;
       }
 
-      // Check Strict 30-Minute Cooldown across all managers
+      // Check Strict Configurable Cooldown across all managers
       const cooldown = tradeStateManager.checkCooldown();
       const centralCooldownActive = centralSignalManager.isCooldownActive();
       const globalGateCheck = moduleSignalGatekeeper.isGlobalCooldownActive();
+      const systemCooldownMs = getSystemCooldownMs();
       const timeSinceClosed = serverLastClosedTime > 0 ? now - serverLastClosedTime : Infinity;
-      const isServerInCooldown = (serverCooldownUntil > now) || (timeSinceClosed < STRICT_30_MIN_COOLDOWN_MS);
+      const isServerInCooldown = (serverCooldownUntil > now) || (timeSinceClosed < systemCooldownMs);
 
       if (cooldown.inCooldown || centralCooldownActive || globalGateCheck.inCooldown || isServerInCooldown) {
         const remainingMs = Math.max(
@@ -7602,11 +7641,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           centralCooldownActive ? centralSignalManager.getCooldownRemainingSeconds() * 1000 : 0,
           globalGateCheck.inCooldown ? globalGateCheck.remainingMinutes * 60000 : 0,
           serverCooldownUntil > now ? serverCooldownUntil - now : 0,
-          timeSinceClosed < STRICT_30_MIN_COOLDOWN_MS ? STRICT_30_MIN_COOLDOWN_MS - timeSinceClosed : 0
+          timeSinceClosed < systemCooldownMs ? systemCooldownMs - timeSinceClosed : 0
         );
         const remMins = Math.floor(remainingMs / 60000);
         const remSecs = Math.floor((remainingMs % 60000) / 1000);
-        serverCurrentDecision = `WAIT — 30-MIN COOLDOWN ACTIVE (${remMins}m ${remSecs}s remaining after TP/SL)`;
+        serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${remMins}m ${remSecs}s remaining after TP/SL)`;
         return;
       }
 
@@ -7620,7 +7659,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
       if (
         (timeSinceLastRecheck >= SCAN_INTERVAL_MS || serverLastRecheckTime === 0) &&
-        (serverLastClosedTime === 0 || now - serverLastClosedTime >= STRICT_30_MIN_COOLDOWN_MS)
+        (serverLastClosedTime === 0 || now - serverLastClosedTime >= systemCooldownMs)
       ) {
         serverLastRecheckTime = now;
         serverLastAnalysisTime = now;
@@ -7974,6 +8013,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
     // 2. Continuous Tracking & Real-Price Outcome Handling for Active Trade
     else {
+      const activeId = systemActiveTrade ? (systemActiveTrade.signalId || systemActiveTrade.id || "ACTIVE") : "ACTIVE";
+      const activeDir = systemActiveTrade ? systemActiveTrade.direction : "BUY";
+      const activePx = systemActiveTrade ? (systemActiveTrade.entry || systemActiveTrade.preferredEntry || "") : "";
+      serverCurrentDecision = `HOLD & MONITORING — Active Trade #${activeId} (${activeDir} @ $${activePx})`;
+
       if (!serverActiveTrade) {
         // Active position belongs to another engine (War Room, Khatarnak Jugaad, Central Signal Manager)
         const activeName =
@@ -8119,10 +8163,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           tradeStateManager.closeActiveTrade("EXPIRED", tick.price, 0, 0, 0);
           centralSignalManager.clearActiveSetup();
-          tradeStateManager.startCooldown(30, "EXPIRED", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(30);
-          moduleSignalGatekeeper.startGlobalCooldown(30, "EXPIRED", trade.signalId || trade.id);
-          serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "EXPIRED", 30);
+          tradeStateManager.startCooldown(serverConfiguredCooldownMins, "EXPIRED", trade.signalId || trade.id);
+          centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+          moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "EXPIRED", trade.signalId || trade.id);
+          serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "EXPIRED", serverConfiguredCooldownMins);
 
           serverTradeHistory.unshift({
             id: trade.id,
@@ -8156,7 +8200,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
-          serverCooldownUntil = now + STRICT_30_MIN_COOLDOWN_MS;
+          serverCooldownUntil = now + getSystemCooldownMs();
           serverCurrentDecision = "WAIT — 30-MIN COOLDOWN ACTIVE (30m remaining after trade expired)";
           return;
         } else {
@@ -8426,10 +8470,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
-              moduleSignalGatekeeper.startGlobalCooldown(30, "TP_HIT", trade.signalId || trade.id);
-              centralSignalManager.startCooldown(30);
-              tradeStateManager.startCooldown(30, "TP_HIT", trade.signalId || trade.id);
-              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", 30);
+              moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+              centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+              tradeStateManager.startCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
+              serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "TP4_HIT", serverConfiguredCooldownMins);
 
               const outcomeText = formatTpHitAlert(4, {
                 signalId: trade.signalId || trade.id,
@@ -9231,7 +9275,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             serverTelegramIdempotency.checkCooldown().inCooldown ||
             moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown ||
             (serverCooldownUntil > Date.now()) ||
-            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS);
+            (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs());
 
           // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated)
           if (centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
@@ -9261,7 +9305,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               }));
 
               const anyTradeActive = !!serverActiveTrade || tradeStateManager.hasActiveTrade() || !!centralSignalManager.getActiveSetup() || !!warRoomServerService.getActiveSetup();
-              const cooldownActive = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown || (serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS);
+              const cooldownActive = tradeStateManager.checkCooldown().inCooldown || centralSignalManager.isCooldownActive() || moduleSignalGatekeeper.isGlobalCooldownActive().inCooldown || (serverCooldownUntil > Date.now()) || (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs());
 
               if (!serverActiveKhatarnakSetup && !anyTradeActive && !cooldownActive) {
                 const evaluatedSetup = calculateKhatarnakJugaadSetup(
@@ -9923,13 +9967,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         tradeStateManager.checkCooldown().inCooldown ||
         centralSignalManager.isCooldownActive() ||
         (serverCooldownUntil > Date.now()) ||
-        (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < STRICT_30_MIN_COOLDOWN_MS)
+        (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs())
       ),
       cooldownRemainingMinutes: Math.ceil(
         Math.max(
           0,
           serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : 0,
-          serverLastClosedTime > 0 ? STRICT_30_MIN_COOLDOWN_MS - (Date.now() - serverLastClosedTime) : 0,
+          serverLastClosedTime > 0 ? getSystemCooldownMs() - (Date.now() - serverLastClosedTime) : 0,
           tradeStateManager.checkCooldown().inCooldown ? tradeStateManager.checkCooldown().cooldownUntil - Date.now() : 0
         ) / 60000
       ),
