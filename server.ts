@@ -9054,10 +9054,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     isBroadcasterLoopRunning = true;
     console.log("⚡ [SERVER 24/7 BROADCASTER ENGINE]: Background Autonomous Signal Generator Engine Online!");
 
-    // Wire War Room Telegram Auto-Publisher and Cross-Engine Deduplication
-    warRoomServerService.setTelegramSender(async (msg, alertId) => {
-      return await sendServerTelegramMessage(msg, undefined, undefined, alertId);
-    });
+    // Wire War Room Telegram Auto-Publisher and Cross-Engine Deduplication (Telegram is reserved for Harami AI)
+    warRoomServerService.setTelegramSender(async () => false);
     warRoomServerService.setDuplicateChecker((direction, price) => {
       return checkSignalDuplicate("WAR_ROOM", direction, price);
     });
@@ -9067,101 +9065,41 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       startTelegramPollingLoopSafe();
     }
 
-    // 🏆 Central Signal Manager Autonomous Setup Promotion Listener
+    // 🏆 Central Signal Manager Setup Promotion Synchronization Listener
     centralSignalManager.onSetupPromoted(async (setup: ActiveCentralSetup) => {
       try {
-        console.log(`[SERVER CENTRAL DISPATCHER]: 🏆 Winning AI Setup Promoted: #${setup.setupId} (${setup.brainSource} ${setup.direction} @ $${setup.preferredEntry})`);
+        console.log(`[SERVER CENTRAL DISPATCHER]: 🏆 Winning AI Setup Synchronized: #${setup.setupId} (${setup.brainSource} ${setup.direction} @ $${setup.preferredEntry})`);
         
         // USER DIRECTIVE: ONLY Harami AI is allowed on Telegram!
         if (setup.brainSource !== "HARAMI_AI") {
-          console.log(`[SERVER CENTRAL DISPATCHER]: Skipping Telegram broadcast for ${setup.brainSource} setup #${setup.setupId} (Telegram is exclusively reserved for Harami AI).`);
           return;
         }
 
-        if (mt5Config.telegramSignalsEnabled) {
-          let message = "";
-          let chartBuffer: Buffer | undefined;
-
-          message = formatHaramiSignalMessage({
+        // Synchronize serverActiveTrade so all engines acknowledge the single active trade
+        if (!serverActiveTrade) {
+          serverActiveTrade = {
+            id: setup.setupId,
             signalId: setup.setupId,
+            symbol: "FOREXCOM:XAUUSD",
             direction: setup.direction,
-            symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
-            entryLow: setup.entryZoneLow,
-            entryHigh: setup.entryZoneHigh,
-            bestEntry: setup.preferredEntry,
-            currentPrice: setup.preferredEntry,
+            entry: setup.preferredEntry,
+            entryZoneLow: setup.entryZoneLow,
+            entryZoneHigh: setup.entryZoneHigh,
             sl: setup.stopLoss,
             tp1: setup.tp1,
             tp2: setup.tp2,
             tp3: setup.tp3,
             tp4: setup.finalTp,
-            rr: setup.rrRatioString || "1:2.8",
             confidence: setup.marketConfidence || setup.setupScore || 94,
-            reason: setup.selectionReason || generateDynamicReason(setup.direction),
-            isAlreadyInZone: setup.lifecycleState === "ACTIVE" || setup.lifecycleState === "ENTRY_HIT",
-          });
-
-          try {
-            chartBuffer = await safeGenerateChartBufferWithTimeout({
-              symbol: "FOREXCOM:XAUUSD (Gold Spot)",
-              direction: setup.direction,
-              entryZone: [setup.entryZoneLow, setup.entryZoneHigh],
-              bestEntry: setup.preferredEntry,
-              sl: setup.stopLoss,
-              tp1: setup.tp1,
-              tp2: setup.tp2,
-              tp3: setup.tp3,
-              tp4: setup.finalTp || setup.tp3,
-              currentPrice: setup.preferredEntry,
-              confidence: setup.marketConfidence || setup.setupScore || 94,
-              reason: setup.selectionReason || generateDynamicReason(setup.direction),
-              timestamp: new Date().toISOString(),
-            }, 1500);
-          } catch (chartErr) {
-            console.warn("[SERVER CENTRAL DISPATCHER]: Chart generation note:", chartErr);
-          }
-
-          if (message) {
-            const ok = await sendServerTelegramMessage(message, undefined, chartBuffer, `${setup.setupId}_NEW_SETUP`, true);
-            if (ok) {
-              setup.entryDispatched = true;
-              setup.telegramDispatched = true;
-              if (!setup.dispatchedOutcomes) setup.dispatchedOutcomes = [];
-              if (!setup.dispatchedOutcomes.includes("SIGNAL")) setup.dispatchedOutcomes.push("SIGNAL");
-              centralSignalManager.markSetupDispatched(setup.setupId);
-              tradeStateManager.markSignalDispatched(setup.setupId);
-
-              // Synchronize serverActiveTrade so all engines acknowledge the single active trade
-              serverActiveTrade = {
-                id: setup.setupId,
-                signalId: setup.setupId,
-                symbol: "FOREXCOM:XAUUSD",
-                direction: setup.direction,
-                entry: setup.preferredEntry,
-                entryZoneLow: setup.entryZoneLow,
-                entryZoneHigh: setup.entryZoneHigh,
-                sl: setup.stopLoss,
-                tp1: setup.tp1,
-                tp2: setup.tp2,
-                tp3: setup.tp3,
-                tp4: setup.finalTp,
-                confidence: setup.marketConfidence || setup.setupScore || 94,
-                reason: setup.selectionReason,
-                status: "ENTRY_CONFIRMED",
-                entryDispatched: true,
-                dispatchedOutcomes: ["SIGNAL"],
-                createdAt: Date.now(),
-              } as any;
-            }
-            superAdminService.logAction(
-              "CENTRAL_AI_AUTO_DISPATCH",
-              `${setup.brainName} Setup #${setup.setupId} (${setup.direction} @ $${setup.preferredEntry.toFixed(2)}) dispatched to Telegram.`,
-              "SYSTEM"
-            );
-          }
+            reason: setup.selectionReason,
+            status: "ENTRY_CONFIRMED",
+            entryDispatched: Boolean(setup.entryDispatched),
+            dispatchedOutcomes: setup.dispatchedOutcomes || ["SIGNAL"],
+            createdAt: Date.now(),
+          } as any;
         }
       } catch (err) {
-        console.error("[SERVER CENTRAL PROMOTION BROADCAST ERROR]:", err);
+        console.error("[SERVER CENTRAL PROMOTION SYNC ERROR]:", err);
       }
     });
 
@@ -9388,14 +9326,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             (serverCooldownUntil > Date.now()) ||
             (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs());
 
-          // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated)
+          // 🛡️ WAR ROOM SUPREME 7-GATE CONFLUENCE ENGINE (Source-gated telemetry only)
           if (centralSignalManager.isAiSourceEnabled("WAR_ROOM")) {
             if (!warRoomServerService.getActiveSetup() && !anyTradeActiveGlobally && !isSystemInCooldown) {
               await warRoomServerService.generateWarRoomState().catch(() => null);
             }
-            await warRoomServerService.tickMonitoring(goldTick.price, async (msg, customAlertId) => {
-              return await sendServerTelegramMessage(msg, undefined, undefined, customAlertId);
-            });
+            await warRoomServerService.tickMonitoring(goldTick.price, async () => false);
           }
 
           // 💀 KHATARNAK JUGAAD 1M INSTITUTIONAL 2.6 ENGINE REALTIME DISPATCHER (Source-gated)

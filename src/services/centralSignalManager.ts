@@ -2517,10 +2517,7 @@ export class CentralSignalManagerEngine {
       }
     );
 
-    // Notify all background / server listeners for automatic Telegram broadcasting
-    if (this.activeSetup) {
-      this.notifySetupPromoted(this.activeSetup);
-    }
+    // Note: Live official Telegram dispatching is exclusively managed by the master engine
   }
 
   /**
