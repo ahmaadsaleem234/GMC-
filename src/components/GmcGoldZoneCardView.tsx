@@ -240,127 +240,50 @@ export const GmcGoldZoneCardView: React.FC<GmcGoldZoneCardViewProps> = ({
   };
 
   return (
-    <div id="gmc-gold-zone-card-root" className="max-w-7xl mx-auto px-2 sm:px-4 py-4 space-y-6 font-mono text-slate-200">
-      
-      {/* SCENARIO QUICK TEST CONTROL BAR */}
-      <div className="bg-[#05070E] border border-amber-500/30 p-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
-            ZONE CARD SIMULATION MODE:
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setSelectedScenario("PREMIUM_WATCH")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${
-              selectedScenario === "PREMIUM_WATCH"
-                ? "bg-amber-500 text-black border-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.5)]"
-                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
-            }`}
-          >
-            🟡 1. PREMIUM WATCH (2/6 GATES)
-          </button>
-          <button
-            onClick={() => setSelectedScenario("ZONE_DIP_ACTIVE")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${
-              selectedScenario === "ZONE_DIP_ACTIVE"
-                ? "bg-emerald-500 text-black border-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]"
-                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
-            }`}
-          >
-            🟢 2. T1 ZONE DIP ACTIVE (6/6 CONFIRMED)
-          </button>
-          <button
-            onClick={() => setSelectedScenario("SELL_SCALP")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${
-              selectedScenario === "SELL_SCALP"
-                ? "bg-rose-500 text-white border-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.5)]"
-                : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
-            }`}
-          >
-            🔴 3. SELL SCALP ZONE SCAN
-          </button>
-        </div>
-      </div>
-
+    <div id="gmc-gold-zone-card-root" className="max-w-7xl mx-auto px-2 sm:px-4 py-2 space-y-5 font-mono text-slate-200">
       {/* GMC GOLD ZONE CARD - MAIN HERO BOARD */}
-      <div className="bg-gradient-to-b from-[#0B0F1A] via-[#070A12] to-[#04060A] border-2 border-amber-500/50 rounded-3xl p-4 sm:p-7 shadow-[0_0_50px_rgba(245,158,11,0.15)] relative overflow-hidden space-y-6">
+      <div className="bg-[#0B0F17] border border-[#232B3A] rounded-2xl p-4 sm:p-6 shadow-xl relative overflow-hidden space-y-5">
         
-        {/* Top Header Row with Custom Circular Logo Badge */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border-b border-amber-500/20 pb-5">
-          <div className="flex items-center gap-4">
-            {/* Custom Circular Logo Emblem */}
-            <div className="relative group shrink-0">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-300 via-amber-500 to-amber-900 rounded-full border-2 border-amber-300/80 p-0.5 shadow-[0_0_25px_rgba(245,158,11,0.5)] flex items-center justify-center text-center">
-                <div className="w-full h-full bg-[#080B14] rounded-full flex flex-col items-center justify-center p-1 border border-amber-400/40">
-                  <Crown className="w-5 h-5 text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-pulse" />
-                  <span className="text-[11px] sm:text-[12px] font-black tracking-tighter text-amber-300 leading-none mt-0.5">
-                    GMC
-                  </span>
-                  <span className="text-[8px] font-black tracking-widest text-amber-400 uppercase leading-none">
-                    GOLD
-                  </span>
-                </div>
-              </div>
-              <span className="absolute -bottom-1 -right-1 bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shadow-md">
-                ZONE
-              </span>
+        {/* Top Header Row with Clear Live Data */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#1E2636] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center font-bold text-slate-950 text-lg shadow-md shrink-0">
+              👑
             </div>
-
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black text-amber-400 uppercase tracking-tight flex items-center gap-2">
-                  {getModuleTitle("gmcgold")}
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  GOLD APEX ZONE MATRIX
                 </h1>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300 mt-1">
-                <span className="text-amber-400 font-extrabold flex items-center gap-1">
-                  🥇 {selectedAssetKey}
-                </span>
-                <span className="text-slate-600">•</span>
-                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold">
-                  ~${bankLevels.basePrice.toLocaleString("en-US", { minimumFractionDigits: decimals })}
+                <span className="px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-semibold">
+                  LIVE 15M
                 </span>
               </div>
+              <p className="text-xs text-slate-400 font-sans mt-0.5">
+                Multi-Timeframe Order Flow, Bank Liquidity Levels &amp; 6-Gate Confirmation
+              </p>
             </div>
           </div>
 
-          {/* Asset Switcher & Live Refresh CTA */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center bg-[#03060C] border border-amber-500/30 p-1 rounded-xl">
-              {SUPPORTED_ASSETS.map((a) => (
-                <button
-                  key={a.key}
-                  onClick={() => setSelectedAssetKey(a.key)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    selectedAssetKey === a.key
-                      ? "bg-gradient-to-r from-amber-500 to-amber-600 text-black shadow-[0_0_15px_rgba(245,158,11,0.4)]"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {a.short}
-                </button>
-              ))}
-            </div>
-
+          {/* Action CTAs */}
+          <div className="flex items-center gap-2 self-end sm:self-center">
             {onOpenHeatmapOverlay && (
               <button
                 onClick={onOpenHeatmapOverlay}
-                className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-lg"
+                className="px-3 py-1.5 bg-[#121622] hover:bg-[#181E2E] text-emerald-400 border border-[#232B3A] hover:border-emerald-500/40 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Flame className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                <span>🔥 D3 HEATMAP</span>
+                <Flame className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Heatmap</span>
               </button>
             )}
 
             <button
               onClick={triggerScan}
               disabled={isScanning}
-              className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-lg"
+              className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? "animate-spin text-amber-400" : ""}`} />
-              <span>{isScanning ? "RE-SCANNING..." : "SYNC SCAN"}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
+              <span>{isScanning ? "Scanning..." : "Sync Scan"}</span>
             </button>
           </div>
         </div>

@@ -1,5 +1,35 @@
 [
   {
+    "id": "rej-1790698255684-vuomf",
+    "timestamp": 1790698255684,
+    "timeIso": "2026-09-29T16:10:55.684Z",
+    "timeFormatted": "16:10 UTC",
+    "signalId": "XAUUSD (Gold Spot)",
+    "symbol": "XAUUSD (Gold Spot)",
+    "engine": "Harami AI",
+    "confidence": 93.2,
+    "category": "HIGH_SPREAD",
+    "categoryLabel": "High Spread / Slippage",
+    "reason": "🚫 SIGNAL BLOCKED — DATA/MARKET ANOMALY: Risk:Reward ratio (0.57) is below institutional 1:1.10 minimum.",
+    "currentPrice": 4438.37,
+    "riskMode": "NORMAL"
+  },
+  {
+    "id": "rej-1790698041774-h86op",
+    "timestamp": 1790698041774,
+    "timeIso": "2026-09-29T16:07:21.774Z",
+    "timeFormatted": "16:07 UTC",
+    "signalId": "XAUUSD (Gold Spot)",
+    "symbol": "XAUUSD (Gold Spot)",
+    "engine": "Harami AI",
+    "confidence": 93.2,
+    "category": "HIGH_SPREAD",
+    "categoryLabel": "High Spread / Slippage",
+    "reason": "🚫 SIGNAL BLOCKED — DATA/MARKET ANOMALY: Risk:Reward ratio (0.57) is below institutional 1:1.10 minimum.",
+    "currentPrice": 4438.37,
+    "riskMode": "NORMAL"
+  },
+  {
     "id": "rej-1789340030513-n45je",
     "timestamp": 1789340030513,
     "timeIso": "2026-09-13T22:53:50.513Z",

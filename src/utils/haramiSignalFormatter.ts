@@ -211,17 +211,36 @@ export function formatTpHitAlert(level: 1 | 2 | 3 | 4, params: LifecycleAlertPar
 ${followUpNote}`;
 }
 
+export function formatBreakevenExitAlert(params: LifecycleAlertParams): string {
+  const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
+  const symbol = params.symbol.replace("FOREXCOM:", "");
+  const price = (params.price || params.sl || params.entryPrice || 0).toFixed(2);
+  const dirBadge = params.direction === "BUY" ? "BUY 🟢" : "SELL 🔴";
+
+  return `🛡️ <b>BREAKEVEN EXIT (TRADE CLOSED)</b>
+━━━━━━━━━━━━━━━━━━━
+<b>${signalId} • ${symbol} • ${dirBadge}</b>
+📍 <b>Exit Price:</b> <code>$${price}</code>
+✅ <b>Protected at Breakeven (Risk-Free Exit / $0.00 Loss)</b>
+💰 <b>Partial TP1 Profits Preserved!</b>
+🏁 <b>TRADE CLOSED</b>
+⏳ 30-Minute Quality Cooldown Initiated`;
+}
+
 export function formatBreakevenAlert(params: LifecycleAlertParams): string {
   const signalId = params.signalId.startsWith("#") ? params.signalId : `#${params.signalId}`;
   const symbol = params.symbol.replace("FOREXCOM:", "");
   const sl = (params.sl || params.entryPrice || 0).toFixed(2);
   const dirBadge = params.direction === "BUY" ? "BUY 🟢" : "SELL 🔴";
 
-  return `🔄 <b>SL MOVED TO BREAKEVEN</b>
+  return `🛡️ <b>BREAKEVEN EXIT (TRADE CLOSED)</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>${signalId} • ${symbol} • ${dirBadge}</b>
-🛡 <b>New Stop Loss:</b> <code>${sl}</code>
-🔒 <b>Trade is now 100% Risk-Free ($0.00 Capital at Risk)</b>`;
+📍 <b>Exit Price:</b> <code>$${sl}</code>
+✅ <b>Protected at Breakeven (Risk-Free Exit / $0.00 Loss)</b>
+💰 <b>Partial TP1 Profits Preserved!</b>
+🏁 <b>TRADE CLOSED</b>
+⏳ 30-Minute Quality Cooldown Initiated`;
 }
 
 export function formatProfitSecuredAlert(params: LifecycleAlertParams): string {
@@ -247,7 +266,8 @@ export function formatSlHitAlert(params: LifecycleAlertParams): string {
   return `🛑 <b>STOP LOSS HIT (-${pips} Pips)</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>${signalId} • ${symbol} • ${dirBadge}</b>
-📍 <b>Exit Price:</b> <code>${price}</code>
+📍 <b>Exit Price:</b> <code>$${price}</code>
+🏁 <b>TRADE CLOSED</b>
 🛡 <b>Capital Protected via Disciplined SL</b>
 ⏳ 30-Minute Quality Cooldown Initiated`;
 }

@@ -250,88 +250,19 @@ export function App() {
     };
   }, [isLoggedIn]);
 
-  // WhatsApp Smart Timed Popups State
-  // 1. At 5 seconds: Show existing first popup
-  // 2. After 1 minute of continued usage: Show GMC WhatsApp Community popup (Never show both together)
+  // WhatsApp Modals State (Open only on user intent)
   const [isFirstPopupOpen, setIsFirstPopupOpen] = useState<boolean>(false);
   const [isCommunityPopupOpen, setIsCommunityPopupOpen] = useState<boolean>(false);
-  const firstPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const communityPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    // Check if user already converted or already dismissed popups in this session
-    const isConverted = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-    if (isConverted) return;
-
-    const firstDismissed = safeSessionStorage.getItem("gmc_first_popup_dismissed") === "true";
-    const communityDismissed = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
-
-    // 1. FIRST POPUP: Exactly 5 seconds (5000ms) after entering the website
-    if (!firstDismissed) {
-      firstPopupTimerRef.current = setTimeout(() => {
-        const convertedNow = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-        const dismissedNow = safeSessionStorage.getItem("gmc_first_popup_dismissed") === "true";
-        if (!convertedNow && !dismissedNow) {
-          setIsFirstPopupOpen(true);
-        }
-      }, 5000);
-    }
-
-    // 2. SECOND POPUP (GMC WhatsApp Community): After 1 minute (60000ms) of session usage
-    if (!communityDismissed) {
-      communityPopupTimerRef.current = setTimeout(() => {
-        const convertedNow = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-        const commDismissedNow = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
-        if (!convertedNow && !commDismissedNow) {
-          // IMPORTANT: Do NOT show both popups together.
-          setIsFirstPopupOpen((currentFirstOpen) => {
-            if (currentFirstOpen) {
-              // Defer community popup until first popup is closed
-              safeSessionStorage.setItem("gmc_pending_community_popup", "true");
-              return currentFirstOpen;
-            } else {
-              setIsCommunityPopupOpen(true);
-              return false;
-            }
-          });
-        }
-      }, 60000); // 1 minute
-    }
-
-    return () => {
-      if (firstPopupTimerRef.current) clearTimeout(firstPopupTimerRef.current);
-      if (communityPopupTimerRef.current) clearTimeout(communityPopupTimerRef.current);
-    };
-  }, []);
 
   const handleCloseFirstPopup = () => {
     setIsFirstPopupOpen(false);
-    safeSessionStorage.setItem("gmc_first_popup_dismissed", "true");
-
-    // If 1 minute timer already elapsed while first popup was open, smoothly show community popup
-    const pendingCommunity = safeSessionStorage.getItem("gmc_pending_community_popup") === "true";
-    const commDismissed = safeSessionStorage.getItem("gmc_wa_community_dismissed") === "true";
-    const isConverted = safeSessionStorage.getItem("gmc_wa_popup_converted") === "true";
-
-    if (pendingCommunity && !commDismissed && !isConverted) {
-      safeSessionStorage.removeItem("gmc_pending_community_popup");
-      setTimeout(() => {
-        setIsCommunityPopupOpen(true);
-      }, 1200);
-    }
   };
 
   const handleCloseCommunityPopup = () => {
     setIsCommunityPopupOpen(false);
-    safeSessionStorage.setItem("gmc_wa_community_dismissed", "true");
   };
 
   const handleJoinWhatsApp = () => {
-    safeSessionStorage.setItem("gmc_wa_popup_converted", "true");
-    safeSessionStorage.setItem("gmc_first_popup_dismissed", "true");
-    safeSessionStorage.setItem("gmc_wa_community_dismissed", "true");
-    if (firstPopupTimerRef.current) clearTimeout(firstPopupTimerRef.current);
-    if (communityPopupTimerRef.current) clearTimeout(communityPopupTimerRef.current);
     setIsFirstPopupOpen(false);
     setIsCommunityPopupOpen(false);
   };
@@ -353,8 +284,10 @@ export function App() {
   } = useCentralSignalManagerWatcher(candles15m, candles5m, currentPrice, prices, activeAssetKey);
 
   // Continuously update forming candle with live real-time price
+  const lastAppTickPriceRef = useRef<number>(0);
   useEffect(() => {
-    if (currentPrice && appendTick) {
+    if (currentPrice && appendTick && currentPrice !== lastAppTickPriceRef.current) {
+      lastAppTickPriceRef.current = currentPrice;
       appendTick(currentPrice);
     }
   }, [currentPrice, appendTick]);
@@ -470,299 +403,97 @@ export function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-4">
-        {activeTab !== "vault" && (
-          <>
-            {/* Quick-Switch Asset Monitoring Strip */}
-            <QuickSwitchAssetStrip
-              activeAssetKey={activeAssetKey}
-              setActiveAssetKey={setActiveAssetKey}
-              prices={prices}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-            />
-
-            {/* Navigation Action Bar - Header Nav & Active Module Tracker */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#080A0D] border border-[#292E35] p-3 rounded-2xl font-mono text-xs">
-              <div className="flex items-center gap-2">
-                <button
-                  id="global-nav-back-btn"
-                  onClick={handleGoBack}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5 text-[#F1CC6B]" />
-                  <span>Back</span>
-                </button>
-
-                <button
-                  id="global-nav-home-btn"
-                  onClick={handleGoHome}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239] rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer"
-                >
-                  <Home className="w-3.5 h-3.5 text-[#F1CC6B]" />
-                  <span>Home</span>
-                </button>
-
-                <button
-                  onClick={() => handleSelectTab("landing")}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-all cursor-pointer ${
-                    activeTab === "landing"
-                      ? "bg-[#F1CC6B] text-[#111111] border border-[#F1CC6B]"
-                      : "bg-[#101318] hover:bg-[#161A21] text-[#E2BA57] border border-[#2C3239]"
-                  }`}
-                >
-                  <span>🌐 Landing Portal</span>
-                </button>
-
-                <span className="text-[#292E35] hidden sm:inline">|</span>
-                <span className="text-[#9299A3] font-semibold hidden sm:inline text-[11px] tracking-wider">GMC AI MATRIX</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsTelegramModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-[#101318] hover:bg-[#161A21] text-[#74D8A0] border border-[#2C3239] rounded-xl font-semibold flex items-center gap-1.5 transition-all text-[11px] cursor-pointer"
-                  title="Configure Telegram Bot Alerts"
-                >
-                  <span>✈️ TELEGRAM BOT</span>
-                </button>
-
-                <span className="px-3.5 py-1.5 bg-[rgba(241,204,107,0.08)] border border-[rgba(241,204,107,0.3)] text-[#F1CC6B] font-semibold rounded-xl uppercase tracking-tight text-[11px] flex items-center gap-1">
-                  <span>{NAV_ITEMS.find((n) => n.id === activeTab)?.label || activeTab}</span>
-                  <ChevronRight className="w-3 h-3 text-[#F1CC6B] inline" />
-                </span>
-              </div>
-            </div>
-
-            {/* Universal Dynamic AI Tab Institutional Intelligence Header Card */}
-            <UniversalInstitutionalTabHeader
-              activeTab={activeTab}
-              tabTitle={getModuleTitle(activeTab)}
-              prices={prices}
-              currentPrice={currentPrice}
-            />
-
-            {/* Top 2 AI Engine Background Broadcaster */}
-            <InstitutionalTelegramBroadcaster
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-            />
-          </>
-        )}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-4 space-y-4">
+        {/* Invisible Background Broadcaster */}
+        <InstitutionalTelegramBroadcaster
+          currentPrice={currentPrice}
+          assetKey={activeAssetKey}
+        />
 
         {activeTab === "retest_x" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["retest_x"] || accounts["sentinel"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("retest_x", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice - 3.5,
-                  takeProfit: currentPrice + 7.0,
-                  lotSize: 0.1,
-                  signalSource: "⚡ RETEST X — 15M Red Doji Breakout/Retest Engine",
-                })
-              }
-            />
-            <RetestXDashboardView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              latencyMs={latencyMs}
-              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
-            />
-          </div>
+          <RetestXDashboardView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            latencyMs={latencyMs}
+            onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+          />
         )}
 
         {(activeTab === "gbpusd_sniper" || activeTab === "gbpusd" || activeTab === "gbpusd_3d_ai_sniper") && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["gbpusd_sniper"] || accounts["sp500_ai_hunter"] || accounts["sentinel"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("gbpusd_sniper", {
-                  assetKey: "GBPUSD",
-                  type: "BUY",
-                  entryPrice: 1.34685,
-                  stopLoss: 1.34350,
-                  takeProfit: 1.35450,
-                  lotSize: 1.0,
-                  signalSource: "🇬🇧 GBPUSD 3D AI SNIPER — High-Conviction Market Universe",
-                })
-              }
-            />
-            <GbpusdSniperView />
-          </div>
+          <GbpusdSniperView />
         )}
 
         {(activeTab === "sp500_ai_hunter" || activeTab === "sp500") && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["sp500_ai_hunter"] || accounts["sentinel"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("sp500_ai_hunter", {
-                  assetKey: "SPY",
-                  type: "BUY",
-                  entryPrice: 588.45,
-                  stopLoss: 585.10,
-                  takeProfit: 595.50,
-                  lotSize: 1.0,
-                  signalSource: "🇺🇸 S&P 500 AI HUNTER — Real-Time AI Market Intelligence",
-                })
-              }
-            />
-            <Sp500HunterView
-              prices={prices}
-              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
-              onExecuteDemoTrade={(tradeData) => executeTabTrade("sp500_ai_hunter", tradeData)}
-            />
-          </div>
+          <Sp500HunterView
+            prices={prices}
+            onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+            onExecuteDemoTrade={(tradeData) => executeTabTrade("sp500_ai_hunter", tradeData)}
+          />
         )}
 
         {(activeTab === "gmc_wyckoff" || activeTab === "wyckoff") && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["gmc_wyckoff"] || accounts["sentinel"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("gmc_wyckoff", {
-                  assetKey: "XAUUSD",
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice - 3.2,
-                  takeProfit: currentPrice + 14.5,
-                  lotSize: 0.1,
-                  signalSource: "🪐 GMC WYCKOFF — 3D Live AI Market Engine",
-                })
-              }
-            />
-            <GmcWyckoffView
-              currentPrice={currentPrice}
-              prices={prices}
-              latencyMs={latencyMs}
-              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
-            />
-          </div>
+          <GmcWyckoffView
+            currentPrice={currentPrice}
+            prices={prices}
+            latencyMs={latencyMs}
+            onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+          />
         )}
 
         {(activeTab === "sentinel" || activeTab === "gmc_sentinel") && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["sentinel"] || accounts["central_signal_manager"] || accounts["precision_hunter"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("sentinel", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice - 3.0,
-                  takeProfit: currentPrice + 12.0,
-                  lotSize: 0.15,
-                  signalSource: "⚡ GMC SENTINEL — Master AI Trading Terminal",
-                })
-              }
-            />
-            <SentinelView
-              currentPrice={currentPrice}
-              prices={prices}
-              latencyMs={latencyMs}
-              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
-              onOpenCentralManager={() => setActiveTab("central_signal_manager")}
-              onExecuteDemoTrade={(tradeData) => executeTabTrade("sentinel", tradeData)}
-            />
-          </div>
+          <SentinelView
+            currentPrice={currentPrice}
+            prices={prices}
+            latencyMs={latencyMs}
+            onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+            onOpenCentralManager={() => setActiveTab("central_signal_manager")}
+            onExecuteDemoTrade={(tradeData) => executeTabTrade("sentinel", tradeData)}
+          />
         )}
 
         {(activeTab === "module_registry" || activeTab === "registry") && (
-          <div className="space-y-4">
-            <ModuleRegistryView
-              onSelectTab={(tabId) => setActiveTab(tabId)}
-              activeTab={activeTab}
-              prices={prices}
-              currentPrice={currentPrice}
-              latencyMs={latencyMs}
-            />
-          </div>
+          <ModuleRegistryView
+            onSelectTab={(tabId) => setActiveTab(tabId)}
+            activeTab={activeTab}
+            prices={prices}
+            currentPrice={currentPrice}
+            latencyMs={latencyMs}
+          />
         )}
 
         {activeTab === "precision_hunter" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["precision_hunter"] || accounts["central_signal_manager"] || accounts["warroom"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("precision_hunter", {
-                  assetKey: activeAssetKey,
-                  type: centralManagerState.candidates["PRECISION_HUNTER"]?.direction || "BUY",
-                  entryPrice: centralManagerState.candidates["PRECISION_HUNTER"]?.entryPrice || currentPrice,
-                  stopLoss: centralManagerState.candidates["PRECISION_HUNTER"]?.stopLoss || currentPrice - 3.5,
-                  takeProfit: centralManagerState.candidates["PRECISION_HUNTER"]?.tp2 || currentPrice + 12.0,
-                  lotSize: 0.1,
-                  signalSource: "🎯 PRECISION HUNTER AI V2 — Institutional Multi-TF Engine",
-                })
-              }
-            />
-            <PrecisionHunterView
-              currentPrice={currentPrice}
-              prices={prices}
-              latencyMs={latencyMs}
-              onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
-              onOpenCentralManager={() => setActiveTab("central_signal_manager")}
-            />
-          </div>
+          <PrecisionHunterView
+            currentPrice={currentPrice}
+            prices={prices}
+            latencyMs={latencyMs}
+            onOpenTelegramModal={() => setIsTelegramModalOpen(true)}
+            onOpenCentralManager={() => setActiveTab("central_signal_manager")}
+          />
         )}
 
         {activeTab === "central_signal_manager" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["central_signal_manager"] || accounts["warroom"] || accounts["khatarnak_jugaad"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("central_signal_manager", {
-                  assetKey: activeAssetKey,
-                  type: centralManagerState.activeSetup?.direction === "SELL" ? "SELL" : "BUY",
-                  entryPrice: centralManagerState.activeSetup?.preferredEntry || currentPrice,
-                  stopLoss: centralManagerState.activeSetup?.stopLoss || currentPrice - 2.0,
-                  takeProfit: centralManagerState.activeSetup?.tp2 || currentPrice + 10.0,
-                  lotSize: 0.1,
-                  signalSource: `🏛️ CENTRAL SIGNAL MANAGER — ${centralManagerState.activeSetup?.brainName || "Supreme Orchestrator"}`,
-                })
-              }
-            />
-            <CentralSignalManagerView
-              managerState={centralManagerState}
-              onRefresh={refreshCentralManager}
-              onForceCloseActiveSetup={closeCentralActiveSetup}
-              onResetCooldownManually={resetCentralCooldown}
-              onUpdateConfig={updateCentralConfig}
-              onToggleAiSource={toggleCentralAiSource}
-              currentPrice={currentPrice}
-              prices={prices}
-              assetKey={activeAssetKey}
-            />
-          </div>
+          <CentralSignalManagerView
+            managerState={centralManagerState}
+            onRefresh={refreshCentralManager}
+            onForceCloseActiveSetup={closeCentralActiveSetup}
+            onResetCooldownManually={resetCentralCooldown}
+            onUpdateConfig={updateCentralConfig}
+            onToggleAiSource={toggleCentralAiSource}
+            currentPrice={currentPrice}
+            prices={prices}
+            assetKey={activeAssetKey}
+          />
         )}
 
         {activeTab === "khatarnak_jugaad" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["khatarnak_jugaad"] || accounts["gmcgold"] || accounts["warroom"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("khatarnak_jugaad", {
-                  assetKey: activeAssetKey,
-                  type: "SELL",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice + 4.5,
-                  takeProfit: currentPrice - 12.0,
-                  lotSize: 0.1,
-                  signalSource: "💀 KHATARNAK JUGAAD — 1M Institutional 2.6 Sell",
-                })
-              }
-            />
-            <KhatarnakJugaadView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-              onExecuteTrade={(tradeData) => executeTabTrade("khatarnak_jugaad", tradeData)}
-            />
-          </div>
+          <KhatarnakJugaadView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+            onExecuteTrade={(tradeData) => executeTabTrade("khatarnak_jugaad", tradeData)}
+          />
         )}
 
         {activeTab === "landing" && (
@@ -793,130 +524,50 @@ export function App() {
         )}
 
         {activeTab === "gmctrading" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["gmctrading"] || accounts["gmcgold"] || accounts["gmccap"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("gmctrading", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.995,
-                  takeProfit: currentPrice * 1.015,
-                  lotSize: 0.1,
-                  signalSource: "⚡ GMC TRADING — Rejection & Confirmation Engine",
-                })
-              }
-            />
-            <GmcTradingAnalysisView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-              onExecuteTrade={(tradeData) => executeTabTrade("gmctrading", tradeData)}
-            />
-          </div>
+          <GmcTradingAnalysisView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+            onExecuteTrade={(tradeData) => executeTabTrade("gmctrading", tradeData)}
+          />
         )}
 
         {activeTab === "tradeexecutionmap" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["tradeexecutionmap"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("tradeexecutionmap", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.995,
-                  takeProfit: currentPrice * 1.012,
-                  lotSize: 0.1,
-                  signalSource: "🎯 TRADE EXECUTION MAP — XAUUSD Multi-Timeframe Smart Map",
-                })
-              }
-            />
-            <TradeExecutionMapView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-            />
-          </div>
+          <TradeExecutionMapView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+          />
         )}
 
         {activeTab === "levelkeystone" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["levelkeystone"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("levelkeystone", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.995,
-                  takeProfit: currentPrice * 1.012,
-                  lotSize: 0.1,
-                  signalSource: "👑 LEVEL KEYSTONE — XAUUSD Premium AI Brain Setup",
-                })
-              }
-            />
-            <LevelKeystoneView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-            />
-          </div>
+          <LevelKeystoneView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+          />
         )}
 
         {activeTab === "goldintelligence" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["goldintelligence"] || accounts["gmcgold"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("goldintelligence", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.018,
-                  lotSize: 0.1,
-                  signalSource: "🌟 25-Yr Gold Intelligence Forecast Core",
-                })
-              }
-            />
-            <GoldIntelligenceView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-            />
-          </div>
+          <GoldIntelligenceView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+          />
         )}
 
         {activeTab === "gmcgold" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["gmcgold"] || accounts["gmccap"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("gmcgold", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.018,
-                  lotSize: 0.1,
-                  signalSource: "🥇 TOP 1 – GMC GOLD Apex Bank-Zone Matrix",
-                })
-              }
-            />
-            <GmcGoldZoneCardView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenTradeCopilot={handleOpenRiskCopilot}
-              onOpenHeatmapOverlay={() => setIsHeatmapOverlayOpen(true)}
-            />
-          </div>
+          <GmcGoldZoneCardView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenTradeCopilot={handleOpenRiskCopilot}
+            onOpenHeatmapOverlay={() => setIsHeatmapOverlayOpen(true)}
+          />
         )}
 
         {activeTab === "d3heatmap" && (
@@ -936,60 +587,28 @@ export function App() {
         )}
 
         {activeTab === "gmccap" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["gmccap"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("gmccap", {
-                  assetKey: activeAssetKey,
-                  type: "SELL",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 1.004,
-                  takeProfit: currentPrice * 0.994,
-                  lotSize: 0.1,
-                  signalSource: "👑 GMC CAP 1H AI Master Brain",
-                })
-              }
-            />
-            <GmcCap1HAIBrainView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-              onExecuteCapTrade={(trade) => executeTabTrade("gmccap", trade)}
-              onGoBack={handleGoBack}
-              onGoHome={() => setActiveTab("vault")}
-              trades={trades}
-              account={accounts["gmccap"]}
-            />
-          </div>
+          <GmcCap1HAIBrainView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenRiskCopilot={handleOpenRiskCopilot}
+            onExecuteCapTrade={(trade) => executeTabTrade("gmccap", trade)}
+            onGoBack={handleGoBack}
+            onGoHome={() => setActiveTab("vault")}
+            trades={trades}
+            account={accounts["gmccap"]}
+          />
         )}
 
         {activeTab === "harami" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["harami"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("harami", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                  lotSize: 0.01,
-                  signalSource: "🥷 HARAMI AI MASTER SYNTHESIS",
-                })
-              }
-            />
-            <HaramiAIView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-              onExecuteHaramiTrade={(trade) => executeTabTrade("harami", trade)}
-              trades={trades}
-            />
-          </div>
+          <HaramiAIView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenRiskCopilot={handleOpenRiskCopilot}
+            onExecuteHaramiTrade={(trade) => executeTabTrade("harami", trade)}
+            trades={trades}
+          />
         )}
 
         {activeTab === "admin" && (
@@ -1064,31 +683,17 @@ export function App() {
         )}
 
         {activeTab === "masterbrain" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["masterbrain"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("masterbrain", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                })
-              }
-            />
-            <MasterAIBrainSynthesizer
-              currentPrice={currentPrice}
-              activeAssetKey={activeAssetKey}
-              setActiveAssetKey={setActiveAssetKey}
-              prices={prices}
-              onSelectTab={handleSelectTab}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-              trades={trades}
-              onCloseTrade={handleCloseTrade}
-              onClearLog={handleClearLog}
-            />
-          </div>
+          <MasterAIBrainSynthesizer
+            currentPrice={currentPrice}
+            activeAssetKey={activeAssetKey}
+            setActiveAssetKey={setActiveAssetKey}
+            prices={prices}
+            onSelectTab={handleSelectTab}
+            onOpenRiskCopilot={handleOpenRiskCopilot}
+            trades={trades}
+            onCloseTrade={handleCloseTrade}
+            onClearLog={handleClearLog}
+          />
         )}
 
         {activeTab === "tradelog" && (
@@ -1164,51 +769,23 @@ export function App() {
         )}
 
         {activeTab === "aimaster" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["aimaster"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("aimaster", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                })
-              }
-            />
-            <LeoFusionView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-              trades={trades}
-            />
-          </div>
+          <LeoFusionView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenRiskCopilot={handleOpenRiskCopilot}
+            trades={trades}
+          />
         )}
 
         {activeTab === "nexus" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["nexus"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("nexus", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                })
-              }
-            />
-            <CommandCenterView
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onOpenRiskCopilot={handleOpenRiskCopilot}
-              trades={trades}
-            />
-          </div>
+          <CommandCenterView
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onOpenRiskCopilot={handleOpenRiskCopilot}
+            trades={trades}
+          />
         )}
 
         {activeTab === "mtfdoji" && (
@@ -1240,23 +817,7 @@ export function App() {
         )}
 
         {activeTab === "brainspro" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["brainspro"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("brainspro", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                  lotSize: 0.01,
-                  signalSource: "⛓️ Chains AI Reasoning",
-                })
-              }
-            />
-            <BrainsProView currentPrice={currentPrice} assetKey={activeAssetKey} />
-          </div>
+          <BrainsProView currentPrice={currentPrice} assetKey={activeAssetKey} />
         )}
 
         {activeTab === "satoshi" && (
@@ -1302,38 +863,22 @@ export function App() {
         )}
 
         {activeTab === "whale" && (
-          <div className="space-y-4">
-            <TabDemoBanner
-              account={accounts["whale"]}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("whale", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                  lotSize: 0.01,
-                  signalSource: "🦅 White Crow Radar",
-                })
-              }
-            />
-            <WhaleRadar
-              currentPrice={currentPrice}
-              assetKey={activeAssetKey}
-              prices={prices}
-              onExecuteDemoTrade={() =>
-                executeTabTrade("whale", {
-                  assetKey: activeAssetKey,
-                  type: "BUY",
-                  entryPrice: currentPrice,
-                  stopLoss: currentPrice * 0.992,
-                  takeProfit: currentPrice * 1.02,
-                  lotSize: 0.01,
-                  signalSource: "🦅 White Crow Radar",
-                })
-              }
-            />
-          </div>
+          <WhaleRadar
+            currentPrice={currentPrice}
+            assetKey={activeAssetKey}
+            prices={prices}
+            onExecuteDemoTrade={() =>
+              executeTabTrade("whale", {
+                assetKey: activeAssetKey,
+                type: "BUY",
+                entryPrice: currentPrice,
+                stopLoss: currentPrice * 0.992,
+                takeProfit: currentPrice * 1.02,
+                lotSize: 0.01,
+                signalSource: "🦅 White Crow Radar",
+              })
+            }
+          />
         )}
 
         {activeTab === "history" && (
@@ -1362,21 +907,18 @@ export function App() {
       </main>
 
       {/* Institutional Footer & Risk Disclosure */}
-      <footer className="bg-[#050505] border-t border-slate-800 py-4 text-xs text-slate-500 font-mono">
+      <footer className="bg-[#080A0D] border-t border-[#1E2530] py-4 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="font-bold text-white tracking-tight">GMC TRADING <span className="text-blue-500">DASHBOARD</span></span>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest border-l border-slate-800 pl-3">Black Shark Command V1</span>
-            <p className="text-[11px] text-slate-500 hidden md:block">
-              Institutional algorithmic signal execution engine, orderbook DOM flow, and risk control.
-            </p>
+            <span className="font-bold text-white tracking-tight">HARAMI AI <span className="text-amber-400 font-normal">TERMINAL</span></span>
+            <span className="text-[11px] text-slate-500 border-l border-[#232B3A] pl-3">
+              Institutional algorithmic trading & signal engine for Gold (XAUUSD), Forex, and Global Markets.
+            </span>
           </div>
-          <div className="flex items-center gap-4 text-[10px] uppercase font-mono tracking-wider">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full shadow-[0_0_6px_rgba(34,197,94,0.6)]"></span>
-              <span className="text-slate-400">STATE_SYNC: LOCKED</span>
-            </div>
-            <div className="text-slate-600">INTERNAL_SECURE_ENV</div>
+          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
+            <span>Server: Active</span>
+            <span>·</span>
+            <span className="text-emerald-400">WebSocket Connected</span>
           </div>
         </div>
       </footer>

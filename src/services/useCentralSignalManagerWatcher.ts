@@ -31,28 +31,50 @@ export function useCentralSignalManagerWatcher(
   );
 
   const prevActiveSetupRef = useRef<ActiveCentralSetup | null>(null);
-  const isBroadcastingRef = useRef<boolean>(false);
+  const candles15mRef = useRef(candles15m);
+  candles15mRef.current = candles15m;
+  const candles5mRef = useRef(candles5m);
+  candles5mRef.current = candles5m;
+  const pricesRef = useRef(prices);
+  pricesRef.current = prices;
+  const currentPriceRef = useRef(currentPrice);
+  currentPriceRef.current = currentPrice;
+  const assetKeyRef = useRef(assetKey);
+  assetKeyRef.current = assetKey;
 
   const evaluateAndSync = useCallback(() => {
     const updated = centralSignalManager.evaluateState(
-      candles15m,
-      candles5m,
-      currentPrice,
-      prices,
-      assetKey
+      candles15mRef.current,
+      candles5mRef.current,
+      currentPriceRef.current,
+      pricesRef.current,
+      assetKeyRef.current
     );
-    setManagerState(updated);
 
-    // CRITICAL: Browser tabs are READ-ONLY state visualizers and MUST NEVER act as signal triggers.
-    // Client-side auto-broadcasting is disabled to prevent duplicate signals on tab load, page refresh, or multi-tab usage.
+    setManagerState((prev) => {
+      // Avoid state updates if core telemetry hasn't changed
+      if (
+        prev.currentPrice === updated.currentPrice &&
+        prev.marketStatus === updated.marketStatus &&
+        prev.activeSetup?.setupId === updated.activeSetup?.setupId &&
+        prev.activeSetup?.lifecycleState === updated.activeSetup?.lifecycleState &&
+        prev.cooldown.isActive === updated.cooldown.isActive &&
+        prev.cooldown.remainingSeconds === updated.cooldown.remainingSeconds &&
+        prev.activeSetup?.protectionActive === updated.activeSetup?.protectionActive
+      ) {
+        return prev;
+      }
+      return updated;
+    });
+
     const currentActive = updated.activeSetup;
     prevActiveSetupRef.current = currentActive;
-  }, [candles15m, candles5m, currentPrice, prices, assetKey]);
+  }, []);
 
-  // Run on price tick or candle update
+  // Run on price tick or asset change
   useEffect(() => {
     evaluateAndSync();
-  }, [evaluateAndSync]);
+  }, [currentPrice, assetKey, evaluateAndSync]);
 
   // Periodic 1-second interval for Cooldown countdown timer accuracy
   useEffect(() => {

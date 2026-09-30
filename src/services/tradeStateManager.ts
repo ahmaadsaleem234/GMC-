@@ -10,15 +10,22 @@
  * 6. CRASH & RECOVERY MODE: Fully persisted state restored seamlessly on server restarts without re-broadcasting.
  */
 
-import fs from "fs";
-import path from "path";
+let fs: any = null;
+let path: any = null;
+try {
+  if (typeof process !== "undefined" && process.versions && process.versions.node) {
+    fs = eval('require("fs")');
+    path = eval('require("path")');
+  }
+} catch (e) {}
+
 import { multiFeedPriceService, ConsensusReport } from "./multiFeedPriceService.js";
 import { anomalyDetectionEngine, ProposedTradeLevels } from "./anomalyDetectionEngine.js";
 import { advancedRiskManager } from "./advancedRiskManager.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const STATE_RECOVERY_FILE = path.join(DATA_DIR, "trade_state_recovery.json");
-const VERSIONED_PERFORMANCE_FILE = path.join(DATA_DIR, "versioned_strategy_performance.json");
+const DATA_DIR = path ? path.join(process.cwd(), "data") : "./data";
+const STATE_RECOVERY_FILE = path ? path.join(DATA_DIR, "trade_state_recovery.json") : "./data/trade_state_recovery.json";
+const VERSIONED_PERFORMANCE_FILE = path ? path.join(DATA_DIR, "versioned_strategy_performance.json") : "./data/versioned_strategy_performance.json";
 
 export type SystemTradingMode = "LIVE" | "SHADOW";
 
@@ -153,6 +160,7 @@ export class MasterTradeStateManager {
 
   private ensureDir() {
     try {
+      if (!fs) return;
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
@@ -161,6 +169,10 @@ export class MasterTradeStateManager {
 
   public init() {
     if (this.initialized) return;
+    if (!fs) {
+      this.initialized = true;
+      return;
+    }
     this.ensureDir();
 
     // 1. Recover Crash State
@@ -223,6 +235,7 @@ export class MasterTradeStateManager {
 
   private persistState() {
     try {
+      if (!fs) return;
       this.ensureDir();
       const payload = {
         activeTrade: this.activeTrade,
@@ -241,6 +254,7 @@ export class MasterTradeStateManager {
 
   private persistVersionedHistory() {
     try {
+      if (!fs) return;
       this.ensureDir();
       const tmpPath = `${VERSIONED_PERFORMANCE_FILE}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify(this.versionedHistory.slice(0, 1000), null, 2), "utf-8");

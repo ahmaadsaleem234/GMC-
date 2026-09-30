@@ -162,6 +162,7 @@ class TelegramIdempotencyRegistry {
       if (upperAlert.includes("TP2")) return "TP2_HIT";
       if (upperAlert.includes("TP3")) return "TP3_HIT";
       if (upperAlert.includes("FINAL_TP") || upperAlert.includes("TP4")) return "FINAL_TP_HIT";
+      if (upperAlert.includes("BREAKEVEN") || upperAlert.includes("BE_EXIT")) return "BREAKEVEN";
       if (upperAlert.includes("SL_HIT") || upperAlert.includes("STOP_LOSS")) return "SL_HIT";
       if (upperAlert.includes("ENTRY")) return "ENTRY_HIT";
       if (upperAlert.includes("NEW_SETUP") || upperAlert.includes("SIGNAL")) return "NEW_SETUP";
@@ -170,12 +171,13 @@ class TelegramIdempotencyRegistry {
     }
 
     const t = text.toUpperCase();
-    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT") || t.includes("TP4 ALL TARGETS HIT")) return "FINAL_TP_HIT";
+    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT") || t.includes("TP4 ALL TARGETS HIT") || t.includes("FULL TAKE PROFIT ACHIEVED")) return "FINAL_TP_HIT";
     if (t.includes("TP3 HIT") || t.includes("TARGET 3 HIT") || t.includes("TP3 REACHED")) return "TP3_HIT";
     if (t.includes("TP2 HIT") || t.includes("TARGET 2 HIT") || t.includes("TP2 REACHED")) return "TP2_HIT";
     if (t.includes("TP1 HIT") || t.includes("TARGET 1 HIT") || t.includes("TP1 REACHED")) return "TP1_HIT";
+    if (t.includes("BREAKEVEN EXIT") || t.includes("BREAKEVEN") || t.includes("BREAK-EVEN") || t.includes("SL MOVED TO BREAKEVEN")) return "BREAKEVEN";
     if (t.includes("SL HIT") || t.includes("STOP LOSS HIT") || t.includes("STOP LOSS TRIGGERED")) return "SL_HIT";
-    if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO")) return "ENTRY_HIT";
+    if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO") || t.includes("ENTRY TRIGGERED")) return "ENTRY_HIT";
     if (t.includes("INVALIDATED") || t.includes("CANCELLED")) return "INVALIDATED";
     if (t.includes("EXPIRED")) return "EXPIRED";
     if (
@@ -326,34 +328,46 @@ class TelegramIdempotencyRegistry {
 
     // 2B. STRICT 1 ACTIVE TRADE LOCK FOR LIFECYCLE EVENTS
     if (event !== "NEW_SETUP" && event !== "GENERAL_ALERT") {
-      // Rule 1: Initial formal setup card MUST have been delivered first
-      if (tradeId && !this.hasInitialSignalBeenDispatched(tradeId)) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert [${event}]: Initial formal setup card for #${tradeId} was never delivered to Telegram!`,
-        };
-      }
+      const isExitOutcome =
+        event === "SL_HIT" ||
+        event === "BREAKEVEN" ||
+        event === "TP_THEN_SL_HIT" ||
+        event === "FINAL_TP_HIT" ||
+        event === "TP4_HIT" ||
+        event === "EXPIRED" ||
+        event === "INVALIDATED";
 
-      // Rule 2: If a trade is currently active and this event belongs to a different trade, block it!
-      if (this.activeTradeId && tradeId && tradeId !== this.activeTradeId) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert for #${tradeId}: Trade #${this.activeTradeId} is currently the single active trade.`,
-        };
-      }
+      // Exit outcomes MUST ALWAYS be delivered to Telegram so user knows the trade has concluded!
+      if (!isExitOutcome) {
+        // Rule 1: Initial formal setup card MUST have been delivered first
+        if (tradeId && !this.hasInitialSignalBeenDispatched(tradeId)) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert [${event}]: Initial formal setup card for #${tradeId} was never delivered to Telegram!`,
+          };
+        }
 
-      // Rule 3: If no trade is active and system is in cooldown, block orphaned alerts
-      if (!this.activeTradeId && now < this.cooldownUntil) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert for #${tradeId}: System is currently in 30-minute cooldown.`,
-        };
+        // Rule 2: If a trade is currently active and this event belongs to a different trade, block it!
+        if (this.activeTradeId && tradeId && tradeId !== this.activeTradeId) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert for #${tradeId}: Trade #${this.activeTradeId} is currently the single active trade.`,
+          };
+        }
+
+        // Rule 3: If no trade is active and system is in cooldown, block orphaned non-outcome alerts
+        if (!this.activeTradeId && now < this.cooldownUntil) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert for #${tradeId}: System is currently in 30-minute cooldown.`,
+          };
+        }
       }
     }
 
@@ -410,10 +424,11 @@ class TelegramIdempotencyRegistry {
       }
     }
 
-    // When trade closes via FINAL TP, SL, or Invalidated, start strict cooldown
+    // When trade closes via FINAL TP, SL, Breakeven, or Invalidated, start strict cooldown
     if (
       event === "FINAL_TP_HIT" ||
       event === "SL_HIT" ||
+      event === "BREAKEVEN" ||
       event === "TP_THEN_SL_HIT" ||
       event === "EXPIRED" ||
       event === "INVALIDATED"

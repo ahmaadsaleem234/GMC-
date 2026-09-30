@@ -104,7 +104,22 @@ export function HaramiAIView({
   // Sync setup with live market price & handle TP/SL violations
   useEffect(() => {
     const updated = getOrCreateLockedSetup("harami", "🥷 GMC HARAMI AI MASTER", assetKey, asset.label, px, asset.category, asset.decimals);
-    setActiveSetup(updated);
+    setActiveSetup((prev) => {
+      if (
+        prev &&
+        prev.id === updated.id &&
+        prev.status === updated.status &&
+        prev.entryPrice === updated.entryPrice &&
+        prev.stopLoss === updated.stopLoss &&
+        prev.takeProfit1 === updated.takeProfit1 &&
+        prev.takeProfit2 === updated.takeProfit2 &&
+        prev.takeProfit3 === updated.takeProfit3 &&
+        prev.direction === updated.direction
+      ) {
+        return prev;
+      }
+      return updated;
+    });
   }, [px, assetKey]);
 
   const handleRefreshSetup = () => {

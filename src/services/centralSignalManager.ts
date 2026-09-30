@@ -25,7 +25,6 @@ try {
 }
 
 import { Candle, LivePrice } from "../types";
-import { tradeStateManager } from "./tradeStateManager.js";
 import {
   calculateKhatarnakJugaadSetup,
   KhatarnakJugaadSetup,
@@ -1198,7 +1197,7 @@ export class CentralSignalManagerEngine {
     // 1. Check if an active trade is already running (internally or externally)
     const extTrade = this.externalActiveTradeGetter ? this.externalActiveTradeGetter() : null;
     const hasActiveExt = extTrade && (extTrade.status === "WAITING_FOR_ENTRY" || extTrade.status === "ENTRY_CONFIRMED" || extTrade.status === "OPEN" || extTrade.status?.startsWith("TP"));
-    const activeRunning = this.activeSetup || (hasActiveExt ? extTrade : null) || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null);
+    const activeRunning = this.activeSetup || (hasActiveExt ? extTrade : null);
 
     if (activeRunning) {
       const activeId = (activeRunning as any).setupId || (activeRunning as any).signalId || (activeRunning as any).id || "ACTIVE";

@@ -590,6 +590,7 @@ export function useCandleData(assetKey: string, timeframe: string) {
 
   // Live real-time tick appender
   const appendTick = useCallback((latestPrice: number) => {
+    if (!latestPrice || isNaN(latestPrice)) return;
     setCandles((prev) => {
       if (!prev.length) return prev;
       const last = prev[prev.length - 1];
@@ -608,6 +609,10 @@ export function useCandleData(assetKey: string, timeframe: string) {
         };
         return [...prev.slice(1), newCandle];
       } else {
+        // If price hasn't exceeded high/low and close is identical, avoid creating a new array
+        if (last.close === latestPrice && latestPrice <= last.high && latestPrice >= last.low) {
+          return prev;
+        }
         // Update existing candle
         const updatedLast: Candle = {
           ...last,

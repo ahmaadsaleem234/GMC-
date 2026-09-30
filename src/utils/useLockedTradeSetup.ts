@@ -60,7 +60,22 @@ export function useLockedTradeSetup(
       overrideReason
     );
 
-    setSetup(updated);
+    setSetup((prev) => {
+      if (
+        prev &&
+        prev.id === updated.id &&
+        prev.status === updated.status &&
+        prev.entryPrice === updated.entryPrice &&
+        prev.stopLoss === updated.stopLoss &&
+        prev.takeProfit1 === updated.takeProfit1 &&
+        prev.takeProfit2 === updated.takeProfit2 &&
+        prev.takeProfit3 === updated.takeProfit3 &&
+        prev.direction === updated.direction
+      ) {
+        return prev;
+      }
+      return updated;
+    });
   }, [currentPrice, moduleId, assetKey, moduleName, assetLabel, category, decimals]);
 
   const resetSetup = useCallback(() => {
