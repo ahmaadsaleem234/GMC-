@@ -6,7 +6,7 @@ try {
     pathModule = eval('require("path")');
   }
 } catch (e) {
-  // Edge runtime
+  // Edge / browser runtime
 }
 
 export interface DispatchedEventRecord {
@@ -27,7 +27,15 @@ export interface IdempotencyStoreSchema {
   cooldownDurationMinutes: number;
 }
 
-const STORAGE_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
+function getStorageFile(): string {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule) {
+      return pathModule.join(process.cwd(), "data", "telegram_idempotency_store.json");
+    }
+  } catch (e) {}
+  return "telegram_idempotency_store.json";
+}
+
 const DEDUPLICATION_WINDOW_MS = 45 * 60 * 1000; // 45 minutes window for text hash
 
 function simpleHash(str: string): string {
@@ -60,8 +68,9 @@ class TelegramIdempotencyRegistry {
 
   private loadFromDisk(): void {
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(STORAGE_FILE)) {
-        const raw = fsModule.readFileSync(STORAGE_FILE, "utf-8");
+      const storagePath = getStorageFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(storagePath)) {
+        const raw = fsModule.readFileSync(storagePath, "utf-8");
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           this.records = parsed;
@@ -104,7 +113,8 @@ class TelegramIdempotencyRegistry {
           cooldownUntil: this.cooldownUntil,
           cooldownDurationMinutes: this.cooldownDurationMinutes,
         };
-        fsModule.writeFileSync(STORAGE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+        const storagePath = getStorageFile();
+        fsModule.writeFileSync(storagePath, JSON.stringify(payload, null, 2), "utf-8");
       }
     } catch (err) {
       // In edge environments, handled via KV / memory
@@ -526,6 +536,17 @@ class TelegramIdempotencyRegistry {
   }
 
   /**
+   * Synchronize active trade and cooldown from external authoritative store
+   */
+  public syncActiveTradeState(activeTradeId: string | null, cooldownUntil?: number) {
+    this.activeTradeId = activeTradeId ? activeTradeId.replace("#", "").trim().toUpperCase() : null;
+    if (typeof cooldownUntil === "number") {
+      this.cooldownUntil = cooldownUntil;
+    }
+    this.saveToDisk();
+  }
+
+  /**
    * Check if the initial complete trade signal has been confirmed dispatched for this trade ID
    */
   public hasInitialSignalBeenDispatched(tradeId?: string): boolean {
@@ -565,8 +586,9 @@ class TelegramIdempotencyRegistry {
     this.records = [];
     this.textHashRecentMap.clear();
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(STORAGE_FILE)) {
-        fsModule.unlinkSync(STORAGE_FILE);
+      const storagePath = getStorageFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(storagePath)) {
+        fsModule.unlinkSync(storagePath);
       }
     } catch (e) {}
     console.log("[TELEGRAM IDEMPOTENCY]: Registry cleared.");

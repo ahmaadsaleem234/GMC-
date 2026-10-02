@@ -533,6 +533,12 @@ export class CentralSignalManagerEngine {
   private onSetupPromotedListeners: Set<(setup: ActiveCentralSetup) => void> = new Set();
   private onLifecycleEventListeners: Set<(setup: ActiveCentralSetup, event: string, currentPx: number) => void> = new Set();
 
+  public setFsProvider(fs: any, path: any) {
+    fsModule = fs;
+    pathModule = path;
+    this.restoreFromStorage();
+  }
+
   public onSetupPromoted(listener: (setup: ActiveCentralSetup) => void) {
     this.onSetupPromotedListeners.add(listener);
     return () => this.onSetupPromotedListeners.delete(listener);

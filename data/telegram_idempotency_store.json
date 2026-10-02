@@ -1,11 +1,26 @@
-[
-  {
-    "key": "KJ-15M-9999::NEW_SETUP",
-    "tradeId": "KJ-15M-9999",
-    "event": "NEW_SETUP",
-    "chatId": "5218548758",
-    "textHash": "132f11a8ae475f9ba81eb00d",
-    "dispatchedAt": 1787410331900,
-    "dateTime": "2026-08-22T14:52:11.900Z"
-  }
-]
+{
+  "records": [
+    {
+      "key": "KJ-15M-9999::NEW_SETUP",
+      "tradeId": "KJ-15M-9999",
+      "event": "NEW_SETUP",
+      "chatId": "5218548758",
+      "textHash": "132f11a8ae475f9ba81eb00d",
+      "dispatchedAt": 1787410331900,
+      "dateTime": "2026-08-22T14:52:11.900Z"
+    },
+    {
+      "key": "HRM-1111::NEW_SETUP",
+      "tradeId": "HRM-1111",
+      "event": "NEW_SETUP",
+      "chatId": "123",
+      "textHash": "6d21dc4025",
+      "dispatchedAt": 1790940287910,
+      "dateTime": "2026-10-02T11:24:47.911Z"
+    }
+  ],
+  "activeTradeId": "HRM-1111",
+  "activeTradeStartedAt": 1790940287910,
+  "cooldownUntil": 0,
+  "cooldownDurationMinutes": 30
+}

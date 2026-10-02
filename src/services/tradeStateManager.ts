@@ -10,14 +10,8 @@
  * 6. CRASH & RECOVERY MODE: Fully persisted state restored seamlessly on server restarts without re-broadcasting.
  */
 
-let fs: any = null;
-let path: any = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    fs = eval('require("fs")');
-    path = eval('require("path")');
-  }
-} catch (e) {}
+import fs from "fs";
+import path from "path";
 
 import { multiFeedPriceService, ConsensusReport } from "./multiFeedPriceService.js";
 import { anomalyDetectionEngine, ProposedTradeLevels } from "./anomalyDetectionEngine.js";
@@ -182,13 +176,13 @@ export class MasterTradeStateManager {
         const parsed = JSON.parse(raw);
         if (parsed.activeTrade && (parsed.activeTrade.status === "WAITING_FOR_ENTRY" || parsed.activeTrade.status === "ENTRY_CONFIRMED" || parsed.activeTrade.status === "OPEN" || parsed.activeTrade.status?.startsWith("TP"))) {
           const ageMs = Date.now() - (parsed.activeTrade.createdAt || 0);
-          const MAX_RESTORE_AGE_MS = 12 * 60 * 1000; // 12 minutes limit for intraday scalps
+          const MAX_RESTORE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours limit
           if (ageMs > MAX_RESTORE_AGE_MS) {
-            console.log(`[TRADE STATE RECOVERY]: Stored trade ${parsed.activeTrade.signalId} is ${Math.round(ageMs / 60000)}m old (>45m limit). Expiring to allow immediate fresh scanning.`);
+            console.log(`[TRADE STATE RECOVERY]: Stored trade ${parsed.activeTrade.signalId} is ${Math.round(ageMs / 3600000)}h old (>24h limit). Concluding trade.`);
             this.activeTrade = null;
           } else {
             this.activeTrade = parsed.activeTrade;
-            console.log(`[TRADE STATE RECOVERY]: Restored ACTIVE/WAITING trade ${this.activeTrade?.signalId} (${this.activeTrade?.direction} @ $${this.activeTrade?.entry}) from disk.`);
+            console.log(`[TRADE STATE RECOVERY]: Restored ACTIVE trade ${this.activeTrade?.signalId} (${this.activeTrade?.direction} @ $${this.activeTrade?.entry}) from disk.`);
           }
         }
         if (parsed.cooldownState) {

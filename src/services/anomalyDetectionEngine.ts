@@ -141,9 +141,10 @@ export class AnomalyDetectionEngine {
         anomalyType = "INVALID_BUY_TPS";
         failureReason = `Invalid BUY setup: Take profit levels (TP1:$${tp1}, TP2:$${tp2}, TP3:$${tp3}, TP4:$${tp4}) must be sequentially ascending above Entry.`;
       } else {
-        const risk = bestEntry - sl;
-        const reward = tp1 - bestEntry;
-        const rr = reward / Math.max(0.01, risk);
+        const risk = Math.max(0.01, bestEntry - sl);
+        const rewardTarget = tp4 || tp2 || tp1;
+        const reward = Math.max(0.01, rewardTarget - bestEntry);
+        const rr = reward / risk;
         if (rr < 1.10) {
           checks.tradeLevelsValidPassed = false;
           anomalyType = "INSUFFICIENT_RR";
@@ -161,9 +162,10 @@ export class AnomalyDetectionEngine {
         anomalyType = "INVALID_SELL_TPS";
         failureReason = `Invalid SELL setup: Take profit levels (TP1:$${tp1}, TP2:$${tp2}, TP3:$${tp3}, TP4:$${tp4}) must be sequentially descending below Entry.`;
       } else {
-        const risk = sl - bestEntry;
-        const reward = bestEntry - tp1;
-        const rr = reward / Math.max(0.01, risk);
+        const risk = Math.max(0.01, sl - bestEntry);
+        const rewardTarget = tp4 || tp2 || tp1;
+        const reward = Math.max(0.01, bestEntry - rewardTarget);
+        const rr = reward / risk;
         if (rr < 1.10) {
           checks.tradeLevelsValidPassed = false;
           anomalyType = "INSUFFICIENT_RR";
