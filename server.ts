@@ -8148,8 +8148,11 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           });
 
           tradeStateManager.closeActiveTrade("CANCELLED", tick.price, 0, 0, 0);
-          moduleSignalGatekeeper.startGlobalCooldown(30, "CANCELLED", trade.signalId || trade.id);
-          centralSignalManager.startCooldown(30);
+          centralSignalManager.clearActiveSetup();
+          centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
+          tradeStateManager.startCooldown(serverConfiguredCooldownMins, "CANCELLED", trade.signalId || trade.id);
+          moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "CANCELLED", trade.signalId || trade.id);
+          serverTelegramIdempotency.recordTradeClosed(trade.signalId || trade.id, "CANCELLED", serverConfiguredCooldownMins);
 
           const cancelText = formatTradeCancelledAlert({
             signalId: trade.signalId || trade.id,
@@ -8171,6 +8174,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
           serverActiveTrade = null;
           serverLastClosedTime = now;
+          serverCooldownUntil = now + getSystemCooldownMs();
+          serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after trade cancelled)`;
           return;
         }
 
