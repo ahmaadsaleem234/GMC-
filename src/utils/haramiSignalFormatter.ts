@@ -116,28 +116,20 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
     rrStr = rrStr.replace(/^R:R:\s*/i, "").trim();
   }
 
-  const confidenceVal = typeof params.confidence === "number" ? Math.round(params.confidence) : 92;
   const dirBadge = isBuy ? "BUY 🟢" : "SELL 🔴";
   const idDisplay = params.signalId ? `#${params.signalId.replace(/^#/, "")}` : "#HRM-AI";
-  const inZone = params.isAlreadyInZone ?? false;
-  const statusLabel = inZone ? "🟢 IN ZONE (ACTIVE)" : "⏳ PENDING ENTRY";
 
   return `🤖 <b>HARAMI AI | ${dirBadge}</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>${idDisplay} • ${symbolShort} (GOLD)</b>
-📍 <b>Entry Zone:</b> <code>${entryLow.toFixed(2)} – ${entryHigh.toFixed(2)}</code>
-⚡ <b>Best Entry:</b> <code>${bestEntry.toFixed(2)}</code>
 
+📍 <b>Entry:</b> <code>${bestEntry.toFixed(2)}</code>
 🛑 <b>SL:</b> <code>${sl.toFixed(2)}</code> (-${riskPips} pips)
+
 🎯 <b>TP1:</b> <code>${tp1.toFixed(2)}</code> (+${tp1Pips} pips)
 🎯 <b>TP2:</b> <code>${tp2.toFixed(2)}</code> (+${tp2Pips} pips)
 🎯 <b>TP3:</b> <code>${tp3.toFixed(2)}</code> (+${tp3Pips} pips)
 🎯 <b>TP4:</b> <code>${tp4.toFixed(2)}</code> (+${tp4Pips} pips)
-
-📊 <b>R:R:</b> <code>${rrStr}</code>
-🔥 <b>Score:</b> <code>${confidenceVal}/100</code> (15/15 Confluence)
-📌 <b>Status:</b> <b>${statusLabel}</b>
-⏱️ <b>Expiry:</b> <code>Until TP or SL Hit (Active Until Closed)</code>
 ━━━━━━━━━━━━━━━━━━━
 <i>💡 Tip: Tap any price number to copy directly to MT5.</i>`;
 }

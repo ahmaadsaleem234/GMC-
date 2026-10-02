@@ -191,7 +191,8 @@ class TelegramIdempotencyRegistry {
       t.includes("RETEST X") ||
       t.includes("ENTRY ZONE") ||
       t.includes("EXECUTION ZONE") ||
-      t.includes("BEST ENTRY")
+      t.includes("BEST ENTRY") ||
+      t.includes("ENTRY:")
     ) return "NEW_SETUP";
 
     return "GENERAL_ALERT";

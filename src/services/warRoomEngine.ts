@@ -2653,18 +2653,14 @@ export function formatWarRoomTelegramSignal(setup: LockedWarRoomSetup): string {
   return `⚔️ <b>WAR ROOM — ELITE TRADE</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>${signalId} • ${symbol} (GOLD) • ${dirBadge}</b>
-📍 <b>Entry Zone:</b> <code>${setup.entryZone[0].toFixed(2)} – ${setup.entryZone[1].toFixed(2)}</code>
+
+📍 <b>Entry:</b> <code>${entryAvg.toFixed(2)}</code>
 🛑 <b>SL:</b> <code>${setup.stopLoss.toFixed(2)}</code> (-${riskPips} pips)
 
 🎯 <b>TP1:</b> <code>${setup.tp1.toFixed(2)}</code> (+${tp1Pips} pips)
 🎯 <b>TP2:</b> <code>${setup.tp2.toFixed(2)}</code> (+${tp2Pips} pips)
 🎯 <b>TP3:</b> <code>${setup.tp3.toFixed(2)}</code> (+${tp3Pips} pips)
 🎯 <b>TP4:</b> <code>${setup.tp4.toFixed(2)}</code> (+${tp4Pips} pips)
-
-📊 <b>R:R:</b> <code>${setup.riskRewardRatio || "1:2.8"}</code>
-🔥 <b>Confidence:</b> <code>${confidence}% | ${grade}</code>
-⚡ <b>Institutional Confluence:</b> 14/14
-⏱️ <b>Expiry:</b> <code>30 Minutes (Auto-Close if no TP/SL)</code>
 ━━━━━━━━━━━━━━━━━━━
 <i>💡 Tip: Tap any price number to copy directly to MT5.</i>`;
 }

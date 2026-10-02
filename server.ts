@@ -6493,6 +6493,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         text.includes("Best Entry:") ||
         text.includes("ENTRY ZONE") ||
         text.includes("Execution Zone") ||
+        text.includes("Entry:") ||
         text.includes("🎯 TP1:") ||
         (text.includes("ACTION:") && (text.includes("BUY") || text.includes("SELL"))));
 
