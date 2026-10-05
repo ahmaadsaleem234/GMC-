@@ -1368,13 +1368,15 @@ async function startServer() {
     lastBotCommandsSyncedTime = now;
 
     try {
-      // 1. Set Default Commands (for regular subscribers)
+      // 1. Set Default Commands (accessible to all chats and private sessions)
       const normalUserCommands = [
-        { command: "start", description: "Welcome & Live Connection" },
-        { command: "signal", description: "Latest Live Gold Setup" },
-        { command: "status", description: "Bot & Engine Telemetry" },
-        { command: "help", description: "Commands & Subscriber Guide" },
-        { command: "unsubscribe", description: "Stop Receiving Signals" },
+        { command: "start", description: "🚀 Open Control Center & Live Connection" },
+        { command: "admin", description: "👑 Super Admin Control Panel" },
+        { command: "signal", description: "📈 Latest Live Gold Setup & Chart" },
+        { command: "status", description: "⚙️ System & Engine Telemetry" },
+        { command: "bots", description: "🤖 4-AI Models ON/OFF Toggles" },
+        { command: "help", description: "🛠️ All Commands & Control Reference" },
+        { command: "ping", description: "⚡ Connection Latency Test" },
       ];
 
       await fetchWithTimeout(`https://api.telegram.org/bot${token}/setMyCommands`, {
@@ -3911,7 +3913,9 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
               const msg = update.message || update.channel_post;
               if (msg && msg.chat && msg.chat.id) {
                 const token = cachedValidTelegramToken || process.env.TELEGRAM_BOT_TOKEN || "";
-                const text = (msg.text || "").trim();
+                let rawText = (msg.text || "").trim();
+                // Strip @botusername suffix (e.g. /admin@HaramiAiBot -> /admin, /signal@HaramiAiBot -> /signal)
+                const text = rawText.replace(/^(\/[a-zA-Z0-9_]+)@\w+/i, "$1");
                 const textLower = text.toLowerCase();
                 const chatId = String(msg.chat.id);
                 const userId = String(msg.from?.id || chatId);
@@ -5386,7 +5390,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-          const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=8`;
+          const allowedUpdatesParam = encodeURIComponent(
+            JSON.stringify([
+              "message",
+              "edited_message",
+              "channel_post",
+              "edited_channel_post",
+              "callback_query",
+              "my_chat_member",
+              "chat_member",
+            ])
+          );
+          const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=8&allowed_updates=${allowedUpdatesParam}`;
           let res: Response;
           try {
             res = await fetch(url, { signal: controller.signal });
