@@ -15,14 +15,6 @@
 
 let fsModule: any = null;
 let pathModule: any = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    fsModule = eval('require("fs")');
-    pathModule = eval('require("path")');
-  }
-} catch (e) {
-  // Edge / browser runtime
-}
 
 import { Candle, LivePrice } from "../types";
 import {
@@ -1002,6 +994,59 @@ export class CentralSignalManagerEngine {
     this.saveToStorage();
   }
 
+  public syncActiveSetupFromMaster(trade: {
+    setupId: string;
+    currentPrice: number;
+    pnlPips: number;
+    pnlUSD: number;
+    sl: number;
+    tp1Hit: boolean;
+    tp2Hit: boolean;
+    tp3Hit: boolean;
+    tp4Hit: boolean;
+    slHit: boolean;
+    entryDispatched: boolean;
+  }) {
+    if (!this.activeSetup) return;
+    const cleanId = String(trade.setupId || "").replace("#", "").trim().toUpperCase();
+    const activeId = String(this.activeSetup.setupId || "").replace("#", "").trim().toUpperCase();
+    if (cleanId && activeId && cleanId !== activeId && !cleanId.includes(activeId) && !activeId.includes(cleanId)) {
+      return;
+    }
+    this.activeSetup.highestPriceObserved = Math.max(this.activeSetup.highestPriceObserved, trade.currentPrice);
+    this.activeSetup.lowestPriceObserved = Math.min(this.activeSetup.lowestPriceObserved, trade.currentPrice);
+    this.activeSetup.pnlPips = trade.pnlPips;
+    this.activeSetup.pnlUSD = trade.pnlUSD;
+    this.activeSetup.isEntryTriggered = true;
+    if (trade.entryDispatched) {
+      this.activeSetup.entryDispatched = true;
+      this.activeSetup.telegramDispatched = true;
+      if (!this.activeSetup.dispatchedOutcomes.includes("SIGNAL")) {
+        this.activeSetup.dispatchedOutcomes.push("SIGNAL");
+      }
+    }
+    if (trade.tp1Hit && !this.activeSetup.isTp1Hit) {
+      this.activeSetup.isTp1Hit = true;
+      this.activeSetup.lifecycleState = "TP1_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🎯 TP1 HIT";
+      this.activeSetup.protectionActive = true;
+      this.activeSetup.isBreakeven = true;
+      this.activeSetup.protectedSlLevel = trade.sl;
+      this.activeSetup.protectionMessage = `🛡️ PROTECTION MODE ACTIVE: SL moved to Break-even ($${trade.sl.toFixed(2)}). Trade is 100% Risk-Free.`;
+    }
+    if (trade.tp2Hit && !this.activeSetup.isTp2Hit) {
+      this.activeSetup.isTp2Hit = true;
+      this.activeSetup.lifecycleState = "TP2_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🎯 TP2 HIT";
+    }
+    if (trade.tp3Hit && !this.activeSetup.isTp3Hit) {
+      this.activeSetup.isTp3Hit = true;
+      this.activeSetup.lifecycleState = "TP3_HIT";
+      this.activeSetup.lifecycleStatusLabel = "🎯 TP3 HIT";
+    }
+    this.saveToStorage();
+  }
+
   public getState(currentPrice: number = 2945.80): CentralSignalManagerState {
     return this.evaluateState([], [], currentPrice, undefined, "XAUUSD");
   }
@@ -1288,8 +1333,8 @@ export class CentralSignalManagerEngine {
       protectedSlLevel: null,
       protectionMessage: null,
       isBreakeven: false,
-      isEntryTriggered: false,
-      entryPriceActivated: null,
+      isEntryTriggered: true,
+      entryPriceActivated: setupData.preferredEntry,
       isTp1Hit: false,
       isTp2Hit: false,
       isTp3Hit: false,
@@ -1767,15 +1812,24 @@ export class CentralSignalManagerEngine {
     const consensus = this.calculateAiConsensus(candidates);
 
     // 4. ACTIVE SETUP LIFECYCLE MONITORING (If an active setup already exists)
+    // Note: On the server (where externalActiveTradeGetter is registered), executeServerSignalEngineTick
+    // is the single authoritative engine for trade promotion and live Bid/Ask TP/SL monitoring.
     if (this.activeSetup) {
-      this.monitorActiveSetupLifecycle(px, candles5m);
-    } else if (!this.cooldown.isActive && marketStatus === "HEALTHY") {
-      // Check again if external active trade exists before running priority competition
-      const extTrade = this.externalActiveTradeGetter ? this.externalActiveTradeGetter() : null;
-      if (!extTrade) {
-        // 5. SETUP PRIORITY & SELECTION ENGINE (Select ONLY ONE winning setup)
-        this.runPriorityCompetitionAndSelectWinner(candidates, consensus, px);
+      if (this.externalActiveTradeGetter) {
+        const s = this.activeSetup;
+        const isBuy = s.direction === "BUY";
+        s.highestPriceObserved = Math.max(s.highestPriceObserved, px);
+        s.lowestPriceObserved = Math.min(s.lowestPriceObserved, px);
+        const effectiveEntry = s.entryPriceActivated || s.preferredEntry;
+        const diff = isBuy ? px - effectiveEntry : effectiveEntry - px;
+        s.pnlPips = Math.round(diff * 10);
+        s.pnlUSD = Number((diff * 10).toFixed(2));
+      } else {
+        this.monitorActiveSetupLifecycle(px, candles5m);
       }
+    } else if (!this.cooldown.isActive && marketStatus === "HEALTHY" && !this.externalActiveTradeGetter) {
+      // 5. SETUP PRIORITY & SELECTION ENGINE (Select ONLY ONE winning setup in standalone client mode)
+      this.runPriorityCompetitionAndSelectWinner(candidates, consensus, px);
     }
 
     // 6. RANKINGS & LEADERBOARD

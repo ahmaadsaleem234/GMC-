@@ -5667,9 +5667,17 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       };
       fs.writeFileSync(ACTIVE_TRADE_STORE_FILE, JSON.stringify(payload, null, 2), "utf-8");
       if (serverActiveTrade && serverActiveTrade.status !== "CLOSED" && serverActiveTrade.status !== "CANCELLED") {
-        serverTelegramIdempotency.syncActiveTradeState(serverActiveTrade.signalId || serverActiveTrade.id, serverCooldownUntil);
+        const isInitialSent = Boolean(
+          serverActiveTrade.entryDispatched ||
+          serverActiveTrade.dispatchedOutcomes?.includes("SIGNAL")
+        );
+        serverTelegramIdempotency.syncActiveTradeState(
+          serverActiveTrade.signalId || serverActiveTrade.id,
+          serverCooldownUntil,
+          isInitialSent
+        );
       } else {
-        serverTelegramIdempotency.syncActiveTradeState(null, serverCooldownUntil);
+        serverTelegramIdempotency.syncActiveTradeState(null, serverCooldownUntil, false);
       }
     } catch (err) {
       console.error("[ACTIVE TRADE STORE]: Error persisting active trade lock:", err);
@@ -5684,12 +5692,33 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (parsed) {
           if (parsed.activeTrade && parsed.activeTrade.status !== "CLOSED" && parsed.activeTrade.status !== "CANCELLED") {
             serverActiveTrade = parsed.activeTrade;
-            serverTelegramIdempotency.syncActiveTradeState(serverActiveTrade.signalId || serverActiveTrade.id, parsed.cooldownUntil || 0);
-            console.log(`[ACTIVE TRADE STORE]: 🛡️ Restored SINGLE ACTIVE TRADE #${serverActiveTrade.signalId || serverActiveTrade.id} (${serverActiveTrade.direction} @ $${serverActiveTrade.entry}) from disk.`);
+            const sigId = String(serverActiveTrade.signalId || serverActiveTrade.id || "").replace("#", "").trim();
+            const wasDelivered = Boolean(
+              serverActiveTrade.entryDispatched ||
+              serverActiveTrade.dispatchedOutcomes?.includes("SIGNAL") ||
+              tradeStateManager.isSignalDispatched(sigId) ||
+              centralSignalManager.getActiveSetup()?.entryDispatched ||
+              serverDeliveryLogs.some((l) => l.signalId?.includes(sigId) && l.successCount > 0)
+            );
+            if (wasDelivered) {
+              serverActiveTrade.entryDispatched = true;
+              if (!Array.isArray(serverActiveTrade.dispatchedOutcomes)) {
+                serverActiveTrade.dispatchedOutcomes = [];
+              }
+              if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
+                serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
+              }
+            }
+            serverTelegramIdempotency.syncActiveTradeState(
+              sigId,
+              parsed.cooldownUntil || 0,
+              wasDelivered
+            );
+            console.log(`[ACTIVE TRADE STORE]: 🛡️ Restored SINGLE ACTIVE TRADE #${sigId} (${serverActiveTrade.direction} @ $${serverActiveTrade.entry}, Dispatched: ${wasDelivered}) from disk.`);
           }
           if (typeof parsed.cooldownUntil === "number" && parsed.cooldownUntil > Date.now()) {
             serverCooldownUntil = parsed.cooldownUntil;
-            serverTelegramIdempotency.syncActiveTradeState(null, serverCooldownUntil);
+            serverTelegramIdempotency.syncActiveTradeState(null, serverCooldownUntil, false);
             console.log(`[ACTIVE TRADE STORE]: ⏳ Restored 30-min COOLDOWN until ${new Date(serverCooldownUntil).toISOString()}`);
           }
           if (typeof parsed.lastClosedTime === "number") {
@@ -5705,8 +5734,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
   }
 
-  // Connect Central Signal Manager Single Active Trade External Getter and File Provider
+  // Connect Central Signal Manager, Idempotency Store & Super Admin File Providers
   try {
+    serverTelegramIdempotency.setFsProvider(fs, path);
+    superAdminService.setFsProvider(fs, path);
     centralSignalManager.setFsProvider(fs, path);
     centralSignalManager.setExternalActiveTradeGetter(() => {
       if (serverActiveTrade && serverActiveTrade.status !== "CLOSED" && serverActiveTrade.status !== "CANCELLED") {
@@ -8045,68 +8076,26 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             ],
           };
 
-          saveActiveTradeLockToDisk();
-
           serverCurrentDecision = direction;
           serverLastSignalTime = now;
           serverLastDispatchedSignal = { direction, entry, timestamp: now };
-          registerDispatchedSignal(serverActiveTrade.id, "HARAMI_AI", direction, entry);
 
-          const signalText = formatHaramiSignalMessage({
-            signalId,
-            direction,
-            symbolShort: "XAUUSD",
-            assetName: "GOLD",
-            timeframe: "M15",
-            entryLow,
-            entryHigh,
-            bestEntry: entry,
-            currentPrice,
-            sl,
-            tp1,
-            tp2,
-            tp3,
-            tp4,
-            rr: calculatedRR,
-            confidence,
-            grade: confidence >= 92.0 ? "A+" : "A",
-            reason: reasonForEntry,
-            isAlreadyInZone,
-          });
-
-          console.log(`[HARAMI AI ENGINE]: Real-Time Signal Generated & Dispatched (${direction} @ $${entry})`);
-
-          let chartBuffer: Buffer | undefined;
-          try {
-            chartBuffer = await generateSignalChartBuffer({
-              symbol: "FOREXCOM:XAUUSD (Gold Spot)",
-              direction,
-              entryZone: [entryLow, entryHigh],
-              bestEntry: entry,
-              sl,
-              tp1,
-              tp2,
-              tp3,
-              tp4,
-              currentPrice: entry,
-              confidence,
-              reason: reasonForEntry,
-              timestamp: nowUtc,
-            });
-          } catch (chartErr) {
-            console.warn("[HARAMI AI ENGINE]: Chart generation failed:", chartErr);
-          }
+          console.log(`[HARAMI AI ENGINE]: Real-Time Signal Generated (${direction} @ $${entry}, ID: #${signalId}) — Dispatching to Telegram FIRST.`);
 
           let dispatched = Boolean(serverActiveTrade?.entryDispatched);
           if (!dispatched && mt5Config.telegramSignalsEnabled) {
             dispatched = await ensureTradeSignalDispatched(serverActiveTrade);
           }
           if (dispatched) {
+            registerDispatchedSignal(signalId, "HARAMI_AI", direction, entry);
+            saveActiveTradeLockToDisk();
             superAdminService.logAction(
               "TRADE_AUTO_DISPATCHED",
               `Setup #${signalId} (${direction} $${entry}) automatically dispatched to Telegram subscribers.`,
               "SYSTEM"
             );
+          } else {
+            saveActiveTradeLockToDisk();
           }
 
           // Trigger secure n8n webhook integration for Central Signal Manager approved setup
@@ -8188,8 +8177,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           tp3Hit: Boolean(systemActiveTrade.tp3Hit || systemActiveTrade.isTp3Hit),
           tp4Hit: Boolean(systemActiveTrade.tp4Hit || systemActiveTrade.isFinalTpHit),
           slHit: false,
-          dispatchedOutcomes: systemActiveTrade.dispatchedOutcomes || ["SIGNAL"],
-          entryDispatched: true,
+          dispatchedOutcomes: Array.isArray(systemActiveTrade.dispatchedOutcomes) ? systemActiveTrade.dispatchedOutcomes : [],
+          entryDispatched: Boolean(systemActiveTrade.entryDispatched && systemActiveTrade.dispatchedOutcomes?.includes("SIGNAL")),
           signalGeneratedAt: systemActiveTrade.signalGeneratedAt || nowUtc,
           entryTriggeredAt: systemActiveTrade.entryTriggeredAt || nowUtc,
           currentFloatingPnL: 0,
@@ -8215,7 +8204,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       if (!Array.isArray(trade.auditLogs)) trade.auditLogs = [];
       if (!Array.isArray(trade.dispatchedOutcomes)) trade.dispatchedOutcomes = [];
 
-      const activeEntry = trade.actualExecutedEntryPrice || trade.entry;
+      const activeEntry = trade.entry || trade.actualExecutedEntryPrice;
       const isBuy = trade.direction === "BUY";
 
       // Calculate Floating P&L from Live Bid/Ask
@@ -8234,6 +8223,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
       trade.currentFloatingPnL = floatingPnLUSD;
       trade.pnlPips = pnlPips;
+
+      centralSignalManager.syncActiveSetupFromMaster({
+        setupId: trade.signalId || trade.id,
+        currentPrice: tick.price,
+        pnlPips,
+        pnlUSD: floatingPnLUSD,
+        sl: trade.sl,
+        tp1Hit: Boolean(trade.tp1Hit),
+        tp2Hit: Boolean(trade.tp2Hit),
+        tp3Hit: Boolean(trade.tp3Hit),
+        tp4Hit: Boolean(trade.tp4Hit),
+        slHit: Boolean(trade.slHit),
+        entryDispatched: Boolean(trade.entryDispatched),
+      });
 
       mt5AccountMetrics.floatingPnL = floatingPnLUSD;
       mt5AccountMetrics.equity = Number((mt5AccountMetrics.balance + floatingPnLUSD).toFixed(2));
@@ -8399,27 +8402,53 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
 
       // 2B. Real-Price Target (TP1–4) & Stop Loss Verification
+      // STRICT SEQUENCE RULE:
+      // 1. First send the trade setup to Telegram (NEW_SETUP).
+      // 2. Only AFTER the trade setup has been confirmed delivered, wait for SL or TP.
+      // 3. When SL or TP is hit, send the outcome to Telegram.
       if (trade.status === "ENTRY_CONFIRMED" || trade.status === "OPEN" || trade.status.startsWith("TP")) {
         const tradeSignalId = String(trade.signalId || trade.id || "").replace("#", "").trim();
         const isEntryDispatched = Boolean(
-          trade.entryDispatched ||
-          trade.dispatchedOutcomes?.includes("SIGNAL") ||
+          (trade.entryDispatched && trade.dispatchedOutcomes?.includes("SIGNAL")) ||
           tradeStateManager.isSignalDispatched(tradeSignalId) ||
-          serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId)
+          serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId) ||
+          serverDeliveryLogs.some((l) => l.signalId?.includes(tradeSignalId) && l.signalId?.includes("NEW_SETUP") && l.successCount > 0)
         );
 
-        if (!isEntryDispatched) {
-          if ((trade.status as string) !== "WAITING_FOR_ENTRY" || now - trade.createdAt >= 15000) {
+        if (isEntryDispatched) {
+          if (!trade.entryDispatched || !trade.dispatchedOutcomes.includes("SIGNAL")) {
             trade.entryDispatched = true;
             if (!trade.dispatchedOutcomes.includes("SIGNAL")) trade.dispatchedOutcomes.push("SIGNAL");
-          } else if (mt5Config.telegramSignalsEnabled) {
+            saveActiveTradeLockToDisk();
+          }
+          if (!serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId)) {
+            serverTelegramIdempotency.syncActiveTradeState(tradeSignalId, serverCooldownUntil, true);
+          }
+        } else {
+          if (mt5Config.telegramSignalsEnabled) {
             const sentInitial = await ensureTradeSignalDispatched(trade);
             if (!sentInitial) {
+              if (now - trade.createdAt >= 2 * 60 * 1000) {
+                console.warn(`[ENTRY SIGNAL GUARD]: Trade #${tradeSignalId} could not be dispatched within 2 minutes. Clearing un-dispatched trade.`);
+                tradeStateManager.closeActiveTrade("CANCELLED", tick.price, 0, 0, 0);
+                centralSignalManager.clearActiveSetup();
+                serverActiveTrade = null;
+                saveActiveTradeLockToDisk();
+              }
               return;
             }
+            saveActiveTradeLockToDisk();
+            return; // Wait until next tick after trade dispatch before checking SL/TP
           } else {
             trade.entryDispatched = true;
+            if (!trade.dispatchedOutcomes.includes("SIGNAL")) trade.dispatchedOutcomes.push("SIGNAL");
+            saveActiveTradeLockToDisk();
           }
+        }
+
+        // Wait at least 3 seconds after initial trade creation before evaluating SL/TP outcomes
+        if (now - trade.createdAt < 3000) {
+          return;
         }
 
         const currentExitPrice = isBuy ? tick.bid : tick.ask;
@@ -8566,6 +8595,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               if (mt5Config.telegramSignalsEnabled) {
                 await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP2_HIT`);
               }
+              saveActiveTradeLockToDisk();
             }
           }
 
@@ -8606,6 +8636,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               if (mt5Config.telegramSignalsEnabled) {
                 await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP3_HIT`);
               }
+              saveActiveTradeLockToDisk();
             }
           }
 
@@ -8613,13 +8644,32 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (checkBid >= trade.tp4 && !trade.tp4Hit) {
             const outcomeKey = `${trade.id}-TP4`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
+              const pips = Number(((trade.tp4 - activeEntry) * 10).toFixed(1));
+              const outcomeText = formatTpHitAlert(4, {
+                signalId: trade.signalId || trade.id,
+                symbol: "XAUUSD",
+                direction: trade.direction,
+                price: trade.tp4,
+                pips: Number(pips.toFixed(0)),
+              });
+
+              if (mt5Config.telegramSignalsEnabled) {
+                const sentOk = await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP4_HIT`);
+                if (!sentOk) {
+                  (trade as any).exitRetryCount = ((trade as any).exitRetryCount || 0) + 1;
+                  if ((trade as any).exitRetryCount <= 3) {
+                    console.warn(`[HARAMI AI OUTCOME RETRY]: TP4 outcome delivery failed (attempt ${(trade as any).exitRetryCount}/3). Will retry on next tick.`);
+                    return;
+                  }
+                }
+              }
+
               trade.tp4Hit = true;
               trade.tp4HitAt = nowUtc;
               trade.status = "CLOSED";
               trade.closedAt = nowUtc;
               trade.dispatchedOutcomes.push(outcomeKey);
 
-              const pips = Number(((trade.tp4 - activeEntry) * 10).toFixed(1));
               const finalPnL = Number(((trade.tp4 - activeEntry) * mt5Config.lotSize * 100).toFixed(2));
               const rMultiple = activeEntry !== trade.sl ? Number(((trade.tp4 - activeEntry) / Math.abs(activeEntry - trade.sl)).toFixed(2)) : 2.5;
 
@@ -8670,18 +8720,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 outcome: "TP4_HIT",
               };
 
-              const outcomeText = formatTpHitAlert(4, {
-                signalId: trade.signalId || trade.id,
-                symbol: "XAUUSD",
-                direction: trade.direction,
-                price: trade.tp4,
-                pips: Number(pips.toFixed(0)),
-              });
-
-              if (mt5Config.telegramSignalsEnabled) {
-                await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP4_HIT`);
-              }
-
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
               moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
@@ -8702,15 +8740,42 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (checkBid <= trade.sl && !trade.slHit) {
             const outcomeKey = `${trade.id}-SL`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
+              const pips = Number(((checkBid - activeEntry) * 10).toFixed(1));
+              const lossPnL = Number(((checkBid - activeEntry) * mt5Config.lotSize * 100).toFixed(2));
+              const isBE = Boolean(trade.tp1Hit || (trade as any).isBreakeven || Math.abs(trade.sl - activeEntry) < 0.3);
+
+              const outcomeText = isBE
+                ? formatBreakevenExitAlert({
+                    signalId: trade.signalId || trade.id,
+                    symbol: "XAUUSD",
+                    direction: trade.direction,
+                    price: checkBid,
+                    sl: trade.sl,
+                  })
+                : formatSlHitAlert({
+                    signalId: trade.signalId || trade.id,
+                    symbol: "XAUUSD",
+                    direction: trade.direction,
+                    price: trade.sl,
+                    pips: Math.abs(Number(pips.toFixed(0))),
+                  });
+
+              if (mt5Config.telegramSignalsEnabled) {
+                const sentOk = await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_${isBE ? "BREAKEVEN" : "SL_HIT"}`);
+                if (!sentOk) {
+                  (trade as any).exitRetryCount = ((trade as any).exitRetryCount || 0) + 1;
+                  if ((trade as any).exitRetryCount <= 3) {
+                    console.warn(`[HARAMI AI OUTCOME RETRY]: SL outcome delivery failed (attempt ${(trade as any).exitRetryCount}/3). Will retry on next tick.`);
+                    return;
+                  }
+                }
+              }
+
               trade.slHit = true;
               trade.slHitAt = nowUtc;
               trade.status = "CLOSED";
               trade.closedAt = nowUtc;
               trade.dispatchedOutcomes.push(outcomeKey);
-
-              const pips = Number(((checkBid - activeEntry) * 10).toFixed(1));
-              const lossPnL = Number(((checkBid - activeEntry) * mt5Config.lotSize * 100).toFixed(2));
-              const isBE = Boolean(trade.tp1Hit || (trade as any).isBreakeven || Math.abs(trade.sl - activeEntry) < 0.3);
 
               tradeStateManager.closeActiveTrade(isBE ? "BREAKEVEN" : "STOP_LOSS", checkBid, lossPnL, pips / 10, isBE ? 0 : -1.0);
 
@@ -8763,26 +8828,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 closedAt: now,
                 outcome: isBE ? "BREAKEVEN" : "STOP_LOSS",
               };
-
-              const outcomeText = isBE
-                ? formatBreakevenExitAlert({
-                    signalId: trade.signalId || trade.id,
-                    symbol: "XAUUSD",
-                    direction: trade.direction,
-                    price: checkBid,
-                    sl: trade.sl,
-                  })
-                : formatSlHitAlert({
-                    signalId: trade.signalId || trade.id,
-                    symbol: "XAUUSD",
-                    direction: trade.direction,
-                    price: trade.sl,
-                    pips: Math.abs(Number(pips.toFixed(0))),
-                  });
-
-              if (mt5Config.telegramSignalsEnabled) {
-                await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_${isBE ? "BREAKEVEN" : "SL_HIT"}`);
-              }
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
@@ -8939,6 +8984,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               if (mt5Config.telegramSignalsEnabled) {
                 await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP2_HIT`);
               }
+              saveActiveTradeLockToDisk();
             }
           }
 
@@ -8979,6 +9025,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
               if (mt5Config.telegramSignalsEnabled) {
                 await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP3_HIT`);
               }
+              saveActiveTradeLockToDisk();
             }
           }
 
@@ -8986,13 +9033,32 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (checkAsk <= trade.tp4 && !trade.tp4Hit) {
             const outcomeKey = `${trade.id}-TP4`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
+              const pips = Number(((activeEntry - trade.tp4) * 10).toFixed(1));
+              const outcomeText = formatTpHitAlert(4, {
+                signalId: trade.signalId || trade.id,
+                symbol: "XAUUSD",
+                direction: trade.direction,
+                price: trade.tp4,
+                pips: Number(pips.toFixed(0)),
+              });
+
+              if (mt5Config.telegramSignalsEnabled) {
+                const sentOk = await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP4_HIT`);
+                if (!sentOk) {
+                  (trade as any).exitRetryCount = ((trade as any).exitRetryCount || 0) + 1;
+                  if ((trade as any).exitRetryCount <= 3) {
+                    console.warn(`[HARAMI AI OUTCOME RETRY]: TP4 outcome delivery failed (attempt ${(trade as any).exitRetryCount}/3). Will retry on next tick.`);
+                    return;
+                  }
+                }
+              }
+
               trade.tp4Hit = true;
               trade.tp4HitAt = nowUtc;
               trade.status = "CLOSED";
               trade.closedAt = nowUtc;
               trade.dispatchedOutcomes.push(outcomeKey);
 
-              const pips = Number(((activeEntry - trade.tp4) * 10).toFixed(1));
               const finalPnL = Number(((activeEntry - trade.tp4) * mt5Config.lotSize * 100).toFixed(2));
               const rMultiple = activeEntry !== trade.sl ? Number(((activeEntry - trade.tp4) / Math.abs(activeEntry - trade.sl)).toFixed(2)) : 2.5;
 
@@ -9043,18 +9109,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 outcome: "TP4_HIT",
               };
 
-              const outcomeText = formatTpHitAlert(4, {
-                signalId: trade.signalId || trade.id,
-                symbol: "XAUUSD",
-                direction: trade.direction,
-                price: trade.tp4,
-                pips: Number(pips.toFixed(0)),
-              });
-
-              if (mt5Config.telegramSignalsEnabled) {
-                await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_TP4_HIT`);
-              }
-
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", "TP", trade.id);
               moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, "TP_HIT", trade.signalId || trade.id);
@@ -9075,15 +9129,42 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           if (checkAsk >= trade.sl && !trade.slHit) {
             const outcomeKey = `${trade.id}-SL`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
+              const pips = Number(((activeEntry - checkAsk) * 10).toFixed(1));
+              const lossPnL = Number(((activeEntry - checkAsk) * mt5Config.lotSize * 100).toFixed(2));
+              const isBE = Boolean(trade.tp1Hit || (trade as any).isBreakeven || Math.abs(trade.sl - activeEntry) < 0.3);
+
+              const outcomeText = isBE
+                ? formatBreakevenExitAlert({
+                    signalId: trade.signalId || trade.id,
+                    symbol: "XAUUSD",
+                    direction: trade.direction,
+                    price: checkAsk,
+                    sl: trade.sl,
+                  })
+                : formatSlHitAlert({
+                    signalId: trade.signalId || trade.id,
+                    symbol: "XAUUSD",
+                    direction: trade.direction,
+                    price: trade.sl,
+                    pips: Math.abs(Number(pips.toFixed(0))),
+                  });
+
+              if (mt5Config.telegramSignalsEnabled) {
+                const sentOk = await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_${isBE ? "BREAKEVEN" : "SL_HIT"}`);
+                if (!sentOk) {
+                  (trade as any).exitRetryCount = ((trade as any).exitRetryCount || 0) + 1;
+                  if ((trade as any).exitRetryCount <= 3) {
+                    console.warn(`[HARAMI AI OUTCOME RETRY]: SL outcome delivery failed (attempt ${(trade as any).exitRetryCount}/3). Will retry on next tick.`);
+                    return;
+                  }
+                }
+              }
+
               trade.slHit = true;
               trade.slHitAt = nowUtc;
               trade.status = "CLOSED";
               trade.closedAt = nowUtc;
               trade.dispatchedOutcomes.push(outcomeKey);
-
-              const pips = Number(((activeEntry - checkAsk) * 10).toFixed(1));
-              const lossPnL = Number(((activeEntry - checkAsk) * mt5Config.lotSize * 100).toFixed(2));
-              const isBE = Boolean(trade.tp1Hit || (trade as any).isBreakeven || Math.abs(trade.sl - activeEntry) < 0.3);
 
               tradeStateManager.closeActiveTrade(isBE ? "BREAKEVEN" : "STOP_LOSS", checkAsk, lossPnL, pips / 10, isBE ? 0 : -1.0);
 
@@ -9136,26 +9217,6 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 closedAt: now,
                 outcome: isBE ? "BREAKEVEN" : "STOP_LOSS",
               };
-
-              const outcomeText = isBE
-                ? formatBreakevenExitAlert({
-                    signalId: trade.signalId || trade.id,
-                    symbol: "XAUUSD",
-                    direction: trade.direction,
-                    price: checkAsk,
-                    sl: trade.sl,
-                  })
-                : formatSlHitAlert({
-                    signalId: trade.signalId || trade.id,
-                    symbol: "XAUUSD",
-                    direction: trade.direction,
-                    price: trade.sl,
-                    pips: Math.abs(Number(pips.toFixed(0))),
-                  });
-
-              if (mt5Config.telegramSignalsEnabled) {
-                await sendServerTelegramMessage(outcomeText, undefined, undefined, `${trade.signalId || trade.id}_${isBE ? "BREAKEVEN" : "SL_HIT"}`);
-              }
 
               centralSignalManager.clearActiveSetup();
               moduleSignalGatekeeper.startCooldown(trade.isWarRoomUpgraded ? "WAR_ROOM" : "HARAMI_AI", isBE ? "TP" : "SL", trade.id);
@@ -9223,8 +9284,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             confidence: setup.marketConfidence || setup.setupScore || 94,
             reason: setup.selectionReason,
             status: "ENTRY_CONFIRMED",
-            entryDispatched: Boolean(setup.entryDispatched),
-            dispatchedOutcomes: setup.dispatchedOutcomes || ["SIGNAL"],
+            entryDispatched: Boolean(setup.entryDispatched && setup.dispatchedOutcomes?.includes("SIGNAL")),
+            dispatchedOutcomes: Array.isArray(setup.dispatchedOutcomes) ? setup.dispatchedOutcomes : [],
             createdAt: Date.now(),
           } as any;
           saveActiveTradeLockToDisk();
@@ -9234,108 +9295,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       }
     });
 
-    // 🎯 Central Signal Manager Lifecycle Event Listener (ENTRY, TP1, TP2, TP3, FINAL TP, SL)
-    centralSignalManager.onLifecycleEvent(async (setup: ActiveCentralSetup, event: string, currentPx: number) => {
-      try {
-        // USER DIRECTIVE: ONLY Harami AI is allowed on Telegram!
-        if (setup.brainSource !== "HARAMI_AI") {
-          return;
-        }
-
-        const eventKey = `${setup.setupId}::${event}`;
-        const directionEmoji = setup.direction === "BUY" ? "🟢" : "🔴";
-        let title = "";
-        let detail = "";
-
-        // STRICT SEQUENCE GUARD: Only dispatch lifecycle outcome if initial setup was already broadcasted by the master engine
-        const tradeSignalId = setup.setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim();
-        const isEntryDispatched = Boolean(
-          (setup.entryDispatched && setup.dispatchedOutcomes?.includes("SIGNAL")) ||
-          serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId) ||
-          (serverActiveTrade && (serverActiveTrade.signalId === tradeSignalId || serverActiveTrade.id === tradeSignalId))
-        );
-
-        if (!isEntryDispatched) {
-          console.log(`[LIFECYCLE GUARD]: Suppressed unverified lifecycle alert (${event}) for un-dispatched candidate #${setup.setupId}.`);
-          return;
-        }
-
-        // Guard against duplicate dispatches if already sent by primary tick loop
-        if (setup.dispatchedOutcomes?.includes(event) || setup.dispatchedOutcomes?.includes(eventKey)) {
-          return;
-        }
-
-        if (event === "ENTRY_HIT") {
-          title = `🟢 <b>ENTRY TRIGGERED / FILLED</b>`;
-          detail = `Price reached entry zone at <code>$${currentPx.toFixed(2)}</code>.\nTrade is now <b>LIVE & RUNNING</b>.`;
-        } else if (event === "TP1_HIT") {
-          title = `🎯 <b>TP1 HIT (+${Math.round(Math.abs(currentPx - setup.preferredEntry) * 10)} Pips)</b>`;
-          detail = `🛡️ <b>SL Moved to Break-even</b> ($${(setup.protectedSlLevel || setup.preferredEntry).toFixed(2)}).\nRisk-free trade. Secure 50% partial profits.`;
-        } else if (event === "TP2_HIT") {
-          title = `🎯 <b>TP2 HIT (+${Math.round(Math.abs(currentPx - setup.preferredEntry) * 10)} Pips)</b>`;
-          detail = `🔒 <b>70% Profits Locked</b>.\nTrailing SL moved to TP1 ($${setup.tp1.toFixed(2)}).`;
-        } else if (event === "TP3_HIT") {
-          title = `🎯 <b>TP3 HIT (+${Math.round(Math.abs(currentPx - setup.preferredEntry) * 10)} Pips)</b>`;
-          detail = `🚀 Massive runner in deep profit.\nTrailing SL secured at TP2 ($${setup.tp2.toFixed(2)}).`;
-        } else if (event === "FINAL_TP_HIT") {
-          title = `🏆 <b>FULL TAKE PROFIT ACHIEVED (+${Math.round(Math.abs(currentPx - setup.preferredEntry) * 10)} Pips)</b>`;
-          detail = `🌟 All targets achieved. Trade closed in 100% full profit!`;
-        } else if (event === "SL_HIT") {
-          title = `🛑 <b>STOP LOSS HIT</b>`;
-          detail = `Trade closed at <code>$${currentPx.toFixed(2)}</code>. Capital protected for next opportunity.`;
-        } else if (event === "TP_THEN_SL_HIT") {
-          title = `🛡️ <b>BREAKEVEN EXIT (TRADE CLOSED)</b>`;
-          detail = `Trade closed at protected level <code>$${currentPx.toFixed(2)}</code> after achieving TP1. Overall profit preserved!`;
-        }
-
-        if (title && mt5Config.telegramSignalsEnabled) {
-          const msg = [
-            title,
-            ``,
-            `<b>${setup.brainName}</b> • ${directionEmoji} <b>${setup.direction}</b>`,
-            `<b>${setup.assetKey}</b> [Setup ID: <code>#${setup.setupId}</code>]`,
-            ``,
-            `Current Price: <code>$${currentPx.toFixed(2)}</code>`,
-            detail,
-          ].join("\n");
-
-          const sentOk = await sendServerTelegramMessage(msg, undefined, undefined, eventKey);
-          if (sentOk) {
-            if (!setup.dispatchedOutcomes) setup.dispatchedOutcomes = [];
-            if (!setup.dispatchedOutcomes.includes(event)) setup.dispatchedOutcomes.push(event);
-            if (!setup.dispatchedOutcomes.includes(eventKey)) setup.dispatchedOutcomes.push(eventKey);
-          }
-
-          // Synchronize post-trade cooldown across all system managers upon trade closure
-          if (
-            event === "FINAL_TP_HIT" ||
-            event === "SL_HIT" ||
-            event === "TP_THEN_SL_HIT" ||
-            event === "EXPIRED"
-          ) {
-            serverActiveTrade = null;
-            serverLastClosedTime = Date.now();
-            serverCooldownUntil = serverLastClosedTime + getSystemCooldownMs();
-            serverCurrentDecision = `WAIT — ${serverConfiguredCooldownMins}-MIN COOLDOWN ACTIVE (${serverConfiguredCooldownMins}m remaining after ${event})`;
-            saveActiveTradeLockToDisk();
-            tradeStateManager.closeActiveTrade(
-              event === "TP_THEN_SL_HIT" ? "BREAKEVEN" : event === "SL_HIT" ? "STOP_LOSS" : "WIN_TP",
-              currentPx,
-              0,
-              0,
-              0
-            );
-            tradeStateManager.startCooldown(serverConfiguredCooldownMins, event, setup.setupId);
-            moduleSignalGatekeeper.startGlobalCooldown(serverConfiguredCooldownMins, event, setup.setupId);
-            serverTelegramIdempotency.recordTradeClosed(setup.setupId, event, serverConfiguredCooldownMins);
-            centralSignalManager.clearActiveSetup();
-            centralSignalManager.startCooldown(serverConfiguredCooldownMins as any);
-            console.log(`[LIFECYCLE EVENT]: Trade #${setup.setupId} closed (${event}). Global ${serverConfiguredCooldownMins}-minute cooldown active across all engines.`);
-          }
-        }
-      } catch (err) {
-        console.error("[SERVER CENTRAL LIFECYCLE BROADCAST ERROR]:", err);
-      }
+    // 🎯 Central Signal Manager Lifecycle Event Listener
+    // Note: executeServerSignalEngineTick is the single authoritative monitor that evaluates live Bid/Ask
+    // and dispatches Harami AI TP/SL outcomes to Telegram. This listener is kept silent for Harami AI
+    // to prevent duplicate ENTRY_HIT alerts or premature mid-price closures.
+    centralSignalManager.onLifecycleEvent(async (_setup: ActiveCentralSetup, _event: string, _currentPx: number) => {
+      return;
     });
 
     serverActiveKhatarnakSetup = null;

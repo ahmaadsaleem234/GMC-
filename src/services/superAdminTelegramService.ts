@@ -16,18 +16,8 @@
  * - Separate Performance Analytics & Immutable Super Admin Activity Audit Logs
  */
 
-// Optional Node.js file system helpers for local server persistence
 let fsModule: any = null;
 let pathModule: any = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    // Dynamic import/require guarded for Node.js runtime
-    fsModule = eval('require("fs")');
-    pathModule = eval('require("path")');
-  }
-} catch (e) {
-  // Edge runtime (Cloudflare Worker / V8 isolate)
-}
 
 export interface SuperAdminConfig {
   superAdminId: string;
@@ -86,8 +76,23 @@ export interface TelegramInlineKeyboard {
   inline_keyboard: TelegramInlineButton[][];
 }
 
-const SUPER_ADMIN_CONFIG_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "super_admin_config.json") : "super_admin_config.json";
-const SUPER_ADMIN_LOGS_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "super_admin_audit_logs.json") : "super_admin_audit_logs.json";
+function getSuperAdminConfigFile(): string {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule) {
+      return pathModule.join(process.cwd(), "super_admin_config.json");
+    }
+  } catch (e) {}
+  return "super_admin_config.json";
+}
+
+function getSuperAdminLogsFile(): string {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule) {
+      return pathModule.join(process.cwd(), "super_admin_audit_logs.json");
+    }
+  } catch (e) {}
+  return "super_admin_audit_logs.json";
+}
 
 const DEFAULT_SUPER_ADMIN_CONFIG: SuperAdminConfig = {
   superAdminId: "5218548758",
@@ -130,10 +135,17 @@ export class SuperAdminTelegramService {
     this.loadState();
   }
 
+  public setFsProvider(fs: any, path: any): void {
+    fsModule = fs;
+    pathModule = path;
+    this.loadState();
+  }
+
   private loadState() {
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(SUPER_ADMIN_CONFIG_FILE)) {
-        const raw = fsModule.readFileSync(SUPER_ADMIN_CONFIG_FILE, "utf-8");
+      const cfgFile = getSuperAdminConfigFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(cfgFile)) {
+        const raw = fsModule.readFileSync(cfgFile, "utf-8");
         this.config = { ...DEFAULT_SUPER_ADMIN_CONFIG, ...JSON.parse(raw) };
       }
     } catch (e) {
@@ -141,8 +153,9 @@ export class SuperAdminTelegramService {
     }
 
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(SUPER_ADMIN_LOGS_FILE)) {
-        const raw = fsModule.readFileSync(SUPER_ADMIN_LOGS_FILE, "utf-8");
+      const logsFile = getSuperAdminLogsFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(logsFile)) {
+        const raw = fsModule.readFileSync(logsFile, "utf-8");
         this.auditLogs = JSON.parse(raw);
       }
     } catch (e) {
@@ -154,7 +167,7 @@ export class SuperAdminTelegramService {
     try {
       this.config.lastUpdatedUtc = new Date().toISOString().replace("T", " ").substring(0, 19) + " UTC";
       if (fsModule && fsModule.writeFileSync) {
-        fsModule.writeFileSync(SUPER_ADMIN_CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
+        fsModule.writeFileSync(getSuperAdminConfigFile(), JSON.stringify(this.config, null, 2), "utf-8");
       }
     } catch (e) {
       // In edge environments, stored in-memory or KV
@@ -167,7 +180,7 @@ export class SuperAdminTelegramService {
         this.auditLogs = this.auditLogs.slice(0, 500);
       }
       if (fsModule && fsModule.writeFileSync) {
-        fsModule.writeFileSync(SUPER_ADMIN_LOGS_FILE, JSON.stringify(this.auditLogs, null, 2), "utf-8");
+        fsModule.writeFileSync(getSuperAdminLogsFile(), JSON.stringify(this.auditLogs, null, 2), "utf-8");
       }
     } catch (e) {
       // In edge environments, stored in-memory or KV

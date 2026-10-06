@@ -1,13 +1,5 @@
 let fsModule: any = null;
 let pathModule: any = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    fsModule = eval('require("fs")');
-    pathModule = eval('require("path")');
-  }
-} catch (e) {
-  // Edge / browser runtime
-}
 
 export interface DispatchedEventRecord {
   key: string;
@@ -63,6 +55,12 @@ class TelegramIdempotencyRegistry {
   private cooldownDurationMinutes: number = 30;
 
   constructor() {
+    this.loadFromDisk();
+  }
+
+  public setFsProvider(fs: any, path: any): void {
+    fsModule = fs;
+    pathModule = path;
     this.loadFromDisk();
   }
 
@@ -542,8 +540,24 @@ class TelegramIdempotencyRegistry {
   /**
    * Synchronize active trade and cooldown from external authoritative store
    */
-  public syncActiveTradeState(activeTradeId: string | null, cooldownUntil?: number) {
-    this.activeTradeId = activeTradeId ? activeTradeId.replace("#", "").trim().toUpperCase() : null;
+  public syncActiveTradeState(activeTradeId: string | null, cooldownUntil?: number, markInitialSent: boolean = false) {
+    const cleanId = activeTradeId ? activeTradeId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase() : null;
+    this.activeTradeId = cleanId;
+    if (cleanId && markInitialSent) {
+      const setupKey = `${cleanId}::NEW_SETUP`;
+      if (!this.dispatchedKeys.has(setupKey)) {
+        this.dispatchedKeys.add(setupKey);
+        this.records.push({
+          key: setupKey,
+          tradeId: cleanId,
+          event: "NEW_SETUP",
+          chatId: "subscribers",
+          textHash: `sync-${cleanId.toLowerCase()}`,
+          dispatchedAt: Date.now(),
+          dateTime: new Date().toISOString(),
+        });
+      }
+    }
     if (typeof cooldownUntil === "number") {
       this.cooldownUntil = cooldownUntil;
     }
