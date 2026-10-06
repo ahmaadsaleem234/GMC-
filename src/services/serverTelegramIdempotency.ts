@@ -274,19 +274,23 @@ class TelegramIdempotencyRegistry {
       // If a trade is currently active on Telegram, block any competing or new trade signals
       if (this.activeTradeId) {
         if (tradeId && tradeId === this.activeTradeId) {
+          if (this.hasInitialSignalBeenDispatched(tradeId)) {
+            return {
+              isDuplicate: true,
+              isBlocked: false,
+              key,
+              reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`,
+            };
+          }
+          // Initial signal has NOT been dispatched yet -> ALLOW DISPATCH!
+        } else {
           return {
             isDuplicate: true,
-            isBlocked: false,
+            isBlocked: true,
             key,
-            reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`,
+            reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`,
           };
         }
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`,
-        };
       }
 
       // If system is currently in post-trade cooldown, block new trade signals

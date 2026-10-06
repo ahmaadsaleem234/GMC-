@@ -19,8 +19,8 @@
       "dateTime": "2026-10-02T11:24:47.911Z"
     }
   ],
-  "activeTradeId": "HRM-1111",
-  "activeTradeStartedAt": 1790940287910,
+  "activeTradeId": null,
+  "activeTradeStartedAt": 0,
   "cooldownUntil": 0,
   "cooldownDurationMinutes": 30
 }
