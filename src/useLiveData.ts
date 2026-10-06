@@ -581,11 +581,60 @@ export function useCandleData(assetKey: string, timeframe: string) {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    let isSubscribed = true;
     setLoading(true);
-    const asset = SUPPORTED_ASSETS.find((a) => a.key === assetKey) || SUPPORTED_ASSETS[0];
-    const generated = generateInitialCandles(asset.key, asset.basePrice, timeframe, 120);
-    setCandles(generated);
-    setLoading(false);
+
+    async function loadCandles() {
+      try {
+        const symbol = assetKey;
+        let mappedTf = "15m";
+        const tfLower = timeframe.toLowerCase();
+        if (tfLower.includes("15")) mappedTf = "15m";
+        else if (tfLower.includes("30")) mappedTf = "30m";
+        else if (tfLower.includes("5")) mappedTf = "5m";
+        else if (tfLower.includes("1") && tfLower.includes("h")) mappedTf = "1H";
+        else if (tfLower.includes("4") && tfLower.includes("h")) mappedTf = "4H";
+        else if (tfLower.includes("1") && tfLower.includes("d")) mappedTf = "D1";
+        else if (tfLower.includes("1")) mappedTf = "1m";
+
+        const res = await fetch(`/api/fcs/candles?symbol=${symbol}&timeframe=${mappedTf}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isSubscribed && data.ok && Array.isArray(data.candles) && data.candles.length > 0) {
+            const formatted: Candle[] = data.candles.map((c: any) => {
+              const timeSec = c.timestamp ? Math.floor(c.timestamp / 1000) : (c.time || Math.floor(Date.now() / 1000));
+              return {
+                time: timeSec,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume || 100,
+              };
+            });
+            setCandles(formatted);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch fcs candles, falling back:", err);
+      }
+
+      // Fallback to generated if API call fails
+      if (isSubscribed) {
+        const asset = SUPPORTED_ASSETS.find((a) => a.key === assetKey) || SUPPORTED_ASSETS[0];
+        const generated = generateInitialCandles(asset.key, asset.basePrice, timeframe, 120);
+        setCandles(generated);
+        setLoading(false);
+      }
+    }
+
+    loadCandles();
+
+    return () => {
+      isSubscribed = false;
+    };
   }, [assetKey, timeframe]);
 
   // Live real-time tick appender
