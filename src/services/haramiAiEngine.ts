@@ -460,29 +460,26 @@ export function calculateHaramiAiSetup(
       now - f.timestamp < 20 * 60 * 1000 // 20 min cool-off on repeatedly failed zone
   );
 
-  // 7. Calculate Smart Entry Zone using Shared POI (Order Block / Demand / Supply / FVG Confluence)
-  // Entry quality check: Entry must sit in institutional discount/premium pocket, not chasing extended price
+  // 7. Calculate Smart Entry Zone using Live Market Price & Shared Structure
+  // Entry quality check: Entry must sit strictly at current live price with tight execution pocket
   const entrySpan = Math.max(spec.tickSize * 10, Number((atr5m * 0.45).toFixed(2)));
+  const isGold = spec.symbol === "XAUUSD" || assetKey.includes("XAU");
+  const halfSpan = isGold ? 0.50 : Number((entrySpan * 0.5).toFixed(2));
+
   let entryZoneLow: number;
   let entryZoneHigh: number;
   let bestEntry: number;
 
   if (direction === "BUY") {
-    // Buy Entry: Pullback into Shared 15M Demand Zone / Bullish OB / FVG or Immediate Discount Pocket
-    const hasCloseDemand = sharedLiquidity.demandZone.low > 0 && Math.abs(px - sharedLiquidity.demandZone.low) <= atr15m * 2.5;
-    const baseLow = hasCloseDemand ? sharedLiquidity.demandZone.low : px - entrySpan * 1.2;
-    const baseHigh = hasCloseDemand && sharedLiquidity.demandZone.high < px + entrySpan ? sharedLiquidity.demandZone.high : px + entrySpan * 0.3;
-    entryZoneLow = Number(Math.min(baseLow, px - 0.2).toFixed(2));
-    entryZoneHigh = Number(Math.max(baseHigh, entryZoneLow + entrySpan).toFixed(2));
-    bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
+    // Buy Entry: Strictly anchored to current live price to prevent instant-TP historical artifacts
+    entryZoneLow = Number((px - halfSpan).toFixed(2));
+    entryZoneHigh = Number((px + halfSpan).toFixed(2));
+    bestEntry = Number(px.toFixed(2));
   } else {
-    // Sell Entry: Pullback into Shared 15M Supply Zone / Bearish OB / FVG or Immediate Premium Pocket
-    const hasCloseSupply = sharedLiquidity.supplyZone.high > 0 && Math.abs(px - sharedLiquidity.supplyZone.high) <= atr15m * 2.5;
-    const baseHigh = hasCloseSupply ? sharedLiquidity.supplyZone.high : px + entrySpan * 1.2;
-    const baseLow = hasCloseSupply && sharedLiquidity.supplyZone.low > px - entrySpan ? sharedLiquidity.supplyZone.low : px - entrySpan * 0.3;
-    entryZoneHigh = Number(Math.max(baseHigh, px + 0.2).toFixed(2));
-    entryZoneLow = Number(Math.min(baseLow, entryZoneHigh - entrySpan).toFixed(2));
-    bestEntry = Number(((entryZoneLow + entryZoneHigh) / 2).toFixed(2));
+    // Sell Entry: Strictly anchored to current live price
+    entryZoneLow = Number((px - halfSpan).toFixed(2));
+    entryZoneHigh = Number((px + halfSpan).toFixed(2));
+    bestEntry = Number(px.toFixed(2));
   }
 
   // Equilibrium Zone Filter (Discount for BUY, Premium for SELL)
@@ -498,7 +495,6 @@ export function calculateHaramiAiSetup(
   // 8. DYNAMIC SL RULE — XAU/USD (v3.2 Strict Rules):
   // SL: $8.00 minimum floor, $11.00 maximum ceiling.
   // CRITICAL RULE: If structural SL > $11.00 -> Trade is SKIPPED (NO CLAMPING).
-  const isGold = spec.symbol === "XAUUSD" || assetKey.includes("XAU");
   const minSlFloor = isGold ? 8.00 : Number(Math.max(spec.tickSize * 50, atr15m * 0.85).toFixed(2));
   const maxSlCap = isGold ? 11.00 : spec.baseMaxSlCap;
 

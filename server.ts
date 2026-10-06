@@ -9247,82 +9247,17 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         let title = "";
         let detail = "";
 
-        // STRICT SEQUENCE GUARD: Ensure initial setup signal was dispatched before sending any lifecycle outcome alert
+        // STRICT SEQUENCE GUARD: Only dispatch lifecycle outcome if initial setup was already broadcasted by the master engine
         const tradeSignalId = setup.setupId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim();
         const isEntryDispatched = Boolean(
           (setup.entryDispatched && setup.dispatchedOutcomes?.includes("SIGNAL")) ||
-          serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId)
+          serverTelegramIdempotency.hasInitialSignalBeenDispatched(tradeSignalId) ||
+          (serverActiveTrade && (serverActiveTrade.signalId === tradeSignalId || serverActiveTrade.id === tradeSignalId))
         );
 
-        if (!isEntryDispatched && mt5Config.telegramSignalsEnabled) {
-          console.log(`[LIFECYCLE GUARD]: Setup #${setup.setupId} reached lifecycle event (${event}), but formal entry signal has not been dispatched yet! Dispatching formal setup FIRST.`);
-          let initialMessage = "";
-          let initialChartBuffer: Buffer | undefined;
-
-          if (setup.brainSource === "HARAMI_AI") {
-            initialMessage = formatHaramiSignalMessage({
-              signalId: setup.setupId,
-              direction: setup.direction,
-              symbolShort: (setup.assetKey || "XAUUSD").replace("FOREXCOM:", ""),
-              entryLow: setup.entryZoneLow,
-              entryHigh: setup.entryZoneHigh,
-              bestEntry: setup.preferredEntry,
-              currentPrice: currentPx,
-              sl: setup.stopLoss,
-              tp1: setup.tp1,
-              tp2: setup.tp2,
-              tp3: setup.tp3,
-              tp4: setup.finalTp,
-              rr: setup.rrRatioString || "1:2.5",
-              confidence: setup.marketConfidence || setup.setupScore || 94,
-              reason: setup.selectionReason || generateDynamicReason(setup.direction),
-              isAlreadyInZone: true,
-            });
-            try {
-              initialChartBuffer = await safeGenerateChartBufferWithTimeout({
-                symbol: "FOREXCOM:XAUUSD (Gold Spot)",
-                direction: setup.direction,
-                entryZone: [setup.entryZoneLow, setup.entryZoneHigh],
-                bestEntry: setup.preferredEntry,
-                sl: setup.stopLoss,
-                tp1: setup.tp1,
-                tp2: setup.tp2,
-                tp3: setup.tp3,
-                tp4: setup.finalTp || setup.tp3,
-                currentPrice: setup.preferredEntry,
-                confidence: setup.marketConfidence || setup.setupScore || 94,
-                reason: setup.selectionReason || generateDynamicReason(setup.direction),
-                timestamp: new Date().toISOString(),
-              }, 1500);
-            } catch (e) {}
-          } else if (setup.brainSource === "KHATARNAK_JUGAAD") {
-            initialMessage = formatKhatarnakJugaadTelegramMessage(setup);
-          } else if (setup.brainSource === "WAR_ROOM") {
-            initialMessage = formatWarRoomTelegramMessage(setup);
-          }
-
-          if (initialMessage) {
-            const sent = await sendServerTelegramMessage(
-              initialMessage,
-              undefined,
-              initialChartBuffer,
-              `${setup.setupId}_NEW_SETUP`,
-              true
-            );
-            if (sent) {
-              setup.entryDispatched = true;
-              setup.telegramDispatched = true;
-              if (!setup.dispatchedOutcomes) setup.dispatchedOutcomes = [];
-              if (!setup.dispatchedOutcomes.includes("SIGNAL")) setup.dispatchedOutcomes.push("SIGNAL");
-              centralSignalManager.markSetupDispatched(setup.setupId);
-              tradeStateManager.markSignalDispatched(setup.setupId);
-              console.log(`[LIFECYCLE GUARD]: Successfully dispatched initial setup #${setup.setupId} before lifecycle event (${event}).`);
-              await new Promise((r) => setTimeout(r, 1200));
-            } else {
-              console.warn(`[LIFECYCLE GUARD]: Initial setup dispatch failed for #${setup.setupId}. Halting lifecycle alert.`);
-              return;
-            }
-          }
+        if (!isEntryDispatched) {
+          console.log(`[LIFECYCLE GUARD]: Suppressed unverified lifecycle alert (${event}) for un-dispatched candidate #${setup.setupId}.`);
+          return;
         }
 
         // Guard against duplicate dispatches if already sent by primary tick loop
