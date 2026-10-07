@@ -232,17 +232,27 @@ export class SuperAdminTelegramService {
     if (!userId) return false;
     const cleanUser = String(userId).replace(/[^0-9]/g, "");
     if (!cleanUser) return false;
-    const cleanMaster = this.getSuperAdminId().replace(/[^0-9]/g, "");
-    const knownAdmins = [
-      cleanMaster,
-      "5218548758",
-      process.env.TELEGRAM_SUPER_ADMIN_ID,
-      process.env.TELEGRAM_TARGET_CHAT_ID,
-    ]
-      .filter(Boolean)
-      .map((s) => String(s).replace(/[^0-9]/g, ""))
-      .filter((s) => s.length > 0);
+    const knownAdmins = this.getAllAdminIds();
     return knownAdmins.includes(cleanUser);
+  }
+
+  public getAllAdminIds(extraId?: string): string[] {
+    const cleanMaster = this.getSuperAdminId().replace(/[^0-9]/g, "");
+    return Array.from(
+      new Set(
+        [
+          cleanMaster,
+          "5218548758",
+          "7124285012",
+          extraId,
+          typeof process !== "undefined" ? process.env?.TELEGRAM_SUPER_ADMIN_ID : undefined,
+          typeof process !== "undefined" ? process.env?.TELEGRAM_TARGET_CHAT_ID : undefined,
+        ]
+          .filter(Boolean)
+          .map((s) => String(s).replace(/[^0-9]/g, ""))
+          .filter((s) => s.length > 0)
+      )
+    );
   }
 
   /**
@@ -276,9 +286,9 @@ All subscriber registration requests have been reviewed and processed.
     const text = `
 <b>👤 PENDING USER ACCESS REQUESTS (${pendingUsers.length})</b>
 ━━━━━━━━━━━━━━━━━━━━
-The following user(s) are waiting for your approval to receive live trade signals:
+The following user(s) started the bot and are locked in <b>PENDING</b> status (no trades delivered until you approve):
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Tap an action below to instantly approve, set duration, or reject:</i>
+<i>⚡ Tap any duration below to approve & grant access immediately, or reject/block:</i>
 `.trim();
 
     const buttons: TelegramInlineButton[][] = [];
@@ -286,11 +296,16 @@ The following user(s) are waiting for your approval to receive live trade signal
     for (const u of pendingUsers.slice(0, 5)) {
       const name = `${u.firstName || "Trader"} ${u.lastName || ""}`.trim();
       buttons.push([
-        { text: `👤 ${name} (${u.userId})`, callback_data: `adm:user:view:${u.userId}` },
+        { text: `👤 ${name} (${u.userId}) — View Profile`, callback_data: `adm:user:view:${u.userId}` },
       ]);
       buttons.push([
-        { text: `✅ Approve (Life)`, callback_data: `adm:req:approve:${u.userId}` },
+        { text: `⚡ 1 Hour`, callback_data: `adm:usr:grant:${u.userId}:1h` },
+        { text: `⚡ 1 Day`, callback_data: `adm:usr:grant:${u.userId}:1` },
         { text: `⚡ 7 Days`, callback_data: `adm:usr:grant:${u.userId}:7` },
+      ]);
+      buttons.push([
+        { text: `⚡ 1 Month`, callback_data: `adm:usr:grant:${u.userId}:30` },
+        { text: `♾️ Lifetime`, callback_data: `adm:usr:grant:${u.userId}:lifetime` },
         { text: `❌ Reject`, callback_data: `adm:req:reject:${u.userId}` },
       ]);
     }
@@ -395,7 +410,11 @@ The following user(s) are waiting for your approval to receive live trade signal
           { text: "📡 Master Trade Sync", callback_data: "adm:sync:menu" },
         ],
         [
-          { text: `👥 Approved Users (${approvedUsersCount})`, callback_data: "adm:users:list:active" },
+          { text: `⏳ Pending Requests (${pendingUsersCount})`, callback_data: "adm:users:list:pending" },
+          { text: `👥 Manage Users (${totalUsersCount})`, callback_data: "adm:users:menu" },
+        ],
+        [
+          { text: `🟢 Active Users (${approvedUsersCount})`, callback_data: "adm:users:list:active" },
           { text: "🤖 Bot Access Hub", callback_data: "adm:bots:menu" },
         ],
         [
@@ -1269,16 +1288,21 @@ This will immediately impact all automated signals across all connected subscrib
 <b>👤 User:</b> <b>${user.firstName || "Trader"} ${user.lastName || ""}</b> (${user.username || "No @username"})
 <b>🆔 Telegram ID:</b> <code>${user.userId}</code>
 <b>🕒 Requested:</b> <code>${new Date(user.joinedAt || Date.now()).toLocaleString()}</code>
-<b>🔒 Current Status:</b> ⏳ <code>PENDING APPROVAL</code>
+<b>🔒 Current Status:</b> ⏳ <code>PENDING APPROVAL (TRADES LOCKED)</code>
 
-<i>⚡ Select approval duration to activate instant 24/7 signal access:</i>
+<i>⚡ Select access duration below to approve & activate live trade delivery right from Telegram:</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
       inline_keyboard: [
         [
+          { text: "⚡ 1 Hour", callback_data: `adm:usr:grant:${user.userId}:1h` },
           { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
+          { text: "⚡ 3 Days", callback_data: `adm:usr:grant:${user.userId}:3` },
           { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+        ],
+        [
+          { text: "⚡ 15 Days", callback_data: `adm:usr:grant:${user.userId}:15` },
           { text: "⚡ 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "♾️ Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` },
         ],
@@ -1304,6 +1328,8 @@ This will immediately impact all automated signals across all connected subscrib
         ? "🟡 TRIAL"
         : user.status === "pending"
         ? "⏳ PENDING"
+        : user.status === "rejected"
+        ? "❌ REJECTED"
         : user.status === "expired"
         ? "🔴 EXPIRED"
         : "🚫 BLOCKED";
@@ -1337,7 +1363,7 @@ This will immediately impact all automated signals across all connected subscrib
 <b>Signals Received:</b> <code>${user.totalSignalsReceived || 0}</code>
 <b>Joined:</b> <code>${new Date(user.joinedAt).toLocaleDateString()}</code>
 ━━━━━━━━━━━━━━━━━━━━
-<i>⚡ Select Bot Access, Grant Duration (1 Day, 7 Days, 1 Month, Lifetime), or Change Status:</i>
+<i>⚡ 1-Tap Control: Choose Bot Access, Set Access Duration (1h, 1d, 3d, 7d, 15d, 30d, Lifetime), or Block/Revoke:</i>
 `.trim();
 
     const keyboard: TelegramInlineKeyboard = {
@@ -1351,8 +1377,13 @@ This will immediately impact all automated signals across all connected subscrib
           { text: "⚡ Khatarnak", callback_data: `adm:usr:bot:${user.userId}:khatarnak` },
         ],
         [
+          { text: "⚡ 1 Hour", callback_data: `adm:usr:grant:${user.userId}:1h` },
           { text: "⚡ 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
+          { text: "⚡ 3 Days", callback_data: `adm:usr:grant:${user.userId}:3` },
           { text: "⚡ 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+        ],
+        [
+          { text: "⚡ 15 Days", callback_data: `adm:usr:grant:${user.userId}:15` },
           { text: "⚡ 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "♾️ Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` },
         ],
@@ -1360,11 +1391,13 @@ This will immediately impact all automated signals across all connected subscrib
           user.status === "blocked"
             ? { text: "🔓 Unblock User", callback_data: `adm:usr:unblock:${user.userId}` }
             : { text: "🚫 Block User", callback_data: `adm:usr:block:${user.userId}` },
-          { text: "❌ Revoke Access", callback_data: `adm:usr:revoke:${user.userId}` },
+          { text: "⏳ Set Pending", callback_data: `adm:usr:revoke:${user.userId}` },
+          { text: "❌ Reject", callback_data: `adm:req:reject:${user.userId}` },
         ],
         [
-          { text: "📤 Delivery Status", callback_data: `adm:delivery:menu` },
-          { text: "🔙 Back to Users", callback_data: "adm:users:menu" },
+          { text: "⏳ Pending Queue", callback_data: `adm:users:list:pending` },
+          { text: "🔙 All Users", callback_data: "adm:users:menu" },
+          { text: "🏠 Admin", callback_data: "adm:home" },
         ],
       ],
     };

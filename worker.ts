@@ -542,28 +542,45 @@ async function handleTelegramUpdate(env: Env, update: any): Promise<Response> {
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
 
-    // User Approval Action Handlers
-    if (data.startsWith("adm:user:approve:")) {
-      const parts = data.split(":");
-      const durationKey = parts[3];
-      const targetUserId = parts[4];
+    // User Approval & Duration Grant Action Handlers
+    if (data.startsWith("adm:usr:grant:") || data.startsWith("adm:user:approve:") || data.startsWith("adm:req:approve:")) {
+      let targetUserId = "";
+      let durationKey = "lifetime";
+      if (data.startsWith("adm:usr:grant:")) {
+        const parts = data.split(":");
+        targetUserId = parts[3];
+        durationKey = (parts[4] || "lifetime").toLowerCase();
+      } else if (data.startsWith("adm:req:approve:")) {
+        targetUserId = data.replace("adm:req:approve:", "").trim();
+        durationKey = "lifetime";
+      } else {
+        const parts = data.split(":");
+        durationKey = (parts[3] || "lifetime").toLowerCase();
+        targetUserId = parts[4];
+      }
       const u = usersStore[targetUserId];
 
       if (u) {
         const nowMs = Date.now();
         const durationMap: Record<string, { label: string; ms: number | null }> = {
-          "1d": { label: "1 Day Pass", ms: 24 * 3600 * 1000 },
-          "3d": { label: "3 Day Pass", ms: 3 * 24 * 3600 * 1000 },
-          "7d": { label: "7 Day Trial", ms: 7 * 24 * 3600 * 1000 },
-          "15d": { label: "15 Day Pass", ms: 15 * 24 * 3600 * 1000 },
-          "30d": { label: "30 Day Subscription", ms: 30 * 24 * 3600 * 1000 },
-          lifetime: { label: "Lifetime Access", ms: null },
+          "1h": { label: "1 Hour", ms: 3600 * 1000 },
+          "1": { label: "1 Day (24 Hours)", ms: 24 * 3600 * 1000 },
+          "1d": { label: "1 Day (24 Hours)", ms: 24 * 3600 * 1000 },
+          "3": { label: "3 Days", ms: 3 * 24 * 3600 * 1000 },
+          "3d": { label: "3 Days", ms: 3 * 24 * 3600 * 1000 },
+          "7": { label: "7 Days (1 Week)", ms: 7 * 24 * 3600 * 1000 },
+          "7d": { label: "7 Days (1 Week)", ms: 7 * 24 * 3600 * 1000 },
+          "15": { label: "15 Days", ms: 15 * 24 * 3600 * 1000 },
+          "15d": { label: "15 Days", ms: 15 * 24 * 3600 * 1000 },
+          "30": { label: "1 Month (30 Days)", ms: 30 * 24 * 3600 * 1000 },
+          "30d": { label: "1 Month (30 Days)", ms: 30 * 24 * 3600 * 1000 },
+          lifetime: { label: "Lifetime (Permanent Access)", ms: null },
         };
 
         const chosen = durationMap[durationKey] || durationMap["lifetime"];
-        u.status = durationKey.includes("trial") ? "trial" : "approved";
-        u.planType = durationKey.includes("trial") ? "trial" : "lifetime";
-        u.botAccess = "all";
+        u.status = "approved";
+        u.planType = chosen.ms ? "monthly" : "lifetime";
+        u.botAccess = u.botAccess || "all";
         u.expiresAt = chosen.ms ? nowMs + chosen.ms : null;
         u.decisionAt = new Date().toISOString();
         usersStore[targetUserId] = u;
@@ -576,23 +593,21 @@ async function handleTelegramUpdate(env: Env, update: any): Promise<Response> {
           targetUserId
         );
 
-        // Notify User
-        const expiryStr = u.expiresAt ? new Date(u.expiresAt).toLocaleDateString() : "Lifetime";
+        const expiryStr = u.expiresAt ? new Date(u.expiresAt).toUTCString() : "♾️ Lifetime (Never Expires)";
         await sendSingleTelegramMessage(
           env,
           u.chatId || u.userId,
-          `🎉 <b>ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${u.firstName || "Trader"}</b>!\n\nYour access request has been <b>APPROVED</b>.\n\n<b>Access Level:</b> <code>${chosen.label}</code>\n<b>Valid Until:</b> <code>${expiryStr}</code>\n<b>Active Bots:</b> <code>Khatarnak Jugaad | Harami AI | War Room</code>\n\n<i>Type /start or /signal to begin receiving real-time institutional Gold trades!</i>`
+          `🎉 <b>ACCESS APPROVED BY SUPER ADMIN</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${u.firstName || "Trader"}</b>!\n\nYour access request has been <b>APPROVED</b>.\n\n<b>Access Level:</b> <code>${chosen.label}</code>\n<b>Valid Until:</b> <code>${expiryStr}</code>\n<b>Active Bots:</b> <code>Khatarnak Jugaad | Harami AI | War Room</code>\n\n<i>All verified live Gold trades & SL/TP outcomes will now arrive automatically in this chat!</i>`
         );
 
-        const updatedPending = Object.values(usersStore).filter((x) => x.status === "pending");
-        const menu = superAdminService.renderPendingRequestsMenu(updatedPending);
-        await editTelegramMessageText(env, cbChatId, cbMsgId, menu.text, menu.keyboard);
+        const view = superAdminService.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
 
-    if (data.startsWith("adm:user:reject:")) {
-      const targetUserId = data.replace("adm:user:reject:", "");
+    if (data.startsWith("adm:user:reject:") || data.startsWith("adm:req:reject:")) {
+      const targetUserId = data.replace("adm:user:reject:", "").replace("adm:req:reject:", "").trim();
       const u = usersStore[targetUserId];
       if (u) {
         u.status = "rejected";
@@ -614,8 +629,8 @@ async function handleTelegramUpdate(env: Env, update: any): Promise<Response> {
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
 
-    if (data.startsWith("adm:user:block:")) {
-      const targetUserId = data.replace("adm:user:block:", "");
+    if (data.startsWith("adm:user:block:") || data.startsWith("adm:req:block:") || data.startsWith("adm:usr:block:")) {
+      const targetUserId = data.replace("adm:user:block:", "").replace("adm:req:block:", "").replace("adm:usr:block:", "").trim();
       const u = usersStore[targetUserId];
       if (u) {
         u.status = "blocked";
@@ -624,9 +639,36 @@ async function handleTelegramUpdate(env: Env, update: any): Promise<Response> {
         await saveUsersStore(env, usersStore);
         superAdminService.logAction("USER_BLOCKED", `Blocked user ${targetUserId}`, cbUserId, targetUserId);
 
-        const updatedPending = Object.values(usersStore).filter((x) => x.status === "pending");
-        const menu = superAdminService.renderPendingRequestsMenu(updatedPending);
-        await editTelegramMessageText(env, cbChatId, cbMsgId, menu.text, menu.keyboard);
+        const view = superAdminService.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (data.startsWith("adm:usr:unblock:")) {
+      const targetUserId = data.replace("adm:usr:unblock:", "").trim();
+      const u = usersStore[targetUserId];
+      if (u) {
+        u.status = "approved";
+        u.decisionAt = new Date().toISOString();
+        usersStore[targetUserId] = u;
+        await saveUsersStore(env, usersStore);
+        const view = superAdminService.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    if (data.startsWith("adm:usr:revoke:") || data.startsWith("adm:req:revoke:")) {
+      const targetUserId = data.replace("adm:usr:revoke:", "").replace("adm:req:revoke:", "").trim();
+      const u = usersStore[targetUserId];
+      if (u) {
+        u.status = "pending";
+        u.decisionAt = new Date().toISOString();
+        usersStore[targetUserId] = u;
+        await saveUsersStore(env, usersStore);
+        const view = superAdminService.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }

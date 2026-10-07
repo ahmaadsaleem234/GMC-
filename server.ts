@@ -1368,14 +1368,14 @@ async function startServer() {
     lastBotCommandsSyncedTime = now;
 
     try {
-      // 1. Set Default Commands (accessible to all chats and private sessions)
+      // 1. Set Default Commands (accessible to normal subscribers — NO admin or bot controls exposed)
       const normalUserCommands = [
-        { command: "start", description: "🚀 Open Control Center & Live Connection" },
-        { command: "admin", description: "👑 Super Admin Control Panel" },
+        { command: "start", description: "🚀 Start Bot & Check Subscription Access" },
         { command: "signal", description: "📈 Latest Live Gold Setup & Chart" },
-        { command: "status", description: "⚙️ System & Engine Telemetry" },
-        { command: "bots", description: "🤖 4-AI Models ON/OFF Toggles" },
-        { command: "help", description: "🛠️ All Commands & Control Reference" },
+        { command: "lifeline", description: "📡 My Access Duration & Expiry Status" },
+        { command: "status", description: "⚙️ Live Market & Engine Status" },
+        { command: "summary", description: "📊 Daily Trade Performance Summary" },
+        { command: "help", description: "🛠️ Subscriber Commands Reference" },
         { command: "ping", description: "⚡ Connection Latency Test" },
       ];
 
@@ -1397,13 +1397,13 @@ async function startServer() {
         }),
       }, 5000).catch(() => {});
 
-      // 2. Set Super Admin Scoped Commands for Admin Chat IDs
+      // 2. Set Super Admin Scoped Commands ONLY for verified Admin Chat IDs
       const superAdminCommands = [
         { command: "admin", description: "👑 Super Admin Control Center" },
-        { command: "sync", description: "📡 Master Trade Sync & Controls" },
-        { command: "requests", description: "👤 User Requests & 1-Tap Approvals" },
-        { command: "users", description: "👥 Manage Users & Expirations" },
+        { command: "requests", description: "⏳ Pending User Requests & 1-Tap Approvals" },
+        { command: "users", description: "👥 Manage Users & Access Durations" },
         { command: "bots", description: "🤖 Bot Access & Engine Toggles" },
+        { command: "sync", description: "📡 Master Trade Sync & Controls" },
         { command: "delivery", description: "📊 Live Delivery & Dispatch Status" },
         { command: "stop", description: "🛑 Emergency Kill Switch (Stop All)" },
         { command: "resume", description: "▶️ Resume Broadcast to Users" },
@@ -1415,9 +1415,7 @@ async function startServer() {
       const adminIds = Array.from(
         new Set(
           [
-            "5218548758",
-            serverTargetChatId,
-            superAdminService.getSuperAdminId(),
+            ...superAdminService.getAllAdminIds(serverTargetChatId),
             specificAdminChatId,
           ]
             .filter(Boolean)
@@ -1573,10 +1571,25 @@ async function startServer() {
   ): { expiresAt: number | null; expiresAtIso: string | null; durationKey: string; durationLabel: string } {
     const durStr = String(duration || "").toLowerCase().trim();
     const now = Date.now();
+    const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
+
+    // Hour-based durations (e.g. "1h", "6h", "12h", "2 hours")
+    const hourMatch = durStr.match(/^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)$/);
+    if (hourMatch && hourMatch[1]) {
+      const hours = parseFloat(hourMatch[1]);
+      if (!isNaN(hours) && hours > 0 && hours !== 24) {
+        const exp = Math.round(base + hours * 3600000);
+        return {
+          expiresAt: exp,
+          expiresAtIso: new Date(exp).toISOString(),
+          durationKey: `${hours}_hours`,
+          durationLabel: `${hours} Hour${hours === 1 ? "" : "s"}`,
+        };
+      }
+    }
 
     // 1 Day = 24 hours (86,400,000 ms)
     if (durStr === "1" || durStr === "1_day" || durStr === "1d" || durStr === "1 day" || durStr === "day" || durStr === "24h" || durStr === "24 hours") {
-      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = base + 86400000;
       return {
         expiresAt: exp,
@@ -1585,15 +1598,34 @@ async function startServer() {
         durationLabel: "1 Day (24 Hours)",
       };
     }
+    // 3 Days
+    if (durStr === "3" || durStr === "3_days" || durStr === "3d" || durStr === "3 days") {
+      const exp = base + 3 * 86400000;
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: "3_days",
+        durationLabel: "3 Days",
+      };
+    }
     // 7 Days = 7 days (604,800,000 ms)
     if (durStr === "7" || durStr === "7_days" || durStr === "7d" || durStr === "7 days" || durStr === "week" || durStr === "1_week" || durStr === "1 week") {
-      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = base + 7 * 86400000;
       return {
         expiresAt: exp,
         expiresAtIso: new Date(exp).toISOString(),
         durationKey: "7_days",
         durationLabel: "7 Days (1 Week)",
+      };
+    }
+    // 15 Days
+    if (durStr === "15" || durStr === "15_days" || durStr === "15d" || durStr === "15 days") {
+      const exp = base + 15 * 86400000;
+      return {
+        expiresAt: exp,
+        expiresAtIso: new Date(exp).toISOString(),
+        durationKey: "15_days",
+        durationLabel: "15 Days",
       };
     }
     // 1 Month = 30 days (2,592,000,000 ms)
@@ -1607,7 +1639,6 @@ async function startServer() {
       durStr === "month" ||
       durStr === "30 days"
     ) {
-      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = base + 30 * 86400000;
       return {
         expiresAt: exp,
@@ -1626,9 +1657,9 @@ async function startServer() {
       };
     }
 
-    const numDays = parseFloat(durStr);
+    const dayMatch = durStr.match(/^(\d+(?:\.\d+)?)\s*(?:d|day|days)?$/);
+    const numDays = dayMatch ? parseFloat(dayMatch[1]) : parseFloat(durStr);
     if (!isNaN(numDays) && numDays > 0) {
-      const base = (typeof currentExpiresAt === "number" && currentExpiresAt > now) ? currentExpiresAt : now;
       const exp = Math.round(base + numDays * 86400000);
       return {
         expiresAt: exp,
@@ -1827,10 +1858,12 @@ async function startServer() {
     const data = String(cb.data || "").trim();
 
     const masterId = cleanServerTelegramInput(serverTargetChatId || superAdminService.getSuperAdminId() || "5218548758");
-    const userInStore = telegramUsersStore[cbUserId] || telegramUsersStore[cbChatId];
-    const isApprovedOrAdmin = userInStore?.status === "approved" || userInStore?.planType === "lifetime";
 
-    const isSuperAdminCb = true;
+    const isSuperAdminCb =
+      superAdminService.isSuperAdmin(cbUserId) ||
+      superAdminService.isSuperAdmin(cbChatId) ||
+      cbUserId === masterId ||
+      cbChatId === masterId;
 
     // Strict Super Admin Verification Gate
     if (!isSuperAdminCb) {
@@ -1840,10 +1873,12 @@ async function startServer() {
         `Intruder ${cb.from?.first_name || ""} (${cbUserId}) tried callback: ${data}`,
         cbUserId
       );
-      await sendSingleTelegramMessage(
-        masterId,
-        `🚨 <b>UNAUTHORIZED ADMIN CALLBACK ATTEMPT</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>Intruder ID:</b> <code>${cbUserId}</code>\n<b>Name:</b> ${cb.from?.first_name || ""} ${cb.from?.last_name || ""}\n<b>Action:</b> <code>${data}</code>\n\n<i>🛡️ System blocked this attempt automatically.</i>`
-      );
+      for (const adminTarget of superAdminService.getAllAdminIds(masterId)) {
+        sendSingleTelegramMessage(
+          adminTarget,
+          `🚨 <b>UNAUTHORIZED ADMIN CALLBACK ATTEMPT</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>Intruder ID:</b> <code>${cbUserId}</code>\n<b>Name:</b> ${cb.from?.first_name || ""} ${cb.from?.last_name || ""}\n<b>Action:</b> <code>${data}</code>\n\n<i>🛡️ System blocked this attempt automatically.</i>`
+        ).catch(() => {});
+      }
       return;
     }
 
@@ -2624,6 +2659,12 @@ async function startServer() {
 
     if (data === "adm:users:menu") {
       const menu = superAdminService.renderUsersMenu(usersList);
+      await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
+      return;
+    }
+
+    if (data === "adm:users:list:pending" || data === "adm:users:requests") {
+      const menu = superAdminService.renderPendingRequestsMenu(pendingUsers);
       await editTelegramMessageText(cbChatId, cbMsgId, menu.text, menu.keyboard);
       return;
     }
@@ -3925,10 +3966,12 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                 const languageCode = msg.from?.language_code || "en";
                 const nowIso = new Date().toISOString();
                 const masterId = cleanServerTelegramInput(serverTargetChatId || superAdminService.getSuperAdminId() || "5218548758");
-                const userInStore = telegramUsersStore[userId] || telegramUsersStore[chatId];
-                const isApprovedOrAdmin = userInStore?.status === "approved" || userInStore?.planType === "lifetime";
 
-                const isSuperAdminUser = true;
+                const isSuperAdminUser =
+                  superAdminService.isSuperAdmin(userId) ||
+                  superAdminService.isSuperAdmin(chatId) ||
+                  userId === masterId ||
+                  chatId === masterId;
 
                 // Universal /ping command for production health check
                 if (textLower === "/ping" || textLower.startsWith("/ping ") || textLower === "ping") {
@@ -3954,7 +3997,7 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                 let user = existingKey ? telegramUsersStore[existingKey] : null;
 
                 if (!user) {
-                  // Auto-approve Channels and Super Admin immediately
+                  // Auto-approve Channels and Super Admin ONLY; all normal users start in PENDING approval!
                   const initialStatus = (isSuperAdminUser || isChannelChat) ? "approved" : "pending";
                   const nowMs = Date.now();
                   user = {
@@ -3977,17 +4020,19 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                   saveTelegramUsers();
                   console.log(`[TELEGRAM USER REGISTERED]: ${firstName} (${userId}) - Status: ${initialStatus.toUpperCase()} (Channel: ${isChannelChat}, Super Admin: ${isSuperAdminUser})`);
 
-                  // Notify Super Admin with interactive inline buttons only for human users requesting access
-                  if (!isSuperAdminUser && !isChannelChat && masterId) {
+                  // Notify ALL Super Admin accounts with interactive 1-tap approval & duration buttons immediately
+                  if (!isSuperAdminUser && !isChannelChat) {
                     const reqView = superAdminService.renderUserAccessRequest(user);
-                    sendSingleTelegramMessage(
-                      masterId,
-                      reqView.text,
-                      undefined,
-                      reqView.keyboard
-                    ).catch((e) => {
-                      console.warn("[TELEGRAM ADMIN REQ NOTIFY ERROR]:", e);
-                    });
+                    for (const adminTarget of superAdminService.getAllAdminIds(masterId)) {
+                      sendSingleTelegramMessage(
+                        adminTarget,
+                        reqView.text,
+                        undefined,
+                        reqView.keyboard
+                      ).catch((e) => {
+                        console.warn("[TELEGRAM ADMIN REQ NOTIFY ERROR]:", e);
+                      });
+                    }
                   }
                 } else {
                   // EXISTING USER: Update profile & activity metadata while PRESERVING status & decisionAt
@@ -4005,18 +4050,21 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                     user.expiresAt = null;
                   }
 
-                  // If user is pending and hasn't notified admin recently (2 hours cooldown to prevent duplicate spam)
-                  if (user.status === "pending" && !isSuperAdminUser && masterId) {
+                  // If user is pending and sends /start or hasn't notified admin in the last 5 minutes, send 1-tap approval card to Super Admins
+                  if (user.status === "pending" && !isSuperAdminUser) {
                     const nowMs = Date.now();
-                    if (!user.lastAdminRequestAt || (nowMs - user.lastAdminRequestAt > 7200000)) {
+                    const isExplicitStart = textLower.startsWith("/start") || textLower === "start";
+                    if (isExplicitStart || !user.lastAdminRequestAt || (nowMs - user.lastAdminRequestAt > 300000)) {
                       user.lastAdminRequestAt = nowMs;
                       const reqView = superAdminService.renderUserAccessRequest(user);
-                      sendSingleTelegramMessage(
-                        masterId,
-                        reqView.text,
-                        undefined,
-                        reqView.keyboard
-                      ).catch(() => {});
+                      for (const adminTarget of superAdminService.getAllAdminIds(masterId)) {
+                        sendSingleTelegramMessage(
+                          adminTarget,
+                          reqView.text,
+                          undefined,
+                          reqView.keyboard
+                        ).catch(() => {});
+                      }
                     }
                   }
 
@@ -4071,6 +4119,68 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                   if (textLower.startsWith("/users") || textLower.startsWith("/subscribers") || ["users", "subscribers"].includes(textLower)) {
                     const menu = superAdminService.renderUsersMenu(usersList);
                     await sendSingleTelegramMessage(chatId, menu.text, undefined, menu.keyboard);
+                    continue;
+                  }
+
+                  // Super Admin direct text commands: /approve <userId> [duration], /reject <userId>, /block <userId>, /revoke <userId>
+                  if (textLower.startsWith("/approve ") || textLower.startsWith("/grant ")) {
+                    const parts = text.trim().split(/\s+/);
+                    const targetUid = cleanServerTelegramInput(parts[1]);
+                    const durArg = parts[2] || "lifetime";
+                    const uKey = Object.keys(telegramUsersStore).find(
+                      (k) => telegramUsersStore[k].userId === targetUid || telegramUsersStore[k].chatId === targetUid
+                    );
+                    const targetU = uKey ? telegramUsersStore[uKey] : null;
+                    if (!targetU) {
+                      await sendSingleTelegramMessage(chatId, `⚠️ User <code>${targetUid || "?"}</code> not found. Use <code>/requests</code> or <code>/users</code> to select a user.`);
+                      continue;
+                    }
+                    const expInfo = calculateUserExpiry(durArg, targetU.expiresAt);
+                    targetU.status = "approved";
+                    targetU.planType = expInfo.expiresAt ? "standard" : "lifetime";
+                    targetU.approvalDuration = expInfo.durationKey;
+                    targetU.approvalDurationLabel = expInfo.durationLabel;
+                    targetU.approvedAt = targetU.approvedAt || nowIso;
+                    targetU.decisionAt = nowIso;
+                    targetU.expiresAt = expInfo.expiresAt;
+                    targetU.expiresAtIso = expInfo.expiresAtIso;
+                    targetU.expiryNotified = false;
+                    saveTelegramUsers();
+
+                    const expFormatted = targetU.expiresAt ? new Date(targetU.expiresAt).toUTCString() : "♾️ Lifetime (Never Expires)";
+                    sendSingleTelegramMessage(
+                      targetU.chatId || targetUid,
+                      `🎉 <b>ACCESS APPROVED & ACTIVATED!</b>\n━━━━━━━━━━━━━━━━━━━━\nHello <b>${targetU.firstName || "Trader"}</b>!\nYour Telegram Bot access has been <b>APPROVED</b> by the Super Admin.\n\n<b>🔒 Access Status:</b> <code>✅ APPROVED (ACTIVE SUBSCRIBER)</code>\n<b>⏳ Plan Duration:</b> <code>${expInfo.durationLabel}</code>\n<b>🕒 Access Expiry:</b> <code>${expFormatted}</code>\n<b>📡 Live Feed:</b> <code>🟢 SYNCHRONIZED WITH MASTER AI (24/7)</code>\n\n<i>⚡ All new trades, SL/TP updates, and chart visuals will arrive automatically in this chat!</i>`
+                    ).catch(() => {});
+
+                    const card = superAdminService.renderUserCard(targetU);
+                    await sendSingleTelegramMessage(chatId, `✅ <b>Approved ${targetU.firstName} (${targetUid}) for ${expInfo.durationLabel}!</b>\n\n${card.text}`, undefined, card.keyboard);
+                    continue;
+                  }
+
+                  if (textLower.startsWith("/reject ") || textLower.startsWith("/block ") || textLower.startsWith("/revoke ")) {
+                    const parts = text.trim().split(/\s+/);
+                    const cmdVerb = parts[0].toLowerCase().replace("/", "");
+                    const targetUid = cleanServerTelegramInput(parts[1]);
+                    const uKey = Object.keys(telegramUsersStore).find(
+                      (k) => telegramUsersStore[k].userId === targetUid || telegramUsersStore[k].chatId === targetUid
+                    );
+                    const targetU = uKey ? telegramUsersStore[uKey] : null;
+                    if (!targetU) {
+                      await sendSingleTelegramMessage(chatId, `⚠️ User <code>${targetUid || "?"}</code> not found.`);
+                      continue;
+                    }
+                    targetU.status = cmdVerb === "block" ? "blocked" : cmdVerb === "reject" ? "rejected" : "pending";
+                    targetU.decisionAt = nowIso;
+                    saveTelegramUsers();
+
+                    sendSingleTelegramMessage(
+                      targetU.chatId || targetUid,
+                      `⚠️ <b>ACCESS STATUS UPDATED</b>\n━━━━━━━━━━━━━━━━━━━━\nYour Telegram Bot access status has been updated to <code>${targetU.status.toUpperCase()}</code> by the Super Admin.`
+                    ).catch(() => {});
+
+                    const card = superAdminService.renderUserCard(targetU);
+                    await sendSingleTelegramMessage(chatId, `✅ <b>Updated ${targetU.firstName} (${targetUid}) status to ${targetU.status.toUpperCase()}</b>\n\n${card.text}`, undefined, card.keyboard);
                     continue;
                   }
 
@@ -4904,25 +5014,66 @@ Live Gold (XAUUSD) trade setups (Entry, SL, TP1–TP4) will automatically broadc
                   continue;
                 }
 
-                // Protect Admin commands from non-admin users
+                // Protect Admin & Risk commands from non-admin users
                 if (
                   textLower.startsWith("/admin") ||
+                  textLower.startsWith("/panel") ||
+                  textLower.startsWith("/control") ||
                   textLower.startsWith("/bots") ||
+                  textLower.startsWith("/botcontrol") ||
                   textLower.startsWith("/users") ||
+                  textLower.startsWith("/subscribers") ||
                   textLower.startsWith("/delivery") ||
+                  textLower.startsWith("/signalslog") ||
                   textLower.startsWith("/stop") ||
+                  textLower.startsWith("/kill") ||
+                  textLower.startsWith("/pause") ||
                   textLower.startsWith("/resume") ||
-                  textLower.startsWith("/requests")
+                  textLower.startsWith("/startsignals") ||
+                  textLower.startsWith("/requests") ||
+                  textLower.startsWith("/pending") ||
+                  textLower.startsWith("/sync") ||
+                  textLower.startsWith("/csm") ||
+                  textLower.startsWith("/ais") ||
+                  textLower.startsWith("/lock") ||
+                  textLower.startsWith("/tradelock") ||
+                  textLower.startsWith("/cooldown") ||
+                  textLower.startsWith("/timer") ||
+                  textLower.startsWith("/unblock") ||
+                  textLower.startsWith("/reset_cooldown") ||
+                  textLower.startsWith("/rejections") ||
+                  textLower.startsWith("/rejectionlog") ||
+                  textLower.startsWith("/rejects") ||
+                  textLower.startsWith("/mode") ||
+                  textLower.startsWith("/riskmode") ||
+                  textLower.startsWith("/emergencystop") ||
+                  textLower.startsWith("/emergency") ||
+                  textLower.startsWith("/resetlosses") ||
+                  textLower.startsWith("/reset_losses") ||
+                  textLower.startsWith("/trade_now") ||
+                  textLower.startsWith("/force_trade") ||
+                  textLower.startsWith("/forcesignal") ||
+                  textLower.startsWith("/setchannel") ||
+                  textLower.startsWith("/channels") ||
+                  textLower.startsWith("/testchannel") ||
+                  textLower.startsWith("/auto_on") ||
+                  textLower.startsWith("/approve") ||
+                  textLower.startsWith("/grant") ||
+                  textLower.startsWith("/reject") ||
+                  textLower.startsWith("/block") ||
+                  textLower.startsWith("/revoke")
                 ) {
                   superAdminService.logAction(
                     "UNAUTHORIZED_ADMIN_COMMAND",
                     `Unauthorized ${textLower.split(" ")[0]} attempted by ${firstName} ${lastName} (${userId})`,
                     userId
                   );
-                  sendSingleTelegramMessage(
-                    masterId,
-                    `🚨 <b>SECURITY ALERT: UNAUTHORIZED ADMIN ATTEMPT</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>User:</b> ${firstName} ${lastName} (${username || "No @username"})\n<b>Telegram ID:</b> <code>${userId}</code>\n<b>Command:</b> <code>${text}</code>\n<b>Time:</b> <code>${new Date().toLocaleString()}</code>\n\n<i>🛡️ Access denied automatically.</i>`
-                  ).catch(() => {});
+                  for (const adminTarget of superAdminService.getAllAdminIds(masterId)) {
+                    sendSingleTelegramMessage(
+                      adminTarget,
+                      `🚨 <b>SECURITY ALERT: UNAUTHORIZED ADMIN ATTEMPT</b>\n━━━━━━━━━━━━━━━━━━━━\n<b>User:</b> ${firstName} ${lastName} (${username || "No @username"})\n<b>Telegram ID:</b> <code>${userId}</code>\n<b>Command:</b> <code>${text}</code>\n<b>Time:</b> <code>${new Date().toLocaleString()}</code>\n\n<i>🛡️ Access denied automatically.</i>`
+                    ).catch(() => {});
+                  }
 
                   await sendSingleTelegramMessage(
                     chatId,
@@ -5197,135 +5348,22 @@ Welcome <b>${firstName}</b>! You are connected to the <b>GMC Autonomous AI Tradi
                     netPips: totalPips,
                     winRate: tradesCount > 0 ? winRate : mt5AccountMetrics.winRatePct,
                   });
-                } else if (textLower.startsWith("/lock") || textLower.startsWith("/tradelock")) {
-                  const lockReport = tradeStateManager.getTradeLockStatusReport();
-                  const act = lockReport.currentActiveTrade;
-                  const activeDetails = act
-                    ? `<code>ACTIVE: #${act.signalId} (${act.direction} @ $${act.entry}) [${act.status}]</code>`
-                    : `<code>NONE (Arm & Scan)</code>`;
-
-                  replyText = `
-<b>🔒 TRADE LOCK STATUS DASHBOARD</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🛡️ LOCK STATUS:</b> <code>${lockReport.lockStatusLabel}</code>
-<b>⚡ AUTO RISK MODE:</b> <code>${lockReport.autoRiskMode}</code>
-<b>📊 CURRENT ACTIVE TRADE:</b> ${activeDetails}
-<b>🆔 CURRENT TRADE ID:</b> <code>${lockReport.currentTradeId}</code>
-<b>⏳ NEXT ALLOWED SIGNAL:</b> <code>${lockReport.nextAllowedSignalTimeFormatted}</code>
-<b>⛔ PRIMARY BLOCK REASON:</b>
-<i>${lockReport.primaryBlockReason}</i>
-
-<b>📅 DAILY LIMIT:</b> <code>${lockReport.daily.tradesExecuted} / ${lockReport.daily.limit} trades (${lockReport.daily.remaining} remaining)</code>
-<b>🛑 CONSECUTIVE LOSSES:</b> <code>${lockReport.consecutiveLoss.count} / ${lockReport.consecutiveLoss.limit} SLs ${lockReport.consecutiveLoss.isPaused ? `(PAUSED: ${lockReport.consecutiveLoss.remainingMinutes}m)` : "(Normal)"}</code>
-<b>⏲️ COOLDOWN:</b> <code>${lockReport.cooldown.displayText}</code>
-`.trim();
-                } else if (textLower.startsWith("/cooldown") || textLower.startsWith("/timer")) {
-                  const lockReport = tradeStateManager.getTradeLockStatusReport();
-                  const cd = lockReport.cooldown;
-                  replyText = `
-<b>⏳ COOLDOWN TIMER DISPLAY</b>
-━━━━━━━━━━━━━━━━━━━
-<b>⏱️ STATUS:</b> <code>${cd.isActive ? "ACTIVE (SIGNALS HELD)" : "IDLE (ARMED)"}</code>
-<b>🕒 REMAINING:</b> <code>${cd.displayText}</code>
-<b>🔔 NEXT TRADE AVAILABLE:</b> <code>${lockReport.nextAllowedSignalTimeFormatted}</code>
-${cd.reason ? `<b>📝 REASON:</b> <i>${cd.reason}</i>` : ""}
-`.trim();
-                } else if (textLower.startsWith("/rejections") || textLower.startsWith("/rejectionlog") || textLower.startsWith("/rejects")) {
-                  const logs = advancedRiskManager.getRejectionLogs(5);
-                  if (logs.length === 0) {
-                    replyText = `
-<b>🛡️ SIGNAL REJECTION LOG</b>
-━━━━━━━━━━━━━━━━━━━
-<i>No rejected signals recorded. System is operating within clean risk boundaries.</i>
-`.trim();
-                  } else {
-                    const lines = logs.map((l, idx) => {
-                      const timeStr = new Date(l.timestamp).toISOString().replace("T", " ").substring(11, 19) + " UTC";
-                      return `<b>${idx + 1}. [${l.category}]</b> — <code>${timeStr}</code>
-<b>Setup:</b> <code>${l.signalId || "SCAN"} (${l.confidence ? l.confidence.toFixed(1) + "%" : "N/A"})</code>
-<b>Reason:</b> <i>${l.reason}</i>`;
-                    }).join("\n\n");
-
-                    replyText = `
-<b>🛡️ SIGNAL REJECTION LOG (LAST ${logs.length})</b>
-━━━━━━━━━━━━━━━━━━━
-${lines}
-
-<i>ℹ️ Admin tip: Use /lock or /mode to adjust parameters.</i>
-`.trim();
-                  }
-                } else if (textLower.startsWith("/mode") || textLower.startsWith("/riskmode")) {
-                  const parts = textLower.split(" ").filter(Boolean);
-                  const subMode = parts[1]?.toUpperCase();
-
-                  if (subMode === "NORMAL" || subMode === "SAFE" || subMode === "EMERGENCY") {
-                    const result = advancedRiskManager.setRiskMode(subMode as any);
-                    replyText = `
-<b>⚙️ AUTO RISK MODE UPDATED</b>
-━━━━━━━━━━━━━━━━━━━
-<b>🎯 NEW MODE:</b> <code>${result.mode}</code>
-<b>📝 DESCRIPTION:</b> <i>${result.description}</i>
-<b>🔒 TRADE LOCK STATUS:</b> <code>${result.isLocked ? "ON (BLOCKED)" : "OFF (ARMED)"}</code>
-`.trim();
-                  } else {
-                    const currentMode = advancedRiskManager.getRiskMode();
-                    replyText = `
-<b>⚙️ AUTO RISK MODES</b>
-━━━━━━━━━━━━━━━━━━━
-<b>CURRENT MODE:</b> <code>${currentMode}</code>
-
-<b>Available Commands:</b>
-• <code>/mode normal</code> — Full signal generation (standard filters)
-• <code>/mode safe</code> — High confidence only (≥92.0% required)
-• <code>/mode emergency</code> — Block all new signals immediately
-• <code>/resume</code> — Switch back to Normal Mode
-`.trim();
-                  }
-                } else if (textLower.startsWith("/emergencystop") || textLower.startsWith("/emergency")) {
-                  const result = advancedRiskManager.setRiskMode("EMERGENCY");
-                  replyText = `
-<b>🚨 EMERGENCY STOP ACTIVATED</b>
-━━━━━━━━━━━━━━━━━━━
-<b>STATUS:</b> <code>ALL NEW TELEGRAM SIGNALS HALTED</code>
-<b>ACTION:</b> System is locked down. No orders or signals will dispatch.
-<b>TO RESUME:</b> Send <code>/resume</code> or <code>/mode normal</code>.
-`.trim();
-                } else if (textLower.startsWith("/resume")) {
-                  const result = advancedRiskManager.setRiskMode("NORMAL");
-                  replyText = `
-<b>✅ TRADING RESUMED — NORMAL MODE</b>
-━━━━━━━━━━━━━━━━━━━
-<b>STATUS:</b> <code>ARMED & SCANNING 24/7</code>
-<b>ACTION:</b> Emergency halt lifted. Signal engine resumed standard operations.
-`.trim();
-                } else if (textLower.startsWith("/resetlosses") || textLower.startsWith("/reset_losses")) {
-                  advancedRiskManager.resetConsecutiveLossPause();
-                  replyText = `
-<b>🔄 CONSECUTIVE LOSS PAUSE RESET</b>
-━━━━━━━━━━━━━━━━━━━
-<b>STATUS:</b> <code>CONSECUTIVE LOSS COUNTER CLEARED</code>
-<b>ACTION:</b> Loss pause terminated. Standard signal generation resumed.
-`.trim();
                 } else if (textLower.startsWith("/help") || textLower.startsWith("/tools")) {
                   replyText = `
-<b>🛠️ GMC TRADING AI BOT COMMANDS</b>
+<b>🛠️ GMC TRADING AI • SUBSCRIBER COMMANDS</b>
 ━━━━━━━━━━━━━━━━━━━
-<b>📈 SIGNALS & ENGINE:</b>
-/signal — View active trade setup or market status
+<b>📈 LIVE SIGNALS & ACCOUNT:</b>
+/start — Check subscription status & connection
+/signal — View active trade setup (Entry, SL, TP1–TP4)
+/lifeline — View your plan duration, expiry & heartbeat
 /warroom — Live GMC War Room 7-gate confluences
 /harami — Harami AI 30-min SMC & MTF scan status
 /summary — Daily performance & trade breakdown
 /status — 24/7 engine health & spot gold price
+/ping — Connection latency test
+/help — Show subscriber commands list
 
-<b>🛡️ RISK & ADMIN CONTROLS:</b>
-/lock — Trade Lock Status Dashboard & block reason
-/cooldown — Remaining cooldown timer display
-/rejections — Recent signal rejection log (with reasons)
-/mode normal | safe | emergency — Switch Auto Risk Mode
-/emergencystop — Immediate halt to all new signals
-/resume — Resume normal signal broadcasting
-/resetlosses — Clear consecutive loss pause
-/help — Show commands list
+<i>⚡ All verified trade signals, SL/TP updates, and chart visuals arrive automatically in this chat while your subscription is active.</i>
 `.trim();
                 } else if (textLower.startsWith("/unsubscribe")) {
                   replyText = `
