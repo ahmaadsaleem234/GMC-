@@ -7755,7 +7755,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     }
 
     // Stale/Delayed Price Guardrail (Rule 19 & 20)
-    const isPriceStale = tick.status !== "Live" || now - tick.timestamp > 30000;
+    const tickTime = tick.receivedAt || tick.timestamp || now;
+    const isPriceStale = tick.status === "Stale" || (now - tickTime > 60000);
 
     if (isPriceStale) {
       serverMarketDataStatus = "Stale";
@@ -7763,7 +7764,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         serverActiveTrade.priceFeedStatus = "Stale";
         serverActiveTrade.priceFeedNote = "⚠️ LIVE PRICE FEED DELAYED – TRADE VERIFICATION PAUSED";
       }
-      console.warn(`[SIGNAL PIPELINE: STALE DATA] Price feed age (${Math.round((now - tick.timestamp) / 1000)}s) exceeds safety limit. Pausing evaluations.`);
+      console.warn(`[SIGNAL PIPELINE: STALE DATA] Price feed age (${Math.round((now - tickTime) / 1000)}s) exceeds safety limit. Pausing evaluations.`);
       return; // PAUSE TP/SL VERIFICATION UNTIL LIVE FEED RESTORES
     }
 
@@ -7819,12 +7820,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     // USER DIRECTIVE: "sirf 1 waqt mein 1 trade active hogi"
     // Single Active Trade Rule: Check all managers for an existing active trade
-    const activeTelegramId = serverTelegramIdempotency.getActiveTradeId();
+    let activeTelegramId = serverTelegramIdempotency.getActiveTradeId();
+    if (activeTelegramId && !serverActiveTrade && !tradeStateManager.hasActiveTrade() && !centralSignalManager.getActiveSetup()) {
+      // Orphaned activeTelegramId cleanup: No active trade exists in any engine!
+      console.log(`[ORPHAN LOCK CLEANUP]: Clearing orphaned activeTelegramId '${activeTelegramId}' as no active trade object exists in state.`);
+      serverTelegramIdempotency.syncActiveTradeState(null, serverCooldownUntil, false);
+      activeTelegramId = null;
+    }
+
     const systemActiveTrade =
       (serverActiveTrade && serverActiveTrade.status !== "CLOSED" && serverActiveTrade.status !== "CANCELLED" ? serverActiveTrade : null) ||
       (tradeStateManager.hasActiveTrade() ? (tradeStateManager.getActiveTrade() as any) : null) ||
-      (centralSignalManager.getActiveSetup() ? (centralSignalManager.getActiveSetup() as any) : null) ||
-      (activeTelegramId ? ({ id: activeTelegramId, signalId: activeTelegramId, status: "OPEN" } as any) : null);
+      (centralSignalManager.getActiveSetup() ? (centralSignalManager.getActiveSetup() as any) : null);
 
     if (!systemActiveTrade) {
       if (!mt5Config.telegramSignalsEnabled || mt5Config.isPaused) {

@@ -170,7 +170,8 @@ class TelegramIdempotencyRegistry {
       if (upperAlert.includes("TP2")) return "TP2_HIT";
       if (upperAlert.includes("TP3")) return "TP3_HIT";
       if (upperAlert.includes("FINAL_TP") || upperAlert.includes("TP4")) return "FINAL_TP_HIT";
-      if (upperAlert.includes("BREAKEVEN") || upperAlert.includes("BE_EXIT")) return "BREAKEVEN";
+      if (upperAlert.includes("BREAKEVEN_EXIT") || upperAlert.includes("BE_EXIT")) return "BREAKEVEN_EXIT";
+      if (upperAlert.includes("BREAKEVEN") || upperAlert.includes("BE")) return "BREAKEVEN";
       if (upperAlert.includes("SL_HIT") || upperAlert.includes("STOP_LOSS")) return "SL_HIT";
       if (upperAlert.includes("ENTRY")) return "ENTRY_HIT";
       if (upperAlert.includes("NEW_SETUP") || upperAlert.includes("SIGNAL")) return "NEW_SETUP";
@@ -183,7 +184,8 @@ class TelegramIdempotencyRegistry {
     if (t.includes("TP3 HIT") || t.includes("TARGET 3 HIT") || t.includes("TP3 REACHED")) return "TP3_HIT";
     if (t.includes("TP2 HIT") || t.includes("TARGET 2 HIT") || t.includes("TP2 REACHED")) return "TP2_HIT";
     if (t.includes("TP1 HIT") || t.includes("TARGET 1 HIT") || t.includes("TP1 REACHED")) return "TP1_HIT";
-    if (t.includes("BREAKEVEN EXIT") || t.includes("BREAKEVEN") || t.includes("BREAK-EVEN") || t.includes("SL MOVED TO BREAKEVEN")) return "BREAKEVEN";
+    if (t.includes("BREAKEVEN EXIT") || t.includes("BE EXIT") || (t.includes("BREAKEVEN") && t.includes("TRADE CLOSED"))) return "BREAKEVEN_EXIT";
+    if (t.includes("BREAKEVEN") || t.includes("BREAK-EVEN") || t.includes("SL MOVED TO BREAKEVEN")) return "BREAKEVEN";
     if (t.includes("SL HIT") || t.includes("STOP LOSS HIT") || t.includes("STOP LOSS TRIGGERED")) return "SL_HIT";
     if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO") || t.includes("ENTRY TRIGGERED")) return "ENTRY_HIT";
     if (t.includes("INVALIDATED") || t.includes("CANCELLED")) return "INVALIDATED";
@@ -437,11 +439,11 @@ class TelegramIdempotencyRegistry {
       }
     }
 
-    // When trade closes via FINAL TP, SL, Breakeven, or Invalidated, start strict cooldown
+    // When trade closes via FINAL TP, SL, Breakeven Exit, or Invalidated, start strict cooldown
     if (
       event === "FINAL_TP_HIT" ||
       event === "SL_HIT" ||
-      event === "BREAKEVEN" ||
+      event === "BREAKEVEN_EXIT" ||
       event === "TP_THEN_SL_HIT" ||
       event === "EXPIRED" ||
       event === "INVALIDATED"

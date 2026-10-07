@@ -225,14 +225,12 @@ export function formatBreakevenAlert(params: LifecycleAlertParams): string {
   const sl = (params.sl || params.entryPrice || 0).toFixed(2);
   const dirBadge = params.direction === "BUY" ? "BUY 🟢" : "SELL 🔴";
 
-  return `🛡️ <b>BREAKEVEN EXIT (TRADE CLOSED)</b>
+  return `🛡️ <b>SL MOVED TO BREAKEVEN (RISK-FREE)</b>
 ━━━━━━━━━━━━━━━━━━━
 <b>${signalId} • ${symbol} • ${dirBadge}</b>
-📍 <b>Exit Price:</b> <code>$${sl}</code>
-✅ <b>Protected at Breakeven (Risk-Free Exit / $0.00 Loss)</b>
-💰 <b>Partial TP1 Profits Preserved!</b>
-🏁 <b>TRADE CLOSED</b>
-⏳ 30-Minute Quality Cooldown Initiated`;
+📍 <b>Stop Loss Level:</b> <code>$${sl}</code> (Breakeven)
+✅ <b>Protected at Breakeven (0.00 Risk)</b>
+💰 <b>Trade remains ACTIVE running toward TP2–TP4</b>`;
 }
 
 export function formatProfitSecuredAlert(params: LifecycleAlertParams): string {
