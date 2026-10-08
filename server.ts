@@ -7664,6 +7664,13 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       tp3 = tp3 || (isBuy ? Number((entry + 14.0).toFixed(2)) : Number((entry - 14.0).toFixed(2)));
       tp4 = tp4 || (isBuy ? Number((entry + 20.0).toFixed(2)) : Number((entry - 20.0).toFixed(2)));
     }
+
+    // Synchronize levels onto trade object so monitoring strictly matches the signal message
+    trade.sl = sl;
+    trade.tp1 = tp1;
+    trade.tp2 = tp2;
+    trade.tp3 = tp3;
+    trade.tp4 = tp4;
     const confidence = trade.confidence || 92;
     const reasonForEntry = trade.reason || "Smart Money Concept Structure Shift";
     const riskAmount = Math.abs(entry - sl);
@@ -8514,13 +8521,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         }
 
         // LIVE TRADE LIFECYCLE EVALUATION GUARD
-        // Live market trades require realistic duration and verified price travel away from executed entry.
+        // Guarantee 60-second immunity window after initial trade signal creation & dispatch.
+        // This ensures the trade signal is published and users receive it BEFORE any TP or SL can trigger.
         const tradeAgeMs = now - (trade.createdAt || now);
-        const entryAgeMs = trade.entryTriggeredAt ? (now - new Date(trade.entryTriggeredAt).getTime()) : tradeAgeMs;
-        const effectiveTradeAgeMs = Math.min(tradeAgeMs, entryAgeMs > 0 ? entryAgeMs : tradeAgeMs);
-
-        // Require at least 45 seconds of live market trading before outcome evaluation
-        if (effectiveTradeAgeMs < 45000) {
+        if (tradeAgeMs < 60000 || !trade.entryDispatched) {
           return;
         }
 
