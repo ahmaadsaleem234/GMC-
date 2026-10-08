@@ -7794,26 +7794,48 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
     const centralActiveSetup = centralSignalManager.getActiveSetup();
     if (!serverActiveTrade && centralActiveSetup) {
-      serverActiveTrade = {
-        id: centralActiveSetup.setupId,
-        signalId: centralActiveSetup.setupId,
-        symbol: "FOREXCOM:XAUUSD",
-        direction: centralActiveSetup.direction,
-        entry: centralActiveSetup.preferredEntry,
-        entryZoneLow: centralActiveSetup.entryZoneLow,
-        entryZoneHigh: centralActiveSetup.entryZoneHigh,
-        sl: centralActiveSetup.stopLoss,
-        tp1: centralActiveSetup.tp1,
-        tp2: centralActiveSetup.tp2,
-        tp3: centralActiveSetup.tp3,
-        tp4: centralActiveSetup.finalTp,
-        confidence: centralActiveSetup.marketConfidence || centralActiveSetup.setupScore || 94,
-        reason: centralActiveSetup.selectionReason,
-        status: "ENTRY_CONFIRMED",
-        entryDispatched: Boolean(centralActiveSetup.entryDispatched && centralActiveSetup.dispatchedOutcomes?.includes("SIGNAL")),
-        dispatchedOutcomes: centralActiveSetup.dispatchedOutcomes || [],
-        createdAt: centralActiveSetup.activatedAt || Date.now(),
-      } as any;
+      const isCentralBuy = centralActiveSetup.direction === "BUY";
+      const isAlreadyPastTp = isCentralBuy
+        ? currentPrice >= centralActiveSetup.tp1 - 1.0
+        : currentPrice <= centralActiveSetup.tp1 + 1.0;
+      const isAlreadyPastSl = isCentralBuy
+        ? currentPrice <= centralActiveSetup.stopLoss + 1.0
+        : currentPrice >= centralActiveSetup.stopLoss - 1.0;
+
+      if (isAlreadyPastTp || isAlreadyPastSl) {
+        console.warn(`[STALE SETUP PURGED]: Central setup #${centralActiveSetup.setupId} rejected because current price ($${currentPrice.toFixed(2)}) is already at/past TP1 ($${centralActiveSetup.tp1}) or SL ($${centralActiveSetup.stopLoss}).`);
+        centralSignalManager.clearActiveSetup();
+      } else {
+        const inZone = isCentralBuy
+          ? (currentPrice <= centralActiveSetup.entryZoneHigh + 0.50 && currentPrice >= centralActiveSetup.entryZoneLow - 0.50)
+          : (currentPrice >= centralActiveSetup.entryZoneLow - 0.50 && currentPrice <= centralActiveSetup.entryZoneHigh + 0.50);
+
+        const initialStatus = inZone ? "ENTRY_CONFIRMED" : "WAITING_FOR_ENTRY";
+        const adoptedEntry = inZone ? Number(currentPrice.toFixed(2)) : centralActiveSetup.preferredEntry;
+
+        serverActiveTrade = {
+          id: centralActiveSetup.setupId,
+          signalId: centralActiveSetup.setupId,
+          symbol: "FOREXCOM:XAUUSD",
+          direction: centralActiveSetup.direction,
+          entry: adoptedEntry,
+          actualExecutedEntryPrice: inZone ? adoptedEntry : undefined,
+          entryZoneLow: centralActiveSetup.entryZoneLow,
+          entryZoneHigh: centralActiveSetup.entryZoneHigh,
+          sl: centralActiveSetup.stopLoss,
+          tp1: centralActiveSetup.tp1,
+          tp2: centralActiveSetup.tp2,
+          tp3: centralActiveSetup.tp3,
+          tp4: centralActiveSetup.finalTp,
+          confidence: centralActiveSetup.marketConfidence || centralActiveSetup.setupScore || 94,
+          reason: centralActiveSetup.selectionReason,
+          status: initialStatus,
+          entryDispatched: Boolean(centralActiveSetup.entryDispatched && centralActiveSetup.dispatchedOutcomes?.includes("SIGNAL")),
+          dispatchedOutcomes: centralActiveSetup.dispatchedOutcomes || [],
+          createdAt: centralActiveSetup.activatedAt || Date.now(),
+          entryTriggeredAt: inZone ? nowUtc : undefined,
+        } as any;
+      }
     } else if (!serverActiveTrade && stateManagerActiveTrade && (stateManagerActiveTrade.signalId?.startsWith("HRM-") || stateManagerActiveTrade.strategyName?.includes("Harami"))) {
       serverActiveTrade = stateManagerActiveTrade as any;
     }
@@ -8491,8 +8513,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           }
         }
 
-        // Wait at least 3 seconds after initial trade creation before evaluating SL/TP outcomes
-        if (now - trade.createdAt < 3000) {
+        // LIVE TRADE LIFECYCLE EVALUATION GUARD
+        // Live market trades require realistic duration and verified price travel away from executed entry.
+        const tradeAgeMs = now - (trade.createdAt || now);
+        const entryAgeMs = trade.entryTriggeredAt ? (now - new Date(trade.entryTriggeredAt).getTime()) : tradeAgeMs;
+        const effectiveTradeAgeMs = Math.min(tradeAgeMs, entryAgeMs > 0 ? entryAgeMs : tradeAgeMs);
+
+        // Require at least 45 seconds of live market trading before outcome evaluation
+        if (effectiveTradeAgeMs < 45000) {
           return;
         }
 
@@ -8505,8 +8533,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (isBuy) {
           const checkBid = tick.bid; // BUY TP/SL validated via live BID
 
-          // Check TP1
-          if (checkBid >= trade.tp1 && !trade.tp1Hit) {
+          // Check TP1: Requires BOTH level reached AND real +45 pip move from actual fill
+          const actualBuyGain = checkBid - activeEntry;
+          if (checkBid >= trade.tp1 && actualBuyGain >= 4.50 && !trade.tp1Hit) {
             const outcomeKey = `${trade.id}-TP1`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
               trade.tp1Hit = true;
@@ -8537,7 +8566,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 signalId: trade.signalId || trade.id,
                 symbol: "XAUUSD",
                 direction: trade.direction,
-                price: trade.tp1,
+                price: checkBid,
                 pips: Number(pips.toFixed(0)),
               });
 
@@ -8894,8 +8923,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         else {
           const checkAsk = tick.ask; // SELL TP/SL validated via live ASK
 
-          // Check TP1
-          if (checkAsk <= trade.tp1 && !trade.tp1Hit) {
+          // Check TP1: Requires BOTH level reached AND real +45 pip move from actual fill
+          const actualSellGain = activeEntry - checkAsk;
+          if (checkAsk <= trade.tp1 && actualSellGain >= 4.50 && !trade.tp1Hit) {
             const outcomeKey = `${trade.id}-TP1`;
             if (!trade.dispatchedOutcomes.includes(outcomeKey)) {
               trade.tp1Hit = true;
@@ -8926,7 +8956,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
                 signalId: trade.signalId || trade.id,
                 symbol: "XAUUSD",
                 direction: trade.direction,
-                price: trade.tp1,
+                price: checkAsk,
                 pips: Number(pips.toFixed(0)),
               });
 

@@ -2650,9 +2650,12 @@ export class CentralSignalManagerEngine {
       return;
     }
 
-    // CHECK TP1 & PROTECTION ENGINE ACTIVATION
-    const isTp1Reached = isBuy ? currentPx >= s.tp1 : currentPx <= s.tp1;
-    if (isTp1Reached && !s.isTp1Hit) {
+    // CHECK TP1 & PROTECTION ENGINE ACTIVATION (Requires real +45 pip price travel and >=45s duration)
+    const isTp1Reached = isBuy
+      ? currentPx >= s.tp1 && (currentPx - effectiveEntry) >= 4.50
+      : currentPx <= s.tp1 && (effectiveEntry - currentPx) >= 4.50;
+    const isMatured = (Date.now() - (s.activatedAt || Date.now())) >= 45000;
+    if (isTp1Reached && isMatured && !s.isTp1Hit) {
       s.isTp1Hit = true;
       s.lifecycleState = "TP1_HIT";
       s.lifecycleStatusLabel = "🎯 TP1 HIT";

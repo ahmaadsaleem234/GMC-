@@ -140,6 +140,16 @@ export class AnomalyDetectionEngine {
         checks.tradeLevelsValidPassed = false;
         anomalyType = "INVALID_BUY_TPS";
         failureReason = `Invalid BUY setup: Take profit levels (TP1:$${tp1}, TP2:$${tp2}, TP3:$${tp3}, TP4:$${tp4}) must be sequentially ascending above Entry.`;
+      } else if (currentPrice >= tp1 - 2.00) {
+        // PREVENT INSTANT-TP ARTIFACTS: Live price is already at or too close to TP1
+        checks.tradeLevelsValidPassed = false;
+        anomalyType = "TARGET_ALREADY_REACHED";
+        failureReason = `Live price ($${currentPrice.toFixed(2)}) is already at or within 20 pips of TP1 ($${tp1.toFixed(2)}). Fresh setups must have full room to run to target.`;
+      } else if (currentPrice <= sl + 2.00) {
+        // PREVENT INSTANT-SL: Live price is already at or near Stop Loss
+        checks.tradeLevelsValidPassed = false;
+        anomalyType = "STOP_LOSS_ALREADY_TOUCHED";
+        failureReason = `Live price ($${currentPrice.toFixed(2)}) is already near Stop Loss ($${sl.toFixed(2)}). Invalidated setup.`;
       } else {
         const risk = Math.max(0.01, bestEntry - sl);
         const rewardTarget = tp4 || tp2 || tp1;
@@ -161,6 +171,16 @@ export class AnomalyDetectionEngine {
         checks.tradeLevelsValidPassed = false;
         anomalyType = "INVALID_SELL_TPS";
         failureReason = `Invalid SELL setup: Take profit levels (TP1:$${tp1}, TP2:$${tp2}, TP3:$${tp3}, TP4:$${tp4}) must be sequentially descending below Entry.`;
+      } else if (currentPrice <= tp1 + 2.00) {
+        // PREVENT INSTANT-TP ARTIFACTS: Live price is already at or too close to TP1
+        checks.tradeLevelsValidPassed = false;
+        anomalyType = "TARGET_ALREADY_REACHED";
+        failureReason = `Live price ($${currentPrice.toFixed(2)}) is already at or within 20 pips of TP1 ($${tp1.toFixed(2)}). Fresh setups must have full room to run to target.`;
+      } else if (currentPrice >= sl - 2.00) {
+        // PREVENT INSTANT-SL: Live price is already at or near Stop Loss
+        checks.tradeLevelsValidPassed = false;
+        anomalyType = "STOP_LOSS_ALREADY_TOUCHED";
+        failureReason = `Live price ($${currentPrice.toFixed(2)}) is already near Stop Loss ($${sl.toFixed(2)}). Invalidated setup.`;
       } else {
         const risk = Math.max(0.01, sl - bestEntry);
         const rewardTarget = tp4 || tp2 || tp1;

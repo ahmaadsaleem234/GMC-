@@ -405,6 +405,9 @@ export function detectHaramiMarketRegime(
 }
 
 let haramiSetupCounter = 101;
+export function peekHaramiSetupId(): string {
+  return `HA-${haramiSetupCounter}`;
+}
 export function getNextHaramiSetupId(): string {
   return `HA-${haramiSetupCounter++}`;
 }
@@ -725,7 +728,7 @@ export function calculateHaramiAiSetup(
     : undefined;
 
   return {
-    id: getNextHaramiSetupId(),
+    id: peekHaramiSetupId(),
     assetKey,
     direction: isValidTrade ? direction : "BUY",
     timeframe: "15M/5M",
