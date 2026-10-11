@@ -1,0 +1,15 @@
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+NIXPKGS_ALLOW_INSECURE = "1"
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = ["npm install --legacy-peer-deps"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"
