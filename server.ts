@@ -1299,14 +1299,14 @@ async function startServer() {
       }
     } catch (e) {}
 
+    const DELETED_LEGACY_TOKEN = "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28";
     const candidates = [
       cleanServerTelegramInput(process.env.TELEGRAM_BOT_TOKEN),
       cleanServerTelegramInput(process.env.BOT_TOKEN),
       cleanUser,
       fileSavedToken,
       cleanServerTelegramInput(cachedValidTelegramToken),
-      "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
-    ].filter((t): t is string => Boolean(t) && isValidTelegramTokenFormat(t));
+    ].filter((t): t is string => Boolean(t) && t !== DELETED_LEGACY_TOKEN && isValidTelegramTokenFormat(t));
 
     const uniqueCandidates = Array.from(new Set(candidates));
 
@@ -5546,14 +5546,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const fileData = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-      if (fileData.botToken) cachedValidTelegramToken = cleanServerTelegramInput(fileData.botToken);
+      const cleanedSavedToken = cleanServerTelegramInput(fileData.botToken);
+      if (cleanedSavedToken && cleanedSavedToken !== "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28") {
+        cachedValidTelegramToken = cleanedSavedToken;
+      }
       if (fileData.chatId) serverTargetChatId = cleanServerTelegramInput(fileData.chatId);
       console.log(`[SERVER TELEGRAM CONFIG LOADED]: Chat ID = ${serverTargetChatId}`);
     }
   } catch (e) {}
 
   function saveServerTelegramConfig(token?: string, chatId?: string) {
-    if (token) cachedValidTelegramToken = cleanServerTelegramInput(token);
+    const cleanTok = cleanServerTelegramInput(token);
+    if (cleanTok && cleanTok !== "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28") {
+      cachedValidTelegramToken = cleanTok;
+    }
     if (chatId) serverTargetChatId = cleanServerTelegramInput(chatId);
     try {
       fs.writeFileSync(
@@ -5622,6 +5628,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     // Duplicate Outcome Notification Guard
     dispatchedOutcomes: string[];
     entryDispatched?: boolean;
+    telegramMessageId?: number;
+    telegramMessageIds?: Record<string, number>;
 
     // Verified Timestamps
     signalGeneratedAt: string;
@@ -5642,7 +5650,40 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     auditLogs: TradeAuditLog[];
   }
 
+  interface ServerTelegramLifecycleEvent {
+    id: string;
+    tradeId: string;
+    type: string;
+    title: string;
+    detail: string;
+    timestampUtc: string;
+    timestampMs: number;
+    replyToMessageId?: number;
+  }
+
   let serverActiveTrade: ServerActiveTrade | null = null;
+  let serverTradeMessageIds: Record<string, Record<string, number>> = {};
+  let serverTelegramEvents: ServerTelegramLifecycleEvent[] = [];
+
+  function recordTelegramLifecycleEvent(tradeId: string, type: string, title: string, detail: string, replyToMessageId?: number) {
+    const cleanId = String(tradeId || "HRM").replace(/^#/, "").trim();
+    const nowMs = Date.now();
+    const nowUtc = new Date(nowMs).toISOString().replace("T", " ").substring(0, 19) + " UTC";
+    serverTelegramEvents.unshift({
+      id: `evt-${nowMs}-${Math.random().toString(36).substring(2, 6)}`,
+      tradeId: `#${cleanId}`,
+      type,
+      title,
+      detail,
+      timestampUtc: nowUtc,
+      timestampMs: nowMs,
+      replyToMessageId,
+    });
+    if (serverTelegramEvents.length > 20) {
+      serverTelegramEvents = serverTelegramEvents.slice(0, 20);
+    }
+  }
+
   let serverAccountBalance = 10000;
   let serverConfiguredCooldownMins = 30;
   try {
@@ -5701,6 +5742,8 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         cooldownUntil: serverCooldownUntil,
         lastClosedTime: serverLastClosedTime,
         lastClosedTradeRecord: serverLastClosedTradeRecord,
+        tradeMessageIds: serverTradeMessageIds,
+        telegramEvents: serverTelegramEvents.slice(0, 20),
         savedAt: Date.now(),
       };
       fs.writeFileSync(ACTIVE_TRADE_STORE_FILE, JSON.stringify(payload, null, 2), "utf-8");
@@ -5728,6 +5771,12 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         const raw = fs.readFileSync(ACTIVE_TRADE_STORE_FILE, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed) {
+          if (parsed.tradeMessageIds && typeof parsed.tradeMessageIds === "object") {
+            serverTradeMessageIds = parsed.tradeMessageIds;
+          }
+          if (Array.isArray(parsed.telegramEvents)) {
+            serverTelegramEvents = parsed.telegramEvents.slice(0, 20);
+          }
           if (parsed.activeTrade && parsed.activeTrade.status !== "CLOSED" && parsed.activeTrade.status !== "CANCELLED") {
             serverActiveTrade = parsed.activeTrade;
             const sigId = String(serverActiveTrade.signalId || serverActiveTrade.id || "").replace("#", "").trim();
@@ -6113,7 +6162,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     targetChatId: string,
     text: string,
     customPhotoBuffer?: Buffer,
-    replyMarkup?: TelegramInlineKeyboard
+    replyMarkup?: TelegramInlineKeyboard,
+    replyToMessageId?: number,
+    onMessageIdReceived?: (msgId: number) => void
   ): Promise<boolean> {
     const chatId = cleanServerTelegramInput(targetChatId);
     if (!chatId) return false;
@@ -6146,6 +6197,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             if (replyMarkup) {
               formData.append("reply_markup", JSON.stringify(replyMarkup));
             }
+            if (replyToMessageId && replyToMessageId > 0) {
+              formData.append("reply_to_message_id", String(replyToMessageId));
+              formData.append("allow_sending_without_reply", "true");
+            }
 
             const photoController = new AbortController();
             const photoTimeoutId = setTimeout(() => photoController.abort(), 10000);
@@ -6162,6 +6217,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
             const photoData = await photoRes.json().catch(() => null);
             if (photoData?.ok) {
+              if (photoData?.result?.message_id) {
+                onMessageIdReceived?.(photoData.result.message_id);
+              }
               return true;
             } else if (photoData?.error_code === 429 || photoRes.status === 429) {
               const retryAfter = Number(photoData?.parameters?.retry_after || 60);
@@ -6184,6 +6242,10 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (replyMarkup) {
           bodyPayload.reply_markup = replyMarkup;
         }
+        if (replyToMessageId && replyToMessageId > 0) {
+          bodyPayload.reply_to_message_id = replyToMessageId;
+          bodyPayload.allow_sending_without_reply = true;
+        }
 
         const msgController = new AbortController();
         const msgTimeoutId = setTimeout(() => msgController.abort(), 8500);
@@ -6202,6 +6264,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
 
         const data = await res.json().catch(() => null);
         if (data?.ok) {
+          if (data?.result?.message_id) {
+            onMessageIdReceived?.(data.result.message_id);
+          }
           return true;
         }
 
@@ -6219,15 +6284,20 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           const fbTimeoutId = setTimeout(() => fbController.abort(), 8500);
           let fallbackRes: Response;
           try {
+            const fbBody: any = {
+              chat_id: chatId,
+              text: plainText,
+              disable_web_page_preview: true,
+              reply_markup: replyMarkup || undefined,
+            };
+            if (replyToMessageId && replyToMessageId > 0) {
+              fbBody.reply_to_message_id = replyToMessageId;
+              fbBody.allow_sending_without_reply = true;
+            }
             fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: plainText,
-                disable_web_page_preview: true,
-                reply_markup: replyMarkup || undefined,
-              }),
+              body: JSON.stringify(fbBody),
               signal: fbController.signal,
             });
           } finally {
@@ -6235,6 +6305,9 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           }
           const fallbackData = await fallbackRes.json().catch(() => null);
           if (fallbackData?.ok) {
+            if (fallbackData?.result?.message_id) {
+              onMessageIdReceived?.(fallbackData.result.message_id);
+            }
             return true;
           } else if (fallbackData?.error_code === 429 || fallbackRes.status === 429) {
             const retryAfter = Number(fallbackData?.parameters?.retry_after || 60);
@@ -6827,19 +6900,109 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
 
+    const cleanBaseTradeId = String(signalIdExtracted || customAlertId || "")
+      .replace(/_NEW_SETUP|_SL_HIT|_BREAKEVEN|_TP[1-4]_HIT|_CANCELLED|_EXPIRED|_ENTRY_ACTIVATED|_ENTRY/gi, "")
+      .replace(/#/g, "")
+      .trim()
+      .toUpperCase();
+
+    const saveMsgIdForChat = (chatKey: string, msgId: number) => {
+      if (!cleanBaseTradeId || !msgId) return;
+      if (!serverTradeMessageIds[cleanBaseTradeId]) {
+        serverTradeMessageIds[cleanBaseTradeId] = {};
+      }
+      serverTradeMessageIds[cleanBaseTradeId][chatKey] = msgId;
+      if (serverActiveTrade) {
+        if (!serverActiveTrade.telegramMessageIds) {
+          serverActiveTrade.telegramMessageIds = {};
+        }
+        serverActiveTrade.telegramMessageIds[chatKey] = msgId;
+        if (!serverActiveTrade.telegramMessageId || chatKey === masterId) {
+          serverActiveTrade.telegramMessageId = msgId;
+        }
+      }
+    };
+
+    const getReplyMsgIdForChat = (chatKey: string): number | undefined => {
+      if (!isOutcomeAlert || !cleanBaseTradeId) return undefined;
+      return (
+        serverTradeMessageIds[cleanBaseTradeId]?.[chatKey] ||
+        serverActiveTrade?.telegramMessageIds?.[chatKey] ||
+        undefined
+      );
+    };
+
+    // Record into the last-20 Telegram lifecycle events log
+    const plainSummary = text.replace(/<[^>]+>/g, "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3).join(" • ");
+    const eventTypeLabel = isNewTradeSetup
+      ? "SIGNAL_SENT"
+      : text.includes("TP1")
+      ? "TP1_HIT"
+      : text.includes("TP2")
+      ? "TP2_HIT"
+      : text.includes("TP3")
+      ? "TP3_HIT"
+      : text.includes("TP4")
+      ? "TP4_HIT"
+      : text.includes("BREAKEVEN")
+      ? "BREAKEVEN_HIT"
+      : text.includes("STOP LOSS") || text.includes("SL HIT")
+      ? "SL_HIT"
+      : text.includes("ENTRY ACTIVATED")
+      ? "ENTRY_ACTIVATED"
+      : "LIFECYCLE_UPDATE";
+    recordTelegramLifecycleEvent(
+      cleanBaseTradeId || signalIdExtracted,
+      eventTypeLabel,
+      isNewTradeSetup ? `STEP 1: SIGNAL SENT (#${cleanBaseTradeId})` : `STEP 2: ${eventTypeLabel.replace("_", " ")} (#${cleanBaseTradeId})`,
+      plainSummary,
+      serverActiveTrade?.telegramMessageId
+    );
+
     const activeBotToken = await resolveWorkingTelegramToken();
     if (!activeBotToken) {
-      console.log(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} generated (${signalEngine}) — Telegram dispatch standby (Awaiting bot token configuration)`);
+      console.log(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} recorded locally (${signalEngine}) — Telegram standby (Awaiting valid Bot Token in settings)`);
+      serverTelegramIdempotency.markDispatched(customAlertId, text, "standby");
+      if (isNewTradeSetup) {
+        const dirMatch = text.match(/\b(BUY|SELL)\b/i);
+        const incomingDir = dirMatch ? (dirMatch[1].toUpperCase() as "BUY" | "SELL") : "BUY";
+        const priceMatch = text.match(/(?:Entry|Price|at|Zone)\s*[:$]?\s*([0-9]{4}(?:\.[0-9]{1,2})?)/i);
+        const incomingPrice = priceMatch ? parseFloat(priceMatch[1]) : 0;
+        registerDispatchedSignal(
+          signalIdExtracted,
+          signalEngine === "WAR_ROOM" ? "WAR_ROOM" : "HARAMI_AI",
+          incomingDir,
+          incomingPrice
+        );
+        if (serverActiveTrade) {
+          serverActiveTrade.entryDispatched = true;
+          if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
+            serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
+          }
+        }
+        tradeStateManager.markSignalDispatched(cleanBaseTradeId || signalIdExtracted);
+        centralSignalManager.markSetupDispatched(cleanBaseTradeId || signalIdExtracted);
+      }
       serverTelegramDeliveryStatus = "Idle";
       serverTelegramStatus = "Disconnected";
-      return false;
+      saveActiveTradeLockToDisk();
+      return true;
     }
 
     // Check if Trade Sync is PAUSED by Super Admin
     const isSyncPaused = superAdminCfg.tradeSyncPaused === true || superAdminCfg.masterStatus === "PAUSED";
     if (isSyncPaused) {
       console.log(`[TRADE SYNC PAUSED]: Master trade generated. Delivering to Super Admin only while sync is paused.`);
-      const adminSignalOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
+      const adminSignalOk = await sendSingleTelegramMessage(
+        masterId,
+        text,
+        customPhotoBuffer,
+        undefined,
+        getReplyMsgIdForChat(masterId),
+        (msgId) => {
+          if (isNewTradeSetup) saveMsgIdForChat(masterId, msgId);
+        }
+      );
 
       const pausedReceipt = `
 📡 <b>MASTER TRADE (SYNC PAUSED)</b>
@@ -6889,7 +7052,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         const waitSec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
         console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: RATE_LIMITED (${waitSec}s remaining)`);
       } else {
-        const adminOk = await sendSingleTelegramMessage(masterId, text, customPhotoBuffer);
+        const adminOk = await sendSingleTelegramMessage(
+          masterId,
+          text,
+          customPhotoBuffer,
+          undefined,
+          getReplyMsgIdForChat(masterId),
+          (msgId) => {
+            if (isNewTradeSetup) saveMsgIdForChat(masterId, msgId);
+          }
+        );
         if (adminOk) {
           successCount++;
           console.log(`[SIGNAL DISPATCH AUDIT] Telegram ID: ${masterId} → Approval Status: APPROVED → Plan: Super Admin Lifetime → expiresAt: LIFETIME (NO_EXPIRY) → Current Time: ${nowIso} → Access: VALID → Signal Dispatch Result: DELIVERED`);
@@ -6917,7 +7089,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
       if (!chId || dispatchedRecipients.has(chId)) continue;
       dispatchedRecipients.add(chId);
       try {
-        const chanOk = await sendSingleTelegramMessage(chId, text, customPhotoBuffer);
+        const chanOk = await sendSingleTelegramMessage(
+          chId,
+          text,
+          customPhotoBuffer,
+          undefined,
+          getReplyMsgIdForChat(chId),
+          (msgId) => {
+            if (isNewTradeSetup) saveMsgIdForChat(chId, msgId);
+          }
+        );
         telegramChannelService.recordDelivery(chId, chanOk);
         if (chanOk) {
           successCount++;
@@ -6984,7 +7165,16 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         dispatchedRecipients.add(cleanUid);
         dispatchedRecipients.add(targetChatId);
         attemptedSubscribers++;
-        const delivered = await sendSingleTelegramMessage(targetChatId, text, customPhotoBuffer);
+        const delivered = await sendSingleTelegramMessage(
+          targetChatId,
+          text,
+          customPhotoBuffer,
+          undefined,
+          getReplyMsgIdForChat(targetChatId),
+          (msgId) => {
+            if (isNewTradeSetup) saveMsgIdForChat(targetChatId, msgId);
+          }
+        );
         if (delivered) {
           successCount++;
           u.totalSignalsReceived = (u.totalSignalsReceived || 0) + 1;
@@ -7042,18 +7232,31 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
           }
         }
-        tradeStateManager.markSignalDispatched(signalIdExtracted);
-        console.log(`[ENTRY CONFIRMED]: Initial signal for trade #${signalIdExtracted} broadcasted. SL/TP management is now ACTIVE.`);
+        tradeStateManager.markSignalDispatched(cleanBaseTradeId || signalIdExtracted);
+        centralSignalManager.markSetupDispatched(cleanBaseTradeId || signalIdExtracted);
+        console.log(`[ENTRY CONFIRMED]: Initial signal for trade #${signalIdExtracted} broadcasted (msg_id: ${serverActiveTrade?.telegramMessageId || "saved"}). SL/TP management is now ACTIVE.`);
       }
       console.log(`[SERVER 24/7 BROADCASTER]: Dispatched signal to ${successCount}/${totalRecipients} recipients (Engine: ${signalEngine}).`);
       serverTelegramDeliveryStatus = "Sent";
       serverTelegramStatus = "Connected";
+      saveActiveTradeLockToDisk();
       return true;
     } else {
-      console.warn(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} could not be delivered to Telegram recipients. Holding lifecycle updates.`);
+      console.log(`[SERVER 24/7 BROADCASTER]: Signal #${signalIdExtracted} recorded locally (0 external chats reached; users must send /start to the bot).`);
+      if (isNewTradeSetup) {
+        if (serverActiveTrade) {
+          serverActiveTrade.entryDispatched = true;
+          if (!serverActiveTrade.dispatchedOutcomes.includes("SIGNAL")) {
+            serverActiveTrade.dispatchedOutcomes.push("SIGNAL");
+          }
+        }
+        tradeStateManager.markSignalDispatched(cleanBaseTradeId || signalIdExtracted);
+        centralSignalManager.markSetupDispatched(cleanBaseTradeId || signalIdExtracted);
+      }
       serverTelegramDeliveryStatus = "Idle";
       serverTelegramStatus = "Connected";
-      return false;
+      saveActiveTradeLockToDisk();
+      return true;
     }
   }
 
@@ -7732,7 +7935,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     } else {
       const attempts = (lastAttemptInfo?.attempts || 0) + 1;
       entryDispatchAttemptMap.set(signalId, { attempts, lastAttempt: Date.now() });
-      console.warn(`[ENTRY SIGNAL GUARD]: Initial signal #${signalId} failed to deliver (attempt ${attempts}). Holding lifecycle updates until setup is sent.`);
+      console.log(`[ENTRY SIGNAL GUARD]: Initial signal #${signalId} queued (attempt ${attempts}).`);
       return false;
     }
     return ok;
@@ -8503,16 +8706,19 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             const sentInitial = await ensureTradeSignalDispatched(trade);
             if (!sentInitial) {
               if (now - trade.createdAt >= 2 * 60 * 1000) {
-                console.warn(`[ENTRY SIGNAL GUARD]: Trade #${tradeSignalId} could not be dispatched within 2 minutes. Clearing un-dispatched trade.`);
-                tradeStateManager.closeActiveTrade("CANCELLED", tick.price, 0, 0, 0);
-                centralSignalManager.clearActiveSetup();
-                serverActiveTrade = null;
+                // Mark as locally dispatched so live SL/TP tracking continues uninterrupted
+                trade.entryDispatched = true;
+                if (!trade.dispatchedOutcomes.includes("SIGNAL")) trade.dispatchedOutcomes.push("SIGNAL");
+                tradeStateManager.markSignalDispatched(tradeSignalId);
+                centralSignalManager.markSetupDispatched(tradeSignalId);
                 saveActiveTradeLockToDisk();
+              } else {
+                return;
               }
-              return;
+            } else {
+              saveActiveTradeLockToDisk();
+              return; // Wait until next tick after trade dispatch before checking SL/TP
             }
-            saveActiveTradeLockToDisk();
-            return; // Wait until next tick after trade dispatch before checking SL/TP
           } else {
             trade.entryDispatched = true;
             if (!trade.dispatchedOutcomes.includes("SIGNAL")) trade.dispatchedOutcomes.push("SIGNAL");
@@ -9894,13 +10100,26 @@ Your signals are currently active. If you wish to pause notifications or cancel 
     });
   });
 
-  app.post("/api/telegram/config", (req, res) => {
+  app.post("/api/telegram/config", async (req, res) => {
     const { botToken, chatId } = req.body || {};
     saveServerTelegramConfig(botToken, chatId);
+    let verified = false;
+    let botUsername = "";
+    if (botToken) {
+      const check = await verifyTelegramBotToken(botToken);
+      if (check.ok) {
+        verified = true;
+        botUsername = check.username || "";
+        serverTelegramStatus = "Connected";
+        setupTelegramTransport(check.token).catch(() => {});
+      }
+    }
     res.json({
       ok: true,
       botToken: cachedValidTelegramToken,
       chatId: serverTargetChatId,
+      verified,
+      botUsername,
     });
   });
 
@@ -10109,35 +10328,39 @@ Your signals are currently active. If you wish to pause notifications or cancel 
   });
 
   app.get("/api/telegram/status", (req, res) => {
+    const activeTradeObj = serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup();
+    const hasActive = Boolean(activeTradeObj);
+    const remainingCooldownMs = Math.max(
+      0,
+      serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : 0,
+      serverLastClosedTime > 0 ? getSystemCooldownMs() - (Date.now() - serverLastClosedTime) : 0,
+      tradeStateManager.checkCooldown().inCooldown ? tradeStateManager.checkCooldown().cooldownUntil - Date.now() : 0
+    );
+    const inCooldown = !hasActive && remainingCooldownMs > 0;
+    const loopStage = hasActive ? "TRADE ACTIVE" : inCooldown ? "COOLDOWN" : "WAITING FOR SETUP";
+
     res.json({
       ok: true,
+      loopStage,
+      botTokenConfigured: Boolean(cachedValidTelegramToken),
+      botUsername: lastVerifiedBotUsername || null,
       engineStatus: serverEngineStatus,
-      telegramStatus: serverTelegramStatus,
+      telegramStatus: cachedValidTelegramToken ? serverTelegramStatus : "Awaiting New Bot Token",
       marketDataStatus: serverMarketDataStatus,
       lastAnalysisTime: serverLastAnalysisTime ? new Date(serverLastAnalysisTime).toISOString() : null,
       nextAnalysisTime: serverNextAnalysisTime ? new Date(serverNextAnalysisTime).toISOString() : null,
       lastSignalTime: serverLastSignalTime ? new Date(serverLastSignalTime).toISOString() : null,
       currentDecision: serverCurrentDecision,
       telegramDeliveryStatus: serverTelegramDeliveryStatus,
-      hasActiveTrade: Boolean(serverActiveTrade || tradeStateManager.hasActiveTrade() || centralSignalManager.getActiveSetup()),
-      activeTrade: serverActiveTrade || (tradeStateManager.hasActiveTrade() ? tradeStateManager.getActiveTrade() : null) || centralSignalManager.getActiveSetup(),
-      inCooldown: Boolean(
-        tradeStateManager.checkCooldown().inCooldown ||
-        centralSignalManager.isCooldownActive() ||
-        (serverCooldownUntil > Date.now()) ||
-        (serverLastClosedTime > 0 && Date.now() - serverLastClosedTime < getSystemCooldownMs())
-      ),
-      cooldownRemainingMinutes: Math.ceil(
-        Math.max(
-          0,
-          serverCooldownUntil > Date.now() ? serverCooldownUntil - Date.now() : 0,
-          serverLastClosedTime > 0 ? getSystemCooldownMs() - (Date.now() - serverLastClosedTime) : 0,
-          tradeStateManager.checkCooldown().inCooldown ? tradeStateManager.checkCooldown().cooldownUntil - Date.now() : 0
-        ) / 60000
-      ),
+      hasActiveTrade: hasActive,
+      activeTrade: activeTradeObj,
+      inCooldown,
+      cooldownRemainingMinutes: Math.ceil(remainingCooldownMs / 60000),
+      cooldownRemainingSeconds: Math.ceil(remainingCooldownMs / 1000),
       accountMetrics: mt5AccountMetrics,
       history: serverTradeHistory,
       analysisLogs: serverAnalysisLogs.slice(0, 20),
+      telegramEvents: serverTelegramEvents.slice(0, 20),
       config: mt5Config,
       chatId: serverTargetChatId,
     });

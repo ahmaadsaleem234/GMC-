@@ -1,0 +1,9 @@
+{
+  "activeTrade": null,
+  "cooldownUntil": 0,
+  "lastClosedTime": 0,
+  "configuredCooldownMins": 30,
+  "tradeMessageIds": {},
+  "telegramEvents": [],
+  "updatedAt": 0
+}

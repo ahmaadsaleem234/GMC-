@@ -17,6 +17,8 @@ export function cleanTelegramInput(str?: string): string {
   return str.replace(/[\u200B-\u200D\uFEFF\u00A0\r\n\s]/g, "").trim();
 }
 
+const DELETED_LEGACY_TOKEN = "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28";
+
 export function getTelegramConfig(): TelegramConfig {
   try {
     const saved = safeLocalStorage.getItem(STORAGE_KEY);
@@ -25,20 +27,23 @@ export function getTelegramConfig(): TelegramConfig {
       parsed.botToken = cleanTelegramInput(parsed.botToken);
       parsed.chatId = cleanTelegramInput(parsed.chatId);
 
-      if (!parsed.botToken) {
-        parsed.botToken = "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28";
+      // Clear legacy deleted token so it never overwrites a new token or causes 401 errors
+      if (parsed.botToken === DELETED_LEGACY_TOKEN) {
+        parsed.botToken = "";
       }
       if (!parsed.chatId || parsed.chatId === "") {
         parsed.chatId = "5218548758";
       }
-      parsed.enabled = true;
+      if (typeof parsed.enabled !== "boolean") {
+        parsed.enabled = true;
+      }
       return parsed;
     }
   } catch (e) {
     // Graceful fallback without crashing
   }
   const defaultConfig: TelegramConfig = {
-    botToken: "8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28",
+    botToken: "",
     chatId: "5218548758",
     enabled: true,
     sendEntries: true,

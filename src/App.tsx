@@ -386,12 +386,6 @@ export function App() {
         }}
       />
 
-      {/* Telegram Signal Bot Integration Modal */}
-      <TelegramBotModal
-        isOpen={isTelegramModalOpen}
-        onClose={() => setIsTelegramModalOpen(false)}
-      />
-
       {/* Floating Risk Management Copilot Modal */}
       <RiskManagementCopilotModal
         isOpen={isCopilotOpen}

@@ -300,7 +300,7 @@ export const KhatarnakTelegramSettingsModal: React.FC<KhatarnakTelegramSettingsM
                       type={showToken ? "text" : "password"}
                       value={config.botToken}
                       onChange={(e) => setConfig({ ...config, botToken: e.target.value })}
-                      placeholder="e.g. 8935835253:AAGWp1IeU9yA6wh2XmlcIE_W4ZAv4MIhA28"
+                      placeholder="e.g. 7123456789:AAFg... (from @BotFather)"
                       className="w-full bg-[#070A12] border border-slate-800 focus:border-amber-500/70 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 outline-none transition-all"
                     />
                   </div>

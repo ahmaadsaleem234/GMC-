@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 .telegram_config.json
+.telegram_users_db.json
+.telegram_delivery_logs.json
+super_admin_config.json
+

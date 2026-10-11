@@ -123,7 +123,8 @@ Status: ⏳ SCANNING (Awaiting 14/14 Confirmation)
 ━━━━━━━━━━━━━━━━━━━
 <b>${idDisplay} • ${symbolShort} (GOLD)</b>
 
-📍 <b>Entry:</b> <code>${bestEntry.toFixed(2)}</code>
+📍 <b>Entry Zone:</b> <code>${entryLow.toFixed(2)} - ${entryHigh.toFixed(2)}</code>
+🎯 <b>Best Entry:</b> <code>${bestEntry.toFixed(2)}</code>
 🛑 <b>SL:</b> <code>${sl.toFixed(2)}</code> (-${riskPips} pips)
 
 🎯 <b>TP1:</b> <code>${tp1.toFixed(2)}</code> (+${tp1Pips} pips)
