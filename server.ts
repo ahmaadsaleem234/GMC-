@@ -6224,11 +6224,18 @@ Your signals are currently active. If you wish to pause notifications or cancel 
             } else if (photoData?.error_code === 429 || photoRes.status === 429) {
               const retryAfter = Number(photoData?.parameters?.retry_after || 60);
               chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
-              console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+              console.log(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+              return false;
+            } else if (
+              photoData?.error_code === 403 ||
+              photoRes.status === 403 ||
+              (photoData?.error_code === 400 && /chat not found|user is deactivated|PEER_ID_INVALID/i.test(String(photoData?.description || "")))
+            ) {
+              console.log(`[TELEGRAM DELIVERY SKIPPED]: Chat ${chatId} unreachable (${photoData?.error_code}: ${photoData?.description})`);
               return false;
             }
           } catch (e) {
-            console.warn("[SINGLE TELEGRAM MSG]: Photo upload failed, falling back to text:", e);
+            console.log("[SINGLE TELEGRAM MSG]: Photo upload fallback to text:", e);
           }
         }
 
@@ -6273,7 +6280,17 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (data?.error_code === 429 || res.status === 429) {
           const retryAfter = Number(data?.parameters?.retry_after || 60);
           chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
-          console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+          console.log(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+          return false;
+        }
+
+        // Non-retryable user/chat errors (403 blocked by user, 400 chat not found)
+        if (
+          data?.error_code === 403 ||
+          res.status === 403 ||
+          (data?.error_code === 400 && /chat not found|user is deactivated|PEER_ID_INVALID/i.test(String(data?.description || "")))
+        ) {
+          console.log(`[TELEGRAM DELIVERY SKIPPED]: Chat ${chatId} unreachable (${data?.error_code}: ${data?.description})`);
           return false;
         }
 
@@ -6312,13 +6329,14 @@ Your signals are currently active. If you wish to pause notifications or cancel 
           } else if (fallbackData?.error_code === 429 || fallbackRes.status === 429) {
             const retryAfter = Number(fallbackData?.parameters?.retry_after || 60);
             chatRateLimitMap.set(chatId, Date.now() + (retryAfter + 2) * 1000);
-            console.warn(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
+            console.log(`[TELEGRAM 429 RATE LIMIT]: Chat ${chatId} rate-limited for ${retryAfter}s.`);
             return false;
           } else if (fallbackData?.description) {
-            console.warn(`[TELEGRAM SEND FALLBACK FAILED] Chat ${chatId} (${fallbackData.error_code}: ${fallbackData.description})`);
+            console.log(`[TELEGRAM SEND FALLBACK NOTE] Chat ${chatId} (${fallbackData.error_code}: ${fallbackData.description})`);
+            return false;
           }
         } catch (fbErr) {
-          console.warn("[TELEGRAM SEND FALLBACK ERROR]:", fbErr);
+          console.log("[TELEGRAM SEND FALLBACK NOTE]:", fbErr);
         }
 
         // If error is network, wait briefly and retry
@@ -6329,7 +6347,7 @@ Your signals are currently active. If you wish to pause notifications or cancel 
         if (attempt < maxRetries) {
           await new Promise((r) => setTimeout(r, 600));
         } else {
-          console.error("[SINGLE TELEGRAM MSG ERROR (FINAL RETRY FAILED)]:", err);
+          console.log("[SINGLE TELEGRAM MSG NOTE (FINAL RETRY)]:", err);
           return false;
         }
       }

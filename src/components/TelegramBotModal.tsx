@@ -58,7 +58,7 @@ export const TelegramBotModal: React.FC<TelegramBotModalProps> = ({ isOpen, onCl
               const updated = {
                 ...prev,
                 botToken: cfgData.botToken,
-                chatId: cfgData.chatId || prev.chatId || "7124285012",
+                chatId: cfgData.chatId || prev.chatId || "5218548758",
               };
               saveTelegramConfig(updated);
               return updated;

@@ -243,7 +243,6 @@ export class SuperAdminTelegramService {
         [
           cleanMaster,
           "5218548758",
-          "7124285012",
           extraId,
           typeof process !== "undefined" ? process.env?.TELEGRAM_SUPER_ADMIN_ID : undefined,
           typeof process !== "undefined" ? process.env?.TELEGRAM_TARGET_CHAT_ID : undefined,
