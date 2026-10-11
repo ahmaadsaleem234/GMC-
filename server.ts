@@ -11829,7 +11829,7 @@ Format your responses with clear bullet points, risk-reward ratios, and action s
     console.log(`
 =====================================================
 🚀 [SERVER ONLINE]: GMC Trading Autonomous Platform Running on Port ${PORT}
-🤖 [TELEGRAM WORKER ONLINE]: Long-Polling Background Daemon Connected (Bot: @GMCtelegrambot)
+🤖 [TELEGRAM WORKER ONLINE]: Long-Polling Background Daemon Connected (Bot: @Harami_telegrambot)
 📈 [MARKET DATA ONLINE]: Real-time Live XAUUSD Multi-Feed Active
 🧠 [AI ENGINE ONLINE]: 4-AI Neural Systems Active (Harami, War Room, Khatarnak, Precision Hunter)
 🎯 [SIGNAL MANAGER ONLINE]: Central Orchestrator & Single Active Setup Gatekeeper Armed

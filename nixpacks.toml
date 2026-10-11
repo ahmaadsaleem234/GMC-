@@ -6,7 +6,7 @@ NIXPKGS_ALLOW_INSECURE = "1"
 nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm install --legacy-peer-deps"]
+cmds = ["NODE_ENV=development npm install --include=dev --legacy-peer-deps"]
 
 [phases.build]
 cmds = ["npm run build"]
