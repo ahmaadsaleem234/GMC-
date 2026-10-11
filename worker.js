@@ -1,15 +1,24 @@
 // src/services/superAdminTelegramService.ts
 var fsModule = null;
 var pathModule = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    fsModule = eval('require("fs")');
-    pathModule = eval('require("path")');
+function getSuperAdminConfigFile() {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule) {
+      return pathModule.join(process.cwd(), "super_admin_config.json");
+    }
+  } catch (e) {
   }
-} catch (e) {
+  return "super_admin_config.json";
 }
-var SUPER_ADMIN_CONFIG_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "super_admin_config.json") : "super_admin_config.json";
-var SUPER_ADMIN_LOGS_FILE = typeof process !== "undefined" && process.cwd && pathModule ? pathModule.join(process.cwd(), "super_admin_audit_logs.json") : "super_admin_audit_logs.json";
+function getSuperAdminLogsFile() {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule) {
+      return pathModule.join(process.cwd(), "super_admin_audit_logs.json");
+    }
+  } catch (e) {
+  }
+  return "super_admin_audit_logs.json";
+}
 var DEFAULT_SUPER_ADMIN_CONFIG = {
   superAdminId: "5218548758",
   masterStatus: "RUNNING",
@@ -48,18 +57,25 @@ var SuperAdminTelegramService = class {
     this.auditLogs = [];
     this.loadState();
   }
+  setFsProvider(fs, path) {
+    fsModule = fs;
+    pathModule = path;
+    this.loadState();
+  }
   loadState() {
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(SUPER_ADMIN_CONFIG_FILE)) {
-        const raw = fsModule.readFileSync(SUPER_ADMIN_CONFIG_FILE, "utf-8");
+      const cfgFile = getSuperAdminConfigFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(cfgFile)) {
+        const raw = fsModule.readFileSync(cfgFile, "utf-8");
         this.config = { ...DEFAULT_SUPER_ADMIN_CONFIG, ...JSON.parse(raw) };
       }
     } catch (e) {
       this.config = { ...DEFAULT_SUPER_ADMIN_CONFIG };
     }
     try {
-      if (fsModule && fsModule.existsSync && fsModule.existsSync(SUPER_ADMIN_LOGS_FILE)) {
-        const raw = fsModule.readFileSync(SUPER_ADMIN_LOGS_FILE, "utf-8");
+      const logsFile = getSuperAdminLogsFile();
+      if (fsModule && fsModule.existsSync && fsModule.existsSync(logsFile)) {
+        const raw = fsModule.readFileSync(logsFile, "utf-8");
         this.auditLogs = JSON.parse(raw);
       }
     } catch (e) {
@@ -70,7 +86,7 @@ var SuperAdminTelegramService = class {
     try {
       this.config.lastUpdatedUtc = (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").substring(0, 19) + " UTC";
       if (fsModule && fsModule.writeFileSync) {
-        fsModule.writeFileSync(SUPER_ADMIN_CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
+        fsModule.writeFileSync(getSuperAdminConfigFile(), JSON.stringify(this.config, null, 2), "utf-8");
       }
     } catch (e) {
     }
@@ -81,7 +97,7 @@ var SuperAdminTelegramService = class {
         this.auditLogs = this.auditLogs.slice(0, 500);
       }
       if (fsModule && fsModule.writeFileSync) {
-        fsModule.writeFileSync(SUPER_ADMIN_LOGS_FILE, JSON.stringify(this.auditLogs, null, 2), "utf-8");
+        fsModule.writeFileSync(getSuperAdminLogsFile(), JSON.stringify(this.auditLogs, null, 2), "utf-8");
       }
     } catch (e) {
     }
@@ -126,14 +142,22 @@ var SuperAdminTelegramService = class {
     if (!userId) return false;
     const cleanUser = String(userId).replace(/[^0-9]/g, "");
     if (!cleanUser) return false;
-    const cleanMaster = this.getSuperAdminId().replace(/[^0-9]/g, "");
-    const knownAdmins = [
-      cleanMaster,
-      "5218548758",
-      process.env.TELEGRAM_SUPER_ADMIN_ID,
-      process.env.TELEGRAM_TARGET_CHAT_ID
-    ].filter(Boolean).map((s) => String(s).replace(/[^0-9]/g, "")).filter((s) => s.length > 0);
+    const knownAdmins = this.getAllAdminIds();
     return knownAdmins.includes(cleanUser);
+  }
+  getAllAdminIds(extraId) {
+    const cleanMaster = this.getSuperAdminId().replace(/[^0-9]/g, "");
+    return Array.from(
+      new Set(
+        [
+          cleanMaster,
+          "5218548758",
+          extraId,
+          typeof process !== "undefined" ? process.env?.TELEGRAM_SUPER_ADMIN_ID : void 0,
+          typeof process !== "undefined" ? process.env?.TELEGRAM_TARGET_CHAT_ID : void 0
+        ].filter(Boolean).map((s) => String(s).replace(/[^0-9]/g, "")).filter((s) => s.length > 0)
+      )
+    );
   }
   /**
    * 👤 USER REQUESTS & PENDING APPROVALS LIST
@@ -163,19 +187,24 @@ All subscriber registration requests have been reviewed and processed.
     const text = `
 <b>\u{1F464} PENDING USER ACCESS REQUESTS (${pendingUsers.length})</b>
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-The following user(s) are waiting for your approval to receive live trade signals:
+The following user(s) started the bot and are locked in <b>PENDING</b> status (no trades delivered until you approve):
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-<i>\u26A1 Tap an action below to instantly approve, set duration, or reject:</i>
+<i>\u26A1 Tap any duration below to approve & grant access immediately, or reject/block:</i>
 `.trim();
     const buttons = [];
     for (const u of pendingUsers.slice(0, 5)) {
       const name = `${u.firstName || "Trader"} ${u.lastName || ""}`.trim();
       buttons.push([
-        { text: `\u{1F464} ${name} (${u.userId})`, callback_data: `adm:user:view:${u.userId}` }
+        { text: `\u{1F464} ${name} (${u.userId}) \u2014 View Profile`, callback_data: `adm:user:view:${u.userId}` }
       ]);
       buttons.push([
-        { text: `\u2705 Approve (Life)`, callback_data: `adm:req:approve:${u.userId}` },
-        { text: `\u26A1 7 Days`, callback_data: `adm:usr:grant:${u.userId}:7` },
+        { text: `\u26A1 1 Hour`, callback_data: `adm:usr:grant:${u.userId}:1h` },
+        { text: `\u26A1 1 Day`, callback_data: `adm:usr:grant:${u.userId}:1` },
+        { text: `\u26A1 7 Days`, callback_data: `adm:usr:grant:${u.userId}:7` }
+      ]);
+      buttons.push([
+        { text: `\u26A1 1 Month`, callback_data: `adm:usr:grant:${u.userId}:30` },
+        { text: `\u267E\uFE0F Lifetime`, callback_data: `adm:usr:grant:${u.userId}:lifetime` },
         { text: `\u274C Reject`, callback_data: `adm:req:reject:${u.userId}` }
       ]);
     }
@@ -253,7 +282,11 @@ The following user(s) are waiting for your approval to receive live trade signal
           { text: "\u{1F4E1} Master Trade Sync", callback_data: "adm:sync:menu" }
         ],
         [
-          { text: `\u{1F465} Approved Users (${approvedUsersCount})`, callback_data: "adm:users:list:active" },
+          { text: `\u23F3 Pending Requests (${pendingUsersCount})`, callback_data: "adm:users:list:pending" },
+          { text: `\u{1F465} Manage Users (${totalUsersCount})`, callback_data: "adm:users:menu" }
+        ],
+        [
+          { text: `\u{1F7E2} Active Users (${approvedUsersCount})`, callback_data: "adm:users:list:active" },
           { text: "\u{1F916} Bot Access Hub", callback_data: "adm:bots:menu" }
         ],
         [
@@ -981,15 +1014,20 @@ This will immediately impact all automated signals across all connected subscrib
 <b>\u{1F464} User:</b> <b>${user.firstName || "Trader"} ${user.lastName || ""}</b> (${user.username || "No @username"})
 <b>\u{1F194} Telegram ID:</b> <code>${user.userId}</code>
 <b>\u{1F552} Requested:</b> <code>${new Date(user.joinedAt || Date.now()).toLocaleString()}</code>
-<b>\u{1F512} Current Status:</b> \u23F3 <code>PENDING APPROVAL</code>
+<b>\u{1F512} Current Status:</b> \u23F3 <code>PENDING APPROVAL (TRADES LOCKED)</code>
 
-<i>\u26A1 Select approval duration to activate instant 24/7 signal access:</i>
+<i>\u26A1 Select access duration below to approve & activate live trade delivery right from Telegram:</i>
 `.trim();
     const keyboard = {
       inline_keyboard: [
         [
+          { text: "\u26A1 1 Hour", callback_data: `adm:usr:grant:${user.userId}:1h` },
           { text: "\u26A1 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
-          { text: "\u26A1 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+          { text: "\u26A1 3 Days", callback_data: `adm:usr:grant:${user.userId}:3` },
+          { text: "\u26A1 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` }
+        ],
+        [
+          { text: "\u26A1 15 Days", callback_data: `adm:usr:grant:${user.userId}:15` },
           { text: "\u26A1 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "\u267E\uFE0F Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` }
         ],
@@ -1006,7 +1044,7 @@ This will immediately impact all automated signals across all connected subscrib
    * SINGLE USER DETAIL CARD (WITH BOT SELECTION & DURATION MANAGEMENT)
    */
   renderUserCard(user) {
-    const statusEmoji = user.status === "approved" ? "\u{1F7E2} ACTIVE" : user.status === "trial" ? "\u{1F7E1} TRIAL" : user.status === "pending" ? "\u23F3 PENDING" : user.status === "expired" ? "\u{1F534} EXPIRED" : "\u{1F6AB} BLOCKED";
+    const statusEmoji = user.status === "approved" ? "\u{1F7E2} ACTIVE" : user.status === "trial" ? "\u{1F7E1} TRIAL" : user.status === "pending" ? "\u23F3 PENDING" : user.status === "rejected" ? "\u274C REJECTED" : user.status === "expired" ? "\u{1F534} EXPIRED" : "\u{1F6AB} BLOCKED";
     const expiryStr = user.expiresAt ? new Date(user.expiresAt).toISOString().replace("T", " ").substring(0, 16) + " UTC" : "\u267E\uFE0F Lifetime";
     const botAccessDisplay = user.botAccess === "harami" ? "\u{1F525} HARAMI AI ONLY" : user.botAccess === "war_room" ? "\u2694\uFE0F WAR ROOM ONLY" : user.botAccess === "khatarnak" ? "\u26A1 KHATARNAK JUGAAD ONLY" : "\u{1F916} ALL BOTS (Harami + War Room + Khatarnak)";
     const durationDisplay = user.approvalDurationLabel || (user.expiresAt ? "Timed Access" : "Lifetime Access");
@@ -1024,7 +1062,7 @@ This will immediately impact all automated signals across all connected subscrib
 <b>Signals Received:</b> <code>${user.totalSignalsReceived || 0}</code>
 <b>Joined:</b> <code>${new Date(user.joinedAt).toLocaleDateString()}</code>
 \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-<i>\u26A1 Select Bot Access, Grant Duration (1 Day, 7 Days, 1 Month, Lifetime), or Change Status:</i>
+<i>\u26A1 1-Tap Control: Choose Bot Access, Set Access Duration (1h, 1d, 3d, 7d, 15d, 30d, Lifetime), or Block/Revoke:</i>
 `.trim();
     const keyboard = {
       inline_keyboard: [
@@ -1037,18 +1075,25 @@ This will immediately impact all automated signals across all connected subscrib
           { text: "\u26A1 Khatarnak", callback_data: `adm:usr:bot:${user.userId}:khatarnak` }
         ],
         [
+          { text: "\u26A1 1 Hour", callback_data: `adm:usr:grant:${user.userId}:1h` },
           { text: "\u26A1 1 Day", callback_data: `adm:usr:grant:${user.userId}:1` },
-          { text: "\u26A1 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` },
+          { text: "\u26A1 3 Days", callback_data: `adm:usr:grant:${user.userId}:3` },
+          { text: "\u26A1 7 Days", callback_data: `adm:usr:grant:${user.userId}:7` }
+        ],
+        [
+          { text: "\u26A1 15 Days", callback_data: `adm:usr:grant:${user.userId}:15` },
           { text: "\u26A1 1 Month", callback_data: `adm:usr:grant:${user.userId}:30` },
           { text: "\u267E\uFE0F Lifetime", callback_data: `adm:usr:grant:${user.userId}:lifetime` }
         ],
         [
           user.status === "blocked" ? { text: "\u{1F513} Unblock User", callback_data: `adm:usr:unblock:${user.userId}` } : { text: "\u{1F6AB} Block User", callback_data: `adm:usr:block:${user.userId}` },
-          { text: "\u274C Revoke Access", callback_data: `adm:usr:revoke:${user.userId}` }
+          { text: "\u23F3 Set Pending", callback_data: `adm:usr:revoke:${user.userId}` },
+          { text: "\u274C Reject", callback_data: `adm:req:reject:${user.userId}` }
         ],
         [
-          { text: "\u{1F4E4} Delivery Status", callback_data: `adm:delivery:menu` },
-          { text: "\u{1F519} Back to Users", callback_data: "adm:users:menu" }
+          { text: "\u23F3 Pending Queue", callback_data: `adm:users:list:pending` },
+          { text: "\u{1F519} All Users", callback_data: "adm:users:menu" },
+          { text: "\u{1F3E0} Admin", callback_data: "adm:home" }
         ]
       ]
     };
@@ -2182,14 +2227,15 @@ var superAdminService = new SuperAdminTelegramService();
 // src/services/serverTelegramIdempotency.ts
 var fsModule2 = null;
 var pathModule2 = null;
-try {
-  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-    fsModule2 = eval('require("fs")');
-    pathModule2 = eval('require("path")');
+function getStorageFile() {
+  try {
+    if (typeof process !== "undefined" && process.cwd && pathModule2) {
+      return pathModule2.join(process.cwd(), "data", "telegram_idempotency_store.json");
+    }
+  } catch (e) {
   }
-} catch (e) {
+  return "telegram_idempotency_store.json";
 }
-var STORAGE_FILE = typeof process !== "undefined" && process.cwd && pathModule2 ? pathModule2.join(process.cwd(), "data", "telegram_idempotency_store.json") : "telegram_idempotency_store.json";
 var DEDUPLICATION_WINDOW_MS = 45 * 60 * 1e3;
 function simpleHash(str) {
   let hash = 0;
@@ -2215,10 +2261,16 @@ var TelegramIdempotencyRegistry = class {
     this.cooldownDurationMinutes = 30;
     this.loadFromDisk();
   }
+  setFsProvider(fs, path) {
+    fsModule2 = fs;
+    pathModule2 = path;
+    this.loadFromDisk();
+  }
   loadFromDisk() {
     try {
-      if (fsModule2 && fsModule2.existsSync && fsModule2.existsSync(STORAGE_FILE)) {
-        const raw = fsModule2.readFileSync(STORAGE_FILE, "utf-8");
+      const storagePath = getStorageFile();
+      if (fsModule2 && fsModule2.existsSync && fsModule2.existsSync(storagePath)) {
+        const raw = fsModule2.readFileSync(storagePath, "utf-8");
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           this.records = parsed;
@@ -2257,7 +2309,8 @@ var TelegramIdempotencyRegistry = class {
           cooldownUntil: this.cooldownUntil,
           cooldownDurationMinutes: this.cooldownDurationMinutes
         };
-        fsModule2.writeFileSync(STORAGE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+        const storagePath = getStorageFile();
+        fsModule2.writeFileSync(storagePath, JSON.stringify(payload, null, 2), "utf-8");
       }
     } catch (err) {
     }
@@ -2300,6 +2353,8 @@ var TelegramIdempotencyRegistry = class {
       if (upperAlert.includes("TP2")) return "TP2_HIT";
       if (upperAlert.includes("TP3")) return "TP3_HIT";
       if (upperAlert.includes("FINAL_TP") || upperAlert.includes("TP4")) return "FINAL_TP_HIT";
+      if (upperAlert.includes("BREAKEVEN_EXIT") || upperAlert.includes("BE_EXIT")) return "BREAKEVEN_EXIT";
+      if (upperAlert.includes("BREAKEVEN") || upperAlert.includes("BE")) return "BREAKEVEN";
       if (upperAlert.includes("SL_HIT") || upperAlert.includes("STOP_LOSS")) return "SL_HIT";
       if (upperAlert.includes("ENTRY")) return "ENTRY_HIT";
       if (upperAlert.includes("NEW_SETUP") || upperAlert.includes("SIGNAL")) return "NEW_SETUP";
@@ -2307,15 +2362,17 @@ var TelegramIdempotencyRegistry = class {
       if (upperAlert.includes("EXPIRE")) return "EXPIRED";
     }
     const t = text.toUpperCase();
-    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT") || t.includes("TP4 ALL TARGETS HIT")) return "FINAL_TP_HIT";
+    if (t.includes("FINAL TP HIT") || t.includes("TARGET 4 HIT") || t.includes("MAXIMUM TARGET HIT") || t.includes("TP4 ALL TARGETS HIT") || t.includes("FULL TAKE PROFIT ACHIEVED")) return "FINAL_TP_HIT";
     if (t.includes("TP3 HIT") || t.includes("TARGET 3 HIT") || t.includes("TP3 REACHED")) return "TP3_HIT";
     if (t.includes("TP2 HIT") || t.includes("TARGET 2 HIT") || t.includes("TP2 REACHED")) return "TP2_HIT";
     if (t.includes("TP1 HIT") || t.includes("TARGET 1 HIT") || t.includes("TP1 REACHED")) return "TP1_HIT";
+    if (t.includes("BREAKEVEN EXIT") || t.includes("BE EXIT") || t.includes("BREAKEVEN") && t.includes("TRADE CLOSED")) return "BREAKEVEN_EXIT";
+    if (t.includes("BREAKEVEN") || t.includes("BREAK-EVEN") || t.includes("SL MOVED TO BREAKEVEN")) return "BREAKEVEN";
     if (t.includes("SL HIT") || t.includes("STOP LOSS HIT") || t.includes("STOP LOSS TRIGGERED")) return "SL_HIT";
-    if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO")) return "ENTRY_HIT";
+    if (t.includes("ENTRY HIT") || t.includes("ENTRY ACTIVATED") || t.includes("TAPPED INTO") || t.includes("ENTRY TRIGGERED")) return "ENTRY_HIT";
     if (t.includes("INVALIDATED") || t.includes("CANCELLED")) return "INVALIDATED";
     if (t.includes("EXPIRED")) return "EXPIRED";
-    if (t.includes("SIGNAL ALERT") || t.includes("NEW SETUP") || t.includes("KHATARNAK JUGAAD") || t.includes("HARAMI AI") || t.includes("HARAMI AI MASTER") || t.includes("WAR ROOM") || t.includes("RETEST-X") || t.includes("RETEST X") || t.includes("ENTRY ZONE") || t.includes("EXECUTION ZONE") || t.includes("BEST ENTRY")) return "NEW_SETUP";
+    if (t.includes("SIGNAL ALERT") || t.includes("NEW SETUP") || t.includes("KHATARNAK JUGAAD") || t.includes("HARAMI AI") || t.includes("HARAMI AI MASTER") || t.includes("WAR ROOM") || t.includes("RETEST-X") || t.includes("RETEST X") || t.includes("ENTRY ZONE") || t.includes("EXECUTION ZONE") || t.includes("BEST ENTRY") || t.includes("ENTRY:")) return "NEW_SETUP";
     return "GENERAL_ALERT";
   }
   /**
@@ -2370,19 +2427,22 @@ var TelegramIdempotencyRegistry = class {
     if (event === "NEW_SETUP") {
       if (this.activeTradeId) {
         if (tradeId && tradeId === this.activeTradeId) {
+          if (this.hasInitialSignalBeenDispatched(tradeId)) {
+            return {
+              isDuplicate: true,
+              isBlocked: false,
+              key,
+              reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`
+            };
+          }
+        } else {
           return {
             isDuplicate: true,
-            isBlocked: false,
+            isBlocked: true,
             key,
-            reason: `Setup signal for active trade #${this.activeTradeId} was already broadcasted. Waiting for TP/SL outcome.`
+            reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`
           };
         }
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Strict Single Active Trade Rule: Active trade #${this.activeTradeId} is currently running. Waiting for TP or SL hit before next trade.`
-        };
       }
       if (now < this.cooldownUntil) {
         const remainingSecs = Math.max(0, Math.round((this.cooldownUntil - now) / 1e3));
@@ -2425,29 +2485,32 @@ var TelegramIdempotencyRegistry = class {
       }
     }
     if (event !== "NEW_SETUP" && event !== "GENERAL_ALERT") {
-      if (tradeId && !this.hasInitialSignalBeenDispatched(tradeId)) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert [${event}]: Initial formal setup card for #${tradeId} was never delivered to Telegram!`
-        };
-      }
-      if (this.activeTradeId && tradeId && tradeId !== this.activeTradeId) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert for #${tradeId}: Trade #${this.activeTradeId} is currently the single active trade.`
-        };
-      }
-      if (!this.activeTradeId && now < this.cooldownUntil) {
-        return {
-          isDuplicate: true,
-          isBlocked: true,
-          key,
-          reason: `Blocked lifecycle alert for #${tradeId}: System is currently in 30-minute cooldown.`
-        };
+      const isExitOutcome = event === "SL_HIT" || event === "BREAKEVEN" || event === "TP_THEN_SL_HIT" || event === "FINAL_TP_HIT" || event === "TP4_HIT" || event === "EXPIRED" || event === "INVALIDATED";
+      if (!isExitOutcome) {
+        if (tradeId && !this.hasInitialSignalBeenDispatched(tradeId)) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert [${event}]: Initial formal setup card for #${tradeId} was never delivered to Telegram!`
+          };
+        }
+        if (this.activeTradeId && tradeId && tradeId !== this.activeTradeId) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert for #${tradeId}: Trade #${this.activeTradeId} is currently the single active trade.`
+          };
+        }
+        if (!this.activeTradeId && now < this.cooldownUntil) {
+          return {
+            isDuplicate: true,
+            isBlocked: true,
+            key,
+            reason: `Blocked lifecycle alert for #${tradeId}: System is currently in 30-minute cooldown.`
+          };
+        }
       }
     }
     const textHash = this.generateNormalizedHash(messageText);
@@ -2492,7 +2555,7 @@ var TelegramIdempotencyRegistry = class {
         this.recentSetups = this.recentSetups.filter((s) => now - s.timestamp < 45 * 60 * 1e3);
       }
     }
-    if (event === "FINAL_TP_HIT" || event === "SL_HIT" || event === "TP_THEN_SL_HIT" || event === "EXPIRED" || event === "INVALIDATED") {
+    if (event === "FINAL_TP_HIT" || event === "SL_HIT" || event === "BREAKEVEN_EXIT" || event === "TP_THEN_SL_HIT" || event === "EXPIRED" || event === "INVALIDATED") {
       this.activeTradeId = null;
       this.activeTradeStartedAt = 0;
       this.cooldownUntil = now + this.cooldownDurationMinutes * 60 * 1e3;
@@ -2575,6 +2638,32 @@ var TelegramIdempotencyRegistry = class {
     this.saveToDisk();
   }
   /**
+   * Synchronize active trade and cooldown from external authoritative store
+   */
+  syncActiveTradeState(activeTradeId, cooldownUntil, markInitialSent = false) {
+    const cleanId = activeTradeId ? activeTradeId.replace(/_NEW_SETUP|_SIGNAL|#/gi, "").trim().toUpperCase() : null;
+    this.activeTradeId = cleanId;
+    if (cleanId && markInitialSent) {
+      const setupKey = `${cleanId}::NEW_SETUP`;
+      if (!this.dispatchedKeys.has(setupKey)) {
+        this.dispatchedKeys.add(setupKey);
+        this.records.push({
+          key: setupKey,
+          tradeId: cleanId,
+          event: "NEW_SETUP",
+          chatId: "subscribers",
+          textHash: `sync-${cleanId.toLowerCase()}`,
+          dispatchedAt: Date.now(),
+          dateTime: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+    }
+    if (typeof cooldownUntil === "number") {
+      this.cooldownUntil = cooldownUntil;
+    }
+    this.saveToDisk();
+  }
+  /**
    * Check if the initial complete trade signal has been confirmed dispatched for this trade ID
    */
   hasInitialSignalBeenDispatched(tradeId) {
@@ -2612,8 +2701,9 @@ var TelegramIdempotencyRegistry = class {
     this.records = [];
     this.textHashRecentMap.clear();
     try {
-      if (fsModule2 && fsModule2.existsSync && fsModule2.existsSync(STORAGE_FILE)) {
-        fsModule2.unlinkSync(STORAGE_FILE);
+      const storagePath = getStorageFile();
+      if (fsModule2 && fsModule2.existsSync && fsModule2.existsSync(storagePath)) {
+        fsModule2.unlinkSync(storagePath);
       }
     } catch (e) {
     }
@@ -2997,25 +3087,42 @@ Trade ID: <code>${fail.signalId || "MASTER"}</code>
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
-    if (data.startsWith("adm:user:approve:")) {
-      const parts = data.split(":");
-      const durationKey = parts[3];
-      const targetUserId = parts[4];
+    if (data.startsWith("adm:usr:grant:") || data.startsWith("adm:user:approve:") || data.startsWith("adm:req:approve:")) {
+      let targetUserId = "";
+      let durationKey = "lifetime";
+      if (data.startsWith("adm:usr:grant:")) {
+        const parts = data.split(":");
+        targetUserId = parts[3];
+        durationKey = (parts[4] || "lifetime").toLowerCase();
+      } else if (data.startsWith("adm:req:approve:")) {
+        targetUserId = data.replace("adm:req:approve:", "").trim();
+        durationKey = "lifetime";
+      } else {
+        const parts = data.split(":");
+        durationKey = (parts[3] || "lifetime").toLowerCase();
+        targetUserId = parts[4];
+      }
       const u = usersStore[targetUserId];
       if (u) {
         const nowMs = Date.now();
         const durationMap = {
-          "1d": { label: "1 Day Pass", ms: 24 * 3600 * 1e3 },
-          "3d": { label: "3 Day Pass", ms: 3 * 24 * 3600 * 1e3 },
-          "7d": { label: "7 Day Trial", ms: 7 * 24 * 3600 * 1e3 },
-          "15d": { label: "15 Day Pass", ms: 15 * 24 * 3600 * 1e3 },
-          "30d": { label: "30 Day Subscription", ms: 30 * 24 * 3600 * 1e3 },
-          lifetime: { label: "Lifetime Access", ms: null }
+          "1h": { label: "1 Hour", ms: 3600 * 1e3 },
+          "1": { label: "1 Day (24 Hours)", ms: 24 * 3600 * 1e3 },
+          "1d": { label: "1 Day (24 Hours)", ms: 24 * 3600 * 1e3 },
+          "3": { label: "3 Days", ms: 3 * 24 * 3600 * 1e3 },
+          "3d": { label: "3 Days", ms: 3 * 24 * 3600 * 1e3 },
+          "7": { label: "7 Days (1 Week)", ms: 7 * 24 * 3600 * 1e3 },
+          "7d": { label: "7 Days (1 Week)", ms: 7 * 24 * 3600 * 1e3 },
+          "15": { label: "15 Days", ms: 15 * 24 * 3600 * 1e3 },
+          "15d": { label: "15 Days", ms: 15 * 24 * 3600 * 1e3 },
+          "30": { label: "1 Month (30 Days)", ms: 30 * 24 * 3600 * 1e3 },
+          "30d": { label: "1 Month (30 Days)", ms: 30 * 24 * 3600 * 1e3 },
+          lifetime: { label: "Lifetime (Permanent Access)", ms: null }
         };
         const chosen = durationMap[durationKey] || durationMap["lifetime"];
-        u.status = durationKey.includes("trial") ? "trial" : "approved";
-        u.planType = durationKey.includes("trial") ? "trial" : "lifetime";
-        u.botAccess = "all";
+        u.status = "approved";
+        u.planType = chosen.ms ? "monthly" : "lifetime";
+        u.botAccess = u.botAccess || "all";
         u.expiresAt = chosen.ms ? nowMs + chosen.ms : null;
         u.decisionAt = (/* @__PURE__ */ new Date()).toISOString();
         usersStore[targetUserId] = u;
@@ -3026,7 +3133,7 @@ Trade ID: <code>${fail.signalId || "MASTER"}</code>
           cbUserId,
           targetUserId
         );
-        const expiryStr = u.expiresAt ? new Date(u.expiresAt).toLocaleDateString() : "Lifetime";
+        const expiryStr = u.expiresAt ? new Date(u.expiresAt).toUTCString() : "\u267E\uFE0F Lifetime (Never Expires)";
         await sendSingleTelegramMessage(
           env,
           u.chatId || u.userId,
@@ -3040,16 +3147,15 @@ Your access request has been <b>APPROVED</b>.
 <b>Valid Until:</b> <code>${expiryStr}</code>
 <b>Active Bots:</b> <code>Khatarnak Jugaad | Harami AI | War Room</code>
 
-<i>Type /start or /signal to begin receiving real-time institutional Gold trades!</i>`
+<i>All verified live Gold trades & SL/TP outcomes will now arrive automatically in this chat!</i>`
         );
-        const updatedPending = Object.values(usersStore).filter((x) => x.status === "pending");
-        const menu = superAdminService2.renderPendingRequestsMenu(updatedPending);
-        await editTelegramMessageText(env, cbChatId, cbMsgId, menu.text, menu.keyboard);
+        const view = superAdminService2.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
-    if (data.startsWith("adm:user:reject:")) {
-      const targetUserId = data.replace("adm:user:reject:", "");
+    if (data.startsWith("adm:user:reject:") || data.startsWith("adm:req:reject:")) {
+      const targetUserId = data.replace("adm:user:reject:", "").replace("adm:req:reject:", "").trim();
       const u = usersStore[targetUserId];
       if (u) {
         u.status = "rejected";
@@ -3070,8 +3176,8 @@ Your access request for GMC Trading AI was rejected by the Super Admin.`
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
-    if (data.startsWith("adm:user:block:")) {
-      const targetUserId = data.replace("adm:user:block:", "");
+    if (data.startsWith("adm:user:block:") || data.startsWith("adm:req:block:") || data.startsWith("adm:usr:block:")) {
+      const targetUserId = data.replace("adm:user:block:", "").replace("adm:req:block:", "").replace("adm:usr:block:", "").trim();
       const u = usersStore[targetUserId];
       if (u) {
         u.status = "blocked";
@@ -3079,9 +3185,34 @@ Your access request for GMC Trading AI was rejected by the Super Admin.`
         usersStore[targetUserId] = u;
         await saveUsersStore(env, usersStore);
         superAdminService2.logAction("USER_BLOCKED", `Blocked user ${targetUserId}`, cbUserId, targetUserId);
-        const updatedPending = Object.values(usersStore).filter((x) => x.status === "pending");
-        const menu = superAdminService2.renderPendingRequestsMenu(updatedPending);
-        await editTelegramMessageText(env, cbChatId, cbMsgId, menu.text, menu.keyboard);
+        const view = superAdminService2.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (data.startsWith("adm:usr:unblock:")) {
+      const targetUserId = data.replace("adm:usr:unblock:", "").trim();
+      const u = usersStore[targetUserId];
+      if (u) {
+        u.status = "approved";
+        u.decisionAt = (/* @__PURE__ */ new Date()).toISOString();
+        usersStore[targetUserId] = u;
+        await saveUsersStore(env, usersStore);
+        const view = superAdminService2.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (data.startsWith("adm:usr:revoke:") || data.startsWith("adm:req:revoke:")) {
+      const targetUserId = data.replace("adm:usr:revoke:", "").replace("adm:req:revoke:", "").trim();
+      const u = usersStore[targetUserId];
+      if (u) {
+        u.status = "pending";
+        u.decisionAt = (/* @__PURE__ */ new Date()).toISOString();
+        usersStore[targetUserId] = u;
+        await saveUsersStore(env, usersStore);
+        const view = superAdminService2.renderUserCard(u);
+        await editTelegramMessageText(env, cbChatId, cbMsgId, view.text, view.keyboard);
       }
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }

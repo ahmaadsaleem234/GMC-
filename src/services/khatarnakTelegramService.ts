@@ -1,7 +1,7 @@
-import { KhatarnakJugaadSetup, JugaadTimeframe, SetupFinalResult } from "./khatarnakJugaadEngine.js";
-import { getTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram.js";
-import { centralSignalManager } from "./centralSignalManager.js";
-import { safeLocalStorage } from "../utils/safeStorage.js";
+import { KhatarnakJugaadSetup, JugaadTimeframe, SetupFinalResult } from "./khatarnakJugaadEngine";
+import { getTelegramConfig, sendTelegramMessage, cleanTelegramInput, TelegramConfig } from "../utils/telegram";
+import { centralSignalManager } from "./centralSignalManager";
+import { safeLocalStorage } from "../utils/safeStorage";
 
 export type JugaadTelegramEventType =
   | "NEW_SETUP"

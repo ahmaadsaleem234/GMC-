@@ -13,7 +13,7 @@
 
 import fs from "fs";
 import path from "path";
-import { fcsMarketService, FCSLiveTick } from "./fcsMarketService.js";
+import { fcsMarketService, FCSLiveTick } from "./fcsMarketService";
 import { GoogleGenAI } from "@google/genai";
 
 export interface GbpusdQuoteData {

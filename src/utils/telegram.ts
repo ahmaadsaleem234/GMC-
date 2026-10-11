@@ -1,6 +1,6 @@
 // Telegram Bot Signal Alert Dispatcher
-import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter.js";
-import { safeLocalStorage } from "./safeStorage.js";
+import { generateDynamicReason, formatHaramiSignalMessage } from "./haramiSignalFormatter";
+import { safeLocalStorage } from "./safeStorage";
 
 export interface TelegramConfig {
   botToken: string;

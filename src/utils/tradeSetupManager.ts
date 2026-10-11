@@ -1,5 +1,5 @@
 // Unified State Management Engine for Active Locked Trade Setups Across GMC Modules
-import { safeLocalStorage } from "./safeStorage.js";
+import { safeLocalStorage } from "./safeStorage";
 import { playAlertChime } from "./audioAlert";
 import { evaluateKeystoneDualSetup } from "./gmcMasterAiBrainCore";
 import {

@@ -49,11 +49,11 @@ import {
   generateWhyNowCard,
   formatWarRoomTelegramSignal,
   formatWarRoomTelegramUpdate,
-} from "./warRoomEngine.js";
-import { fcsMarketService, FCSCandle } from "./fcsMarketService.js";
-import { setupLifecycleStorage } from "./setupLifecycleStorage.js";
-import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper.js";
-import { generateWarRoomLifecycleSnapshotBuffer } from "./signalChartService.js";
+} from "./warRoomEngine";
+import { fcsMarketService, FCSCandle } from "./fcsMarketService";
+import { setupLifecycleStorage } from "./setupLifecycleStorage";
+import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper";
+import { generateWarRoomLifecycleSnapshotBuffer } from "./signalChartService";
 import {
   AuthoritativeSetup,
   SetupStatus,
@@ -61,10 +61,10 @@ import {
   SetupSnapshot,
   LiveAlertNotification,
   LifecycleEventType,
-} from "../types/setupLifecycle.js";
-import { centralSignalManager } from "./centralSignalManager.js";
-import { sp500NewsMacroService } from "./sp500NewsMacroService.js";
-import { tradeStateManager } from "./tradeStateManager.js";
+} from "../types/setupLifecycle";
+import { centralSignalManager } from "./centralSignalManager";
+import { sp500NewsMacroService } from "./sp500NewsMacroService";
+import { tradeStateManager } from "./tradeStateManager";
 
 // Valid Historical Trade Database (Authentic Historical Setups with Stored Evidence)
 const INITIAL_HISTORICAL_DATABASE: LockedWarRoomSetup[] = [

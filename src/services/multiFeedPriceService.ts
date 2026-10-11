@@ -8,7 +8,7 @@
  * 4. Stale Tick & Outlier Protection (fails closed if pricing cannot be verified)
  */
 
-import { fcsMarketService, FCSLiveTick } from "./fcsMarketService.js";
+import { fcsMarketService, FCSLiveTick } from "./fcsMarketService";
 
 export type FeedHealthStatus = "ONLINE" | "DEGRADED" | "OFFLINE";
 

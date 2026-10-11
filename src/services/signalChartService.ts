@@ -1,7 +1,7 @@
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import fs from "fs";
 import path from "path";
-import { generateDynamicReason, formatHaramiSignalMessage } from "../utils/haramiSignalFormatter.js";
+import { generateDynamicReason, formatHaramiSignalMessage } from "../utils/haramiSignalFormatter";
 
 export { generateDynamicReason, formatHaramiSignalMessage };
 

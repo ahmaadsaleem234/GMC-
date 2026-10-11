@@ -13,7 +13,7 @@
  * Fails closed with: 🚫 SIGNAL BLOCKED — DATA/MARKET ANOMALY
  */
 
-import { ConsensusReport } from "./multiFeedPriceService.js";
+import { ConsensusReport } from "./multiFeedPriceService";
 
 export interface AnomalyCheckResult {
   passed: boolean;

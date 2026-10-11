@@ -13,9 +13,9 @@
 import fs from "fs";
 import path from "path";
 
-import { multiFeedPriceService, ConsensusReport } from "./multiFeedPriceService.js";
-import { anomalyDetectionEngine, ProposedTradeLevels } from "./anomalyDetectionEngine.js";
-import { advancedRiskManager } from "./advancedRiskManager.js";
+import { multiFeedPriceService, ConsensusReport } from "./multiFeedPriceService";
+import { anomalyDetectionEngine, ProposedTradeLevels } from "./anomalyDetectionEngine";
+import { advancedRiskManager } from "./advancedRiskManager";
 
 const DATA_DIR = path ? path.join(process.cwd(), "data") : "./data";
 const STATE_RECOVERY_FILE = path ? path.join(DATA_DIR, "trade_state_recovery.json") : "./data/trade_state_recovery.json";

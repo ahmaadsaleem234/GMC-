@@ -31,12 +31,12 @@
  *   WAITING -> DOJI DETECTED -> BREAKOUT CONFIRMED -> RETEST PENDING -> BUY/SELL CONFIRMED (or SETUP_CLOSED)
  */
 
-import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper.js";
+import { moduleSignalGatekeeper } from "./moduleSignalGatekeeper";
 import {
   detectSharedBosChoch,
   calculateSharedLiquidityAndPOI,
   evaluateSharedPreTradeFilter,
-} from "./warRoomEngine.js";
+} from "./warRoomEngine";
 
 function safeIsoString(input: any): string {
   if (!input) return new Date().toISOString();

@@ -6,7 +6,7 @@ import {
   SetupSnapshot,
   LiveAlertNotification,
   LifecycleEventType,
-} from "../types/setupLifecycle.js";
+} from "../types/setupLifecycle";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const SETUPS_FILE = path.join(DATA_DIR, "war_room_setups.json");

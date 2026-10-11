@@ -9,7 +9,7 @@
  * 3. Robust REST fallback and WebSocket connection management with health telemetry.
  */
 
-import { biquoteMarketService } from "./biquoteMarketService.js";
+import { biquoteMarketService } from "./biquoteMarketService";
 
 // Safe fallback class for WebSocket client when fcsapi-websocket package is not present
 class FallbackFCSClient {

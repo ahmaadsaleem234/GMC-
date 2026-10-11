@@ -12,7 +12,7 @@
  * - Audit log tracking for delivery status inspection
  */
 
-import { centralSignalManager, ActiveCentralSetup } from "./centralSignalManager.js";
+import { centralSignalManager, ActiveCentralSetup } from "./centralSignalManager";
 
 export interface N8nTradePayload {
   symbol: string;

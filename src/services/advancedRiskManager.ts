@@ -14,7 +14,7 @@
 
 import fs from "fs";
 import path from "path";
-import { SCHEDULED_ECONOMIC_EVENTS, EconomicEvent } from "./goldIntelligenceService.js";
+import { SCHEDULED_ECONOMIC_EVENTS, EconomicEvent } from "./goldIntelligenceService";
 
 export type MarketRegime = "TRENDING" | "RANGE_CHOPPY" | "HIGH_VOLATILITY_UNSAFE";
 
